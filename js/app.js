@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildHeart, COL } from './heart.js';
+import { buildHeart, COL, watercolorTexture } from './heart.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -35,7 +35,7 @@ canvasWrap.appendChild(labelRenderer.domElement);
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.35;
+scene.environmentIntensity = 0.22; // reflets d'environnement discrets : matière peinte, pas plastique
 
 const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
 const CENTER = new THREE.Vector3(0, 3.0, -1.2);
@@ -46,18 +46,20 @@ controls.dampingFactor = 0.08;
 controls.minDistance = 8;
 controls.maxDistance = 60;
 
-const key = new THREE.DirectionalLight(0xfff1e0, 1.6);
-key.position.set(5, 10, 12);
+// Éclairage « atelier » : clé chaude en haut à gauche de l'observateur, remplissage froid et doux, contre-jour faible
+// (les hautes lumières blanches des tubes viennent surtout du contre-jour : on le garde discret), hémisphère papier/ombre chaude.
+const key = new THREE.DirectionalLight(0xfff0dc, 1.9);
+key.position.set(7.5, 11, 9); // plus latérale qu'avant (5, 10, 12) : le volume des ventricules se modèle en vue de face
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = -16; key.shadow.camera.right = 16; key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
 key.shadow.camera.near = 1; key.shadow.camera.far = 60;
-key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03; key.shadow.radius = 4;
-const fill = new THREE.DirectionalLight(0xe4ebff, 0.45);
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.035; key.shadow.radius = 7;
+const fill = new THREE.DirectionalLight(0xdfe7ff, 0.7);
 fill.position.set(-10, 4, 6);
-const rim = new THREE.DirectionalLight(0xffffff, 0.5);
+const rim = new THREE.DirectionalLight(0xfff6ea, 0.3);
 rim.position.set(2, 8, -14);
-scene.add(key, key.target, fill, rim, new THREE.HemisphereLight(0xfaf4ea, 0x7a5a4e, 0.3));
+scene.add(key, key.target, fill, rim, new THREE.HemisphereLight(0xfaf4ea, 0x6e4e44, 0.5));
 
 /* ─────────── cœur ─────────── */
 const heart = buildHeart();
@@ -80,13 +82,15 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   });
   heart.materials.forEach((m) => { m.clipShadows = true; });
   toWrap.forEach((o) => {
-    // contour doux, un peu plus fin : trait de plume sous un lavis plutôt que cerne de bande dessinée
-    const om = new THREE.MeshBasicMaterial({ color: 0x4a2a28, side: THREE.BackSide, transparent: true, opacity: 0.6 });
+    // contour doux : trait de plume brun sous le lavis (0,035 cm ≈ 1 px à la distance de cadrage), encre un peu
+    // plus présente qu'avant pour détacher la silhouette du papier
+    const om = new THREE.MeshBasicMaterial({ color: 0x3e2522, side: THREE.BackSide, transparent: true, opacity: 0.68 });
     om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed += normal * 0.035;'); };
     const ol = new THREE.Mesh(o.geometry, om);
     ol.renderOrder = -1; ol.userData.outline = true;
     o.add(ol); outlineMats.push(om); outlines.push(ol);
-    const gm = new THREE.MeshBasicMaterial({ color: 0x2b2420, transparent: true, opacity: 0.07, depthWrite: false, clippingPlanes: [ghostPlane] });
+    // fantôme de la partie retirée : lavis d'encre très léger ; les recouvrements s'additionnent, d'où une valeur basse
+    const gm = new THREE.MeshBasicMaterial({ color: 0x4a3a33, transparent: true, opacity: 0.045, depthWrite: false, clippingPlanes: [ghostPlane] });
     const gh = new THREE.Mesh(o.geometry, gm);
     gh.visible = false; gh.userData.ghost = true;
     o.add(gh); ghostMats.push(gm); ghosts.push(gh);
@@ -136,7 +140,8 @@ heart.solids.forEach((s) => {
   if (!capGroups.has(capKey)) {
     const color = CAP_COLORS[capKey] ?? parseInt(capKey, 10);
     const rank = orderByCap.size; // les groupes suivants passent devant en cas de chevauchement (décalage de polygone)
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank });
+    // surface de coupe : même grain aquarelle que les parois (plan de 60 cm → répétition 14 ≈ 4 cm par plage), mate
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0, map: watercolorTexture(14, 14), envMapIntensity: 0.4, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank });
     const cap = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat);
     cap.renderOrder = order + 1;
     cap.onAfterRender = (r) => r.clearStencil();
@@ -229,7 +234,8 @@ function setTranslucent(on) {
   heart.materials.forEach((m) => {
     if (m.userData.noTranslucent) return;
     m.transparent = on;
-    m.opacity = on ? 0.3 : 1;
+    // graisse et coronaires presque effacées (0,10–0,14) pour ne pas brouiller les trajets ; parois 0,26–0,30
+    m.opacity = on ? (m.userData.flowOpacity ?? 0.3) : 1;
     m.depthWrite = !on;
     if (m.side !== THREE.BackSide) m.side = on ? THREE.FrontSide : THREE.DoubleSide; // une seule couche par paroi
     m.needsUpdate = true;
@@ -300,7 +306,8 @@ function layoutPlanche() {
     if (projP.z > 1) { plabels[id].style.display = 'none'; continue; }
     items.push({ id, sx: (projP.x + 1) / 2 * w, sy: (1 - projP.y) / 2 * h });
   }
-  const gap = narrow ? 20 : 24, top = narrow ? 100 : 110, bottom = h - 70;
+  // pas vertical ≥ hauteur d'une étiquette (30 px sur bureau, 20 px pour les pastilles seules) : plus de boîtes qui se touchent
+  const gap = narrow ? 22 : 31, top = narrow ? 100 : 110, bottom = h - 70;
   const columns = [items.filter((i) => i.sx < w / 2).sort((a, b) => a.sy - b.sy), items.filter((i) => i.sx >= w / 2).sort((a, b) => a.sy - b.sy)];
   let svg = '';
   columns.forEach((col, side) => {

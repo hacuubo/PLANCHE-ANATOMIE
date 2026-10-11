@@ -10,10 +10,10 @@
   --card: #fffdf9;
   /* six jetons sémantiques partagés avec js/heart.js (COL) et js/data.js (couleur) */
   --sang-riche: #c43a33;
-  --sang-pauvre: #43589f;
+  --sang-pauvre: #3e519e;
   --muscle: #b25048;
-  --graisse: #e5d2a6;
-  --valve: #efe3d3;
+  --graisse: #e8a846;
+  --valve: #e3e8ea;
   --conduction: #f3c23b;
   --radius: 14px;
   --shadow: 0 10px 30px rgba(43, 36, 32, .12);

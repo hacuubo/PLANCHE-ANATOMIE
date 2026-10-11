@@ -9,28 +9,30 @@ import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.j
 // et aux couleurs de pastille de js/data.js.
 // Direction artistique « planche peinte » (atlas type Netter) : chair rose-rouge des ventricules, oreillettes mauves,
 // graisse épicardique orange, vaisseaux rouge profond / bleu marine, intérieur des cavités rose avec cordages nacrés.
+// Les teintes de base sont des « tons moyens » : le lavis de bord (painterly) les fonce et les sature vers la silhouette,
+// la texture aquarelle les module de ±11 %, la lumière clé les éclaircit sur les faces tournées vers l'observateur.
 export const COL = {
-  myocarde: 0xc2605a,
-  myocardeCoupe: 0xd98f88,   // tranche de muscle, rosée
-  endocarde: 0xb86864,       // paroi interne des cavités (trabéculée)
-  papillaire: 0xb0524f,
-  oreillette: 0xa98bb8,      // mauve
+  myocarde: 0xd16c62,        // chair rose-rouge (ton moyen ; bords ≈ 0x8f3a36, hautes lumières ≈ 0xe09a90)
+  myocardeCoupe: 0xd68c85,   // tranche de muscle, rosée
+  endocarde: 0xc1746f,       // paroi interne des cavités (trabéculée), rose plus clair que la tranche
+  papillaire: 0xb3564f,
+  oreillette: 0xa98bb8,      // mauve, paroi mince
   oreilletteCoupe: 0xc4a8cc,
-  artere: 0xb52a2e,
-  arterePulm: 0x2f4290,      // sang pauvre en oxygène
-  veine: 0x2f4290,
-  veinePulm: 0xb52a2e,       // sang riche en oxygène
-  graisse: 0xe9a53f,         // graisse épicardique
-  graisseCoupe: 0xf0b650,
-  coronaire: 0xb8302f,
-  veineCard: 0x2f4290,
-  valve: 0xdde6ea,           // feuillets nacrés
-  cordage: 0xf1f4f5,
+  artere: 0xbb3533,
+  arterePulm: 0x344a9a,      // sang pauvre en oxygène
+  veine: 0x344a9a,
+  veinePulm: 0xbb3533,       // sang riche en oxygène
+  graisse: 0xe8a846,         // graisse épicardique jaune-orange, mate
+  graisseCoupe: 0xeeb858,
+  coronaire: 0xbb3533,
+  veineCard: 0x344a9a,
+  valve: 0xe3e8ea,           // feuillets nacrés
+  cordage: 0xf3f5f5,
   conduction: 0xf3c23b,
   ligament: 0xcbb79a,
-  // lumière des vaisseaux sectionnés (sang) et anneau de paroi
-  lumenArtere: 0x6e1a1c, lumenVeine: 0x1f2b60,
-  paroiArtere: 0x9a2326, paroiVeine: 0x283877,
+  // lumière des vaisseaux sectionnés (sang : plus sombre que la paroi, mais lisible) et anneau de paroi
+  lumenArtere: 0xa63a3a, lumenVeine: 0x3b4c92,
+  paroiArtere: 0x8e2426, paroiVeine: 0x263676,
 };
 
 /* ─────────── repère local du cœur ─────────── */
@@ -71,6 +73,16 @@ function noise(x, y, z) {
   return 0.5 * Math.sin(2.1 * x + 1.3 * y) * Math.cos(1.7 * z - 0.6 * x) + 0.5 * Math.sin(3.3 * y + 0.7 * z) * Math.cos(2.4 * x);
 }
 
+// Infundibulum (cône artériel du VD) : soulèvement lisse de la base vers la valve pulmonaire, fondu dans la masse
+// (pas de tube rapporté, donc pas de « couture »). Centré sur θ = 30° (avant-gauche), ρ = 2,9 cm, sommet ≈ y = 1,9.
+const CONUS = { theta: THREE.MathUtils.degToRad(30), rho: 2.9, sigTh: THREE.MathUtils.degToRad(34), sigRho: 1.05, h: 1.75 };
+function conusLift(theta, rho, t) {
+  let d = theta - CONUS.theta;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  const g = Math.exp(-(d * d) / (2 * CONUS.sigTh * CONUS.sigTh)) * Math.exp(-((rho - CONUS.rho) ** 2) / (2 * CONUS.sigRho * CONUS.sigRho));
+  const fade = t < 0 ? 1 : Math.max(0, 1 - t / 0.15);
+  return CONUS.h * g * fade;
+}
 function ventricularMassGeometry() {
   const geo = new ParametricGeometry((uu, vv, target) => {
     const theta = (1 - uu) * Math.PI * 2; // sens inversé pour que les faces avant pointent vers l'extérieur (nécessaire au stencil de coupe)
@@ -80,11 +92,11 @@ function ventricularMassGeometry() {
       const k = Math.sqrt(Math.max(0, 1 - (t / 0.1) * (t / 0.1)));
       r = rOf(0) * k;
     } else r = rOf(t);
-    const y = t < 0 ? -L * t * 0.35 : -L * t;
+    const y = (t < 0 ? -L * t * 0.35 : -L * t) + conusLift(theta, r, t);
     const x0 = r * Math.sin(theta), z0 = r * Math.cos(theta) * Z_SCALE;
     const bump = 1 + 0.012 * noise(x0, y, z0);
     target.set(x0 * bump, y, z0 * bump);
-  }, 96, 64);
+  }, 96, 72);
   geo.computeVertexNormals();
   return geo;
 }
@@ -177,46 +189,78 @@ function lumenCap(curve, atEnd, r, lumMat, wallMat, wallFrac) {
   return group;
 }
 
-// Texture « aquarelle » : bruit de valeur doux, multiplié à la couleur (±7 %) pour casser l'aplat.
-let noiseTex = null;
-function watercolorTexture() {
-  if (noiseTex) return noiseTex;
-  const S = 256, c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  const rnd = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
-  const smooth = (x, y, f) => {
-    const gx = (x / S) * f, gy = (y / S) * f;
-    const i = Math.floor(gx), j = Math.floor(gy), fx = gx - i, fy = gy - j;
-    const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
-    const a = rnd(i % f, j % f), b = rnd((i + 1) % f, j % f), cc = rnd(i % f, (j + 1) % f), d = rnd((i + 1) % f, (j + 1) % f);
-    return (a * (1 - u) + b * u) * (1 - v) + (cc * (1 - u) + d * u) * v;
-  };
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const n = 0.55 * smooth(x, y, 4) + 0.3 * smooth(x, y, 9) + 0.15 * smooth(x, y, 21);
-    const val = Math.round(255 * (0.93 + 0.07 * n));
-    const o = (y * S + x) * 4;
-    img.data[o] = img.data[o + 1] = img.data[o + 2] = val; img.data[o + 3] = 255;
+// Texture « aquarelle » : bruit de valeur doux multiplié à la couleur (−12 % à +2 %), avec une composante basse
+// fréquence (plages de lavis) et un grain fin (pigment). Tuilable ; `repeat` adapte l'échelle aux UV de chaque géométrie.
+let noiseCanvas = null;
+const noiseTexCache = new Map();
+function watercolorTexture(repeatU = 1, repeatV = 1) {
+  const key = `${repeatU}x${repeatV}`;
+  if (noiseTexCache.has(key)) return noiseTexCache.get(key);
+  if (!noiseCanvas) {
+    const S = 512, c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(S, S);
+    const rnd = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+    const smooth = (x, y, f) => {
+      const gx = (x / S) * f, gy = (y / S) * f;
+      const i = Math.floor(gx), j = Math.floor(gy), fx = gx - i, fy = gy - j;
+      const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+      const a = rnd(i % f, j % f), b = rnd((i + 1) % f, j % f), cc = rnd(i % f, (j + 1) % f), d = rnd((i + 1) % f, (j + 1) % f);
+      return (a * (1 - u) + b * u) * (1 - v) + (cc * (1 - u) + d * u) * v;
+    };
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      // plages larges (3, 6) + nuages (13) + grain de pigment (37, 83)
+      const raw = 0.42 * smooth(x, y, 3) + 0.26 * smooth(x, y, 6) + 0.17 * smooth(x, y, 13) + 0.1 * smooth(x, y, 37) + 0.05 * smooth(x, y, 83);
+      // la somme des octaves se concentre autour de 0,5 : on ré-étire le contraste pour obtenir de vraies plages
+      const n = Math.min(1, Math.max(0, (raw - 0.5) * 2.6 + 0.5));
+      const val = Math.round(255 * (0.82 + 0.21 * n));
+      const o = (y * S + x) * 4;
+      img.data[o] = img.data[o + 1] = img.data[o + 2] = val; img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    noiseCanvas = c;
   }
-  ctx.putImageData(img, 0, 0);
-  noiseTex = new THREE.CanvasTexture(c);
-  noiseTex.wrapS = noiseTex.wrapT = THREE.RepeatWrapping;
-  noiseTex.colorSpace = THREE.NoColorSpace;
-  return noiseTex;
+  const tex = new THREE.CanvasTexture(noiseCanvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatU, repeatV);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.anisotropy = 4;
+  noiseTexCache.set(key, tex);
+  return tex;
 }
+export { watercolorTexture };
 
-// Rendu « peint » : assombrissement des bords (fresnel) comme un lavis, léger éclaircissement des faces tournées vers l'œil.
-function painterly(mat, edge = 0.72) {
+// Rendu « peint » : lavis de bord (fresnel) qui fonce ET sature la couleur vers la silhouette (le pigment s'accumule
+// au bord d'une plage d'aquarelle), léger éclaircissement des faces tournées vers l'œil. `edge` = facteur de valeur au
+// bord ; la teinte du lavis retire davantage aux canaux secondaires qu'au canal dominant, d'où la saturation.
+function painterly(mat, edge = 0.62, power = 1.7) {
   mat.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       { float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
-        float fres = pow(1.0 - ndv, 2.2);
-        diffuseColor.rgb *= mix(1.0, ${edge.toFixed(3)}, fres);
-        diffuseColor.rgb *= 1.0 + 0.05 * ndv; }`);
+        float fres = pow(1.0 - ndv, ${power.toFixed(2)});
+        float mx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
+        vec3 sat = mix(diffuseColor.rgb, diffuseColor.rgb * diffuseColor.rgb / max(mx, 1e-3), 0.45);
+        diffuseColor.rgb = mix(diffuseColor.rgb, sat * ${edge.toFixed(3)}, fres);
+        diffuseColor.rgb *= 1.0 + 0.14 * ndv * ndv; }`);
   };
-  mat.customProgramCacheKey = () => 'painterly' + edge;
+  mat.customProgramCacheKey = () => `painterly${edge}_${power}`;
   return mat;
+}
+
+// Dégradé peint par couleurs de sommets : `fn(x, y, z)` renvoie un facteur (1 = couleur de base, < 1 plus sombre).
+// Purement esthétique (ne déplace aucun sommet) ; le matériau doit avoir vertexColors = true.
+function tintGradient(geo, fn) {
+  const p = geo.attributes.position, n = p.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const f = fn(p.getX(i), p.getY(i), p.getZ(i));
+    // le facteur agit davantage sur vert/bleu que sur rouge : une chair qui fonce rougit, elle ne grisonne pas
+    col[i * 3] = Math.min(1.08, 0.3 + 0.7 * f + 0.06 * (1 - f));
+    col[i * 3 + 1] = f * f * 0.9 + 0.1 * f;
+    col[i * 3 + 2] = f * f * 0.9 + 0.1 * f;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
 }
 
 // Cône d'axe base → pointe (muscles papillaires, lobules).
@@ -258,23 +302,25 @@ export function buildHeart() {
   const cutOnly = [];         // objets visibles seulement en coupe
   const flowPaths = [];       // { points:[Vector3], color, speed }
 
-  const aquarelle = watercolorTexture();
-  // organic : texture aquarelle + lavis de bord prononcé (muscle, graisse, oreillettes) ; physical : vernis (vaisseaux, reflet peint)
+  // organic : texture aquarelle + lavis de bord prononcé (muscle, graisse, oreillettes), surface mate, peu de reflet
+  // d'environnement ; physical : vaisseaux, vernis très discret (reflet peint) et lavis plus marqué vers les bords du tube.
+  // repeat : échelle de la texture selon les UV de la géométrie (tubes : 1 tour × longueur ; masse : 3 × 1,4).
   const mkMat = (color, opts = {}) => {
-    const { organic = false, physical = false, ...rest } = opts;
+    const { organic = false, physical = false, repeat = [1, 1], edge, flowOpacity, ...rest } = opts;
     const Cls = physical ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
-    const m = new Cls({ color, roughness: 0.62, metalness: 0.0, side: THREE.DoubleSide, ...rest });
-    if (physical) { m.clearcoat = 0.3; m.clearcoatRoughness = 0.4; }
-    if (organic) m.map = aquarelle;
-    painterly(m, organic ? 0.68 : 0.78);
+    const m = new Cls({ color, roughness: 0.66, metalness: 0.0, side: THREE.DoubleSide, ...rest });
+    if (physical) { m.clearcoat = 0.12; m.clearcoatRoughness = 0.6; m.specularIntensity = 0.55; m.envMapIntensity = 0.7; }
+    if (organic) { m.map = watercolorTexture(repeat[0], repeat[1]); m.envMapIntensity = 0.45; }
+    painterly(m, edge ?? (organic ? 0.58 : 0.52), organic ? 1.7 : 2.0);
     m.userData.baseColor = new THREE.Color(color);
     m.userData.baseOpacity = 1;
+    if (flowOpacity !== undefined) m.userData.flowOpacity = flowOpacity; // opacité en mode circulation (défaut 0,3)
     materials.push(m);
     return m;
   };
   // matériaux partagés des extrémités sectionnées
-  const lumMats = { artere: mkMat(COL.lumenArtere, { roughness: 0.85 }), veine: mkMat(COL.lumenVeine, { roughness: 0.85 }) };
-  const wallMats = { artere: mkMat(COL.paroiArtere, { roughness: 0.7 }), veine: mkMat(COL.paroiVeine, { roughness: 0.7 }) };
+  const lumMats = { artere: mkMat(COL.lumenArtere, { roughness: 0.9, edge: 0.8 }), veine: mkMat(COL.lumenVeine, { roughness: 0.9, edge: 0.8 }) };
+  const wallMats = { artere: mkMat(COL.paroiArtere, { roughness: 0.75, edge: 0.8 }), veine: mkMat(COL.paroiVeine, { roughness: 0.75, edge: 0.8 }) };
   const register = (id, mesh, anchorWorld, group = root) => {
     mesh.userData.id = id;
     group.add(mesh);
@@ -283,9 +329,9 @@ export function buildHeart() {
     if (anchorWorld && !registry[id].anchor) registry[id].anchor = anchorWorld.clone();
     return mesh;
   };
-  const vessel = (id, points, radius, color, { caps = [false, false], seg = 64, group = root, anchorT = 0.5, cap, type = 'artere', roughness = 0.45, physical = true } = {}) => {
+  const vessel = (id, points, radius, color, { caps = [false, false], seg = 64, group = root, anchorT = 0.5, cap, type = 'artere', roughness = 0.58, physical = true, flowOpacity } = {}) => {
     const g = tubeGeometry(points, radius, seg, 22);
-    const mat = mkMat(color, { roughness, physical });
+    const mat = mkMat(color, { roughness, physical, flowOpacity });
     const mesh = new THREE.Mesh(g, mat);
     const curve = g.userData.curve;
     const anchor = curve.getPointAt(anchorT);
@@ -302,8 +348,16 @@ export function buildHeart() {
   };
 
   /* ── Masse ventriculaire ── */
-  const myoMat = mkMat(COL.myocarde, { roughness: 0.74, organic: true });
+  const myoMat = mkMat(COL.myocarde, { roughness: 0.8, organic: true, repeat: [7, 3], vertexColors: true });
   const massGeo = ventricularMassGeometry();
+  // Lavis de la masse (repère local : y = 0 base, y = -L apex ; x > 0 gauche, z > 0 avant) : la base et la face antérieure
+  // du VD restent claires, la couleur se charge vers l'apex et la face postéro-gauche, comme sur les planches peintes.
+  tintGradient(massGeo, (x, y, z) => {
+    const t = THREE.MathUtils.clamp(-y / L, 0, 1);
+    const ang = Math.atan2(x, z / Z_SCALE); // 0 = avant, +90° = gauche
+    const side = 0.5 - 0.5 * Math.cos(ang - 0.35); // 0 en avant-droite, 1 en arrière-gauche
+    return 1.06 - 0.16 * t * t - 0.08 * side + 0.02 * noise(x * 0.9, y * 0.9, z * 0.9);
+  });
   const mass = new THREE.Mesh(massGeo, myoMat);
   mass.userData.id = 'ventricule-droit'; // par défaut, résolu finement au clic (voir pickId)
   local.add(mass);
@@ -324,14 +378,12 @@ export function buildHeart() {
   registry['apex'] = { meshes: [mass], anchor: L2W(surf(0.985, 20, 0)) };
   registry['septum-interventriculaire'] = { meshes: [], anchor: l(-0.35, -3.0, 0.5) };
 
-  // Infundibulum (cône artériel du VD) montant vers la valve pulmonaire
+  // Racine du tronc pulmonaire : au sommet du cône artériel (infundibulum), désormais modelé dans la masse elle-même (voir conusLift)
   const PT_ROOT_L = new THREE.Vector3(1.45, 1.9, 2.15); // en avant et à gauche de la racine aortique (axes distants ≥ 3 cm)
-  const infund = vessel('ventricule-droit', [new THREE.Vector3(0.2, -1.6, 2.4), new THREE.Vector3(0.7, -0.2, 2.5), PT_ROOT_L.clone().add(new THREE.Vector3(0, 0.1, 0))],
-    (t) => 1.75 - 0.3 * t, COL.myocarde, { group: local, seg: 24, cap: 'myo', physical: false });
-  infund.material = myoMat;
 
   /* ── Cavités ventriculaires (trous pour la coupe) ── */
-  const endoMat = mkMat(COL.endocarde, { side: THREE.BackSide, roughness: 0.8, organic: true });
+  // endocarde : lavis léger (edge 0,72) pour que le fond des cavités reste rose et lisible, pas brun
+  const endoMat = mkMat(COL.endocarde, { side: THREE.BackSide, roughness: 0.78, organic: true, repeat: [2, 2], edge: 0.72 });
   // VG : cavité conique à paroi épaisse (≈ 1 cm), dans la moitié postéro-gauche de la masse ; paroi légèrement trabéculée.
   const LV_C = new THREE.Vector3(1.0, -3.0, -0.6);
   const lvCav = new THREE.Mesh(trabeculate(ellipsoid(2.0, 2.9, 1.9, 64), 0.07, 2.0), endoMat); // paroi VG ≈ 1,0–1,2 cm
@@ -352,8 +404,8 @@ export function buildHeart() {
   cutOnly.push(rvCav);
 
   /* ── Oreillettes (mauves, parois minces) ── */
-  const atrMat = mkMat(COL.oreillette, { roughness: 0.72, organic: true });
-  const atrEndoMat = mkMat(0xb597c0, { side: THREE.BackSide, roughness: 0.8, organic: true });
+  const atrMat = mkMat(COL.oreillette, { roughness: 0.7, organic: true, repeat: [2, 1], edge: 0.6, flowOpacity: 0.26 });
+  const atrEndoMat = mkMat(0xbb9fc6, { side: THREE.BackSide, roughness: 0.8, organic: true, repeat: [2, 1], edge: 0.74 });
   const ra = new THREE.Mesh(ellipsoid(2.2, 2.45, 2.1), atrMat);
   ra.position.set(-2.5, 1.95, -0.4);
   register('oreillette-droite', ra, L2W(new THREE.Vector3(-4.6, 2.8, 0.4)), local);
@@ -387,10 +439,11 @@ export function buildHeart() {
   laAur.material = atrMat;
 
   /* ── Sillons (graisse épicardique) ── */
-  const fatMat = mkMat(COL.graisse, { roughness: 0.9, organic: true });
+  // graisse : mate (roughness 0,95), lavis orangé marqué entre les lobules (edge 0,52), presque effacée en mode circulation
+  const fatMat = mkMat(COL.graisse, { roughness: 0.95, organic: true, repeat: [1, 3], edge: 0.52, flowOpacity: 0.1 });
   // la graisse est enfoncée dans la surface (-0.08) : coussinet qui comble le sillon plutôt que tube posé dessus
   const sulcusPts = (list) => list.map(([t, th]) => surf(t, th, -0.08));
-  const fatOpts = { group: local, cap: 'fat', physical: false, roughness: 0.9 };
+  const fatOpts = { group: local, cap: 'fat', physical: false, roughness: 0.95 };
   // sillon coronaire : interrompu en avant par l'infundibulum et le tronc pulmonaire (de -20° à +35°)
   const coroD = [], coroG = [];
   for (let th = -20; th >= -180; th -= 12) coroD.push(surf(0.01, th, 0.0));
@@ -410,7 +463,8 @@ export function buildHeart() {
   // Lobules de graisse : amas irréguliers le long des sillons (aspect bosselé des planches)
   let lobK = 0;
   const lobule = (pL, s = 1) => {
-    const m = new THREE.Mesh(ellipsoid(0.46 * s, 0.26 * s, 0.36 * s, 18), fatMat);
+    // lobules un peu plus larges et plus plats qu'avant (0,46 × 0,26 × 0,36) : coussinets fondus dans le sillon
+    const m = new THREE.Mesh(ellipsoid(0.52 * s, 0.22 * s, 0.42 * s, 18), fatMat);
     m.position.copy(pL);
     m.rotation.set(lobK * 1.7, lobK * 2.3, lobK * 0.9);
     lobK++;
@@ -479,10 +533,10 @@ export function buildHeart() {
   for (let th = 125; th <= 180; th += 11) sc.push(surf(-0.05, th, 0.45));
   for (let th = -180; th <= -160; th += 10) sc.push(surf(-0.05, th, 0.55));
   sc.push(new THREE.Vector3(-2.6, 0.3, -0.5)); // ostium en avant et en dedans de la VCI, au plancher de l'OD
-  vessel('sinus-coronaire', sc, (t) => 0.28 + 0.2 * t, COL.veineCard, { group: local, seg: 40, anchorT: 0.5, roughness: 0.6 });
+  vessel('sinus-coronaire', sc, (t) => 0.28 + 0.2 * t, COL.veineCard, { group: local, seg: 40, anchorT: 0.5, roughness: 0.62, flowOpacity: 0.14 });
 
   /* ── Artères coronaires (repère local, posées sur la surface) ── */
-  const cor = (id, pts, r = 0.2, opts = {}) => vessel(id, pts, r, COL.coronaire, { group: local, seg: 48, ...opts });
+  const cor = (id, pts, r = 0.2, opts = {}) => vessel(id, pts, r, COL.coronaire, { group: local, seg: 48, roughness: 0.62, flowOpacity: 0.14, ...opts });
   // Tronc commun : sinus aortique postéro-gauche → entre le tronc pulmonaire (en avant) et l'auricule gauche (en arrière) → sillon AV gauche
   const AO_L = new THREE.Vector3(-0.25, 1.75, 0.55);
   cor('tronc-commun', [AO_L.clone().add(new THREE.Vector3(0.95, -0.35, -0.15)), new THREE.Vector3(1.55, 0.95, 0.55), new THREE.Vector3(2.25, 0.45, 1.15), surf(0.02, 38, 0.25)], 0.26, { seg: 16, anchorT: 0.5 });
@@ -505,10 +559,11 @@ export function buildHeart() {
   cor('coronaire-droite', [surf(0.0, -45, 0.3), new THREE.Vector3(-2.5, 2.2, 1.9), new THREE.Vector3(-2.9, 3.9, 0.6)], 0.09, { seg: 12 });
 
   /* ── Valves et appareil sous-valvulaire (visibles en coupe) ── */
-  const valveMat = mkMat(COL.valve, { roughness: 0.42, transparent: true, opacity: 0.94 });
-  const cordMat = mkMat(COL.cordage, { roughness: 0.55 });
+  // feuillets nacrés : lavis gris-bleu discret vers les bords (edge 0,8), surface satinée ; cordages blancs sans lavis
+  const valveMat = mkMat(COL.valve, { roughness: 0.48, transparent: true, opacity: 0.94, edge: 0.8 });
+  const cordMat = mkMat(COL.cordage, { roughness: 0.5, edge: 0.88 });
   cordMat.userData.noTranslucent = true;
-  const papMat = mkMat(COL.papillaire, { roughness: 0.78, organic: true });
+  const papMat = mkMat(COL.papillaire, { roughness: 0.8, organic: true, repeat: [1, 2], edge: 0.62 });
   // Rattache un groupe « intérieur » à une structure (sélectionnable, visible seulement en coupe, sans contour ni ombre portée)
   const addCut = (obj, id, leaf = true) => {
     obj.traverse((o) => { if (o.isMesh) { o.userData.id = id; if (leaf) o.userData.leaf = true; } });
@@ -577,7 +632,7 @@ export function buildHeart() {
   addCut(new THREE.Mesh(tubeGeometry([new THREE.Vector3(-1.1, -3.3, 1.0), new THREE.Vector3(-1.3, -3.5, 1.9), papRV[0].base], 0.17, 8, 10), papMat), 'ventricule-droit', false);
 
   /* ── Système de conduction (visible en coupe) ── */
-  const condMat = mkMat(COL.conduction, { emissive: 0xffb300, emissiveIntensity: 0.45, roughness: 0.4 });
+  const condMat = mkMat(COL.conduction, { emissive: 0xffb300, emissiveIntensity: 0.4, roughness: 0.5, edge: 0.78 });
   const node = (id, posL, r) => {
     const m = new THREE.Mesh(ellipsoid(r, r * 0.7, r * 0.5), condMat);
     m.position.copy(posL);
@@ -618,7 +673,8 @@ export function buildHeart() {
     const t = -p.y / L;
     if (t > 0.93) return 'apex';
     const th = THREE.MathUtils.radToDeg(Math.atan2(p.x, p.z / Z_SCALE));
-    // VD : de -165° (face inférieure) à +24° (sillon IV antérieur), VG ailleurs
+    // VD : de -165° (face inférieure) à +24° (sillon IV antérieur), VG ailleurs ; le cône artériel (base, 0–65°) est VD
+    if (t < 0.08 && th > -165 && th < 65) return 'ventricule-droit';
     return (th > -165 && th < 24) ? 'ventricule-droit' : 'ventricule-gauche';
   };
 

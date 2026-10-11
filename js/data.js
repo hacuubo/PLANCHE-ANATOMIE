@@ -14,7 +14,7 @@ export const GROUPES = [
 export const STRUCTURES = {
   /* ───────────── Cavités ───────────── */
   'oreillette-droite': {
-    nom: 'Oreillette droite', latin: 'Atrium dextrum', groupe: 'cavites', couleur: '#43589f',
+    nom: 'Oreillette droite', latin: 'Atrium dextrum', groupe: 'cavites', couleur: '#3e519e',
     resume: "Première cavité que traverse le sang qui revient du corps, pauvre en oxygène. Elle le reçoit des deux veines caves, puis le pousse dans le ventricule droit à travers la valve tricuspide.",
     details: [
       "Forme le bord droit du cœur. Sa paroi est fine (2 mm environ) car la pression y est basse.",
@@ -25,7 +25,7 @@ export const STRUCTURES = {
     chiffres: ['Pression moyenne : 2 à 6 mmHg', 'Paroi : ≈ 2 mm'],
   },
   'auricule-droite': {
-    nom: 'Auricule droite', latin: 'Auricula dextra', groupe: 'cavites', couleur: '#43589f',
+    nom: 'Auricule droite', latin: 'Auricula dextra', groupe: 'cavites', couleur: '#3e519e',
     resume: "Petit prolongement de l'oreillette droite, en forme de pavillon, qui vient recouvrir en avant la racine de l'aorte.",
     details: [
       "Sa paroi interne est tapissée de muscles pectinés, de petits reliefs musculaires.",
@@ -33,7 +33,7 @@ export const STRUCTURES = {
     ],
   },
   'ventricule-droit': {
-    nom: 'Ventricule droit', latin: 'Ventriculus dexter', groupe: 'cavites', couleur: '#43589f',
+    nom: 'Ventricule droit', latin: 'Ventriculus dexter', groupe: 'cavites', couleur: '#3e519e',
     resume: "Pompe qui envoie le sang pauvre en oxygène vers les poumons par le tronc pulmonaire. C'est lui qui forme la plus grande partie de la face avant du cœur, juste derrière le sternum.",
     details: [
       "Reçoit le sang de l'oreillette droite par la valve tricuspide et l'éjecte par la valve pulmonaire.",
@@ -91,7 +91,7 @@ export const STRUCTURES = {
 
   /* ───────────── Valves ───────────── */
   'valve-tricuspide': {
-    nom: 'Valve tricuspide', latin: 'Valva atrioventricularis dextra', groupe: 'valves', couleur: '#efe3d3', coupe: true,
+    nom: 'Valve tricuspide', latin: 'Valva atrioventricularis dextra', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
     resume: "Porte à trois feuillets entre l'oreillette droite et le ventricule droit. Elle s'ouvre pour laisser passer le sang vers le ventricule et se ferme pour l'empêcher de refluer.",
     details: [
       "Trois feuillets : antérieur, septal et postérieur, retenus par des cordages tendineux fixés aux muscles papillaires.",
@@ -99,7 +99,7 @@ export const STRUCTURES = {
     ],
   },
   'valve-pulmonaire': {
-    nom: 'Valve pulmonaire', latin: 'Valva trunci pulmonalis', groupe: 'valves', couleur: '#efe3d3', coupe: true,
+    nom: 'Valve pulmonaire', latin: 'Valva trunci pulmonalis', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
     resume: "Valve de sortie du ventricule droit, à l'entrée du tronc pulmonaire. Trois petites poches en demi‑lune se gonflent pour la fermer.",
     details: [
       "Trois valvules semi‑lunaires (antérieure, droite et gauche), sans cordages.",
@@ -108,7 +108,7 @@ export const STRUCTURES = {
     chiffres: ['Diamètre : ≈ 2,5 cm'],
   },
   'valve-mitrale': {
-    nom: 'Valve mitrale', latin: 'Valva atrioventricularis sinistra (bicuspidalis)', groupe: 'valves', couleur: '#efe3d3', coupe: true,
+    nom: 'Valve mitrale', latin: 'Valva atrioventricularis sinistra (bicuspidalis)', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
     resume: "Porte à deux feuillets entre l'oreillette gauche et le ventricule gauche. Son nom vient de sa ressemblance avec la mitre d'un évêque.",
     details: [
       "Deux feuillets : antérieur (ou aortique) et postérieur (ou mural), retenus par des cordages fixés aux deux muscles papillaires du ventricule gauche.",
@@ -118,7 +118,7 @@ export const STRUCTURES = {
     chiffres: ['Surface d’ouverture normale : 4 à 6 cm²'],
   },
   'valve-aortique': {
-    nom: 'Valve aortique', latin: 'Valva aortae', groupe: 'valves', couleur: '#efe3d3', coupe: true,
+    nom: 'Valve aortique', latin: 'Valva aortae', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
     resume: "Valve de sortie du ventricule gauche, à l'entrée de l'aorte. Située au centre du cœur, elle s'ouvre et se ferme environ 100 000 fois par jour.",
     details: [
       "Trois valvules semi‑lunaires (coronaire droite, coronaire gauche et non coronaire).",
@@ -155,7 +155,7 @@ export const STRUCTURES = {
     details: ["Elle donne l'artère vertébrale gauche, qui participe à l'irrigation de l'arrière du cerveau."],
   },
   'tronc-pulmonaire': {
-    nom: 'Tronc pulmonaire', latin: 'Truncus pulmonalis', groupe: 'vaisseaux', couleur: '#43589f',
+    nom: 'Tronc pulmonaire', latin: 'Truncus pulmonalis', groupe: 'vaisseaux', couleur: '#3e519e',
     resume: "Gros vaisseau qui part du ventricule droit et emmène le sang pauvre en oxygène vers les poumons. Avec ses deux branches, c'est la seule artère du corps à transporter du sang « bleu ».",
     details: [
       "Long de 5 cm, large de 3 cm. Il naît en avant de l'aorte, passe à sa gauche, puis se divise sous la crosse aortique en artères pulmonaires droite et gauche.",
@@ -163,27 +163,27 @@ export const STRUCTURES = {
     ],
   },
   'artere-pulmonaire-droite': {
-    nom: 'Artère pulmonaire droite', latin: 'A. pulmonalis dextra', groupe: 'vaisseaux', couleur: '#43589f',
+    nom: 'Artère pulmonaire droite', latin: 'A. pulmonalis dextra', groupe: 'vaisseaux', couleur: '#3e519e',
     resume: "Branche droite du tronc pulmonaire, elle rejoint le poumon droit.",
     details: ["Plus longue que la gauche, elle passe en arrière de l'aorte ascendante et de la veine cave supérieure."],
   },
   'artere-pulmonaire-gauche': {
-    nom: 'Artère pulmonaire gauche', latin: 'A. pulmonalis sinistra', groupe: 'vaisseaux', couleur: '#43589f',
+    nom: 'Artère pulmonaire gauche', latin: 'A. pulmonalis sinistra', groupe: 'vaisseaux', couleur: '#3e519e',
     resume: "Branche gauche du tronc pulmonaire, elle rejoint le poumon gauche.",
     details: ["Plus courte, elle passe en avant de l'aorte descendante et est reliée à la crosse aortique par le ligament artériel."],
   },
   'ligament-arteriel': {
-    nom: 'Ligament artériel', latin: 'Ligamentum arteriosum', groupe: 'vaisseaux', couleur: '#e5d2a6',
+    nom: 'Ligament artériel', latin: 'Ligamentum arteriosum', groupe: 'vaisseaux', couleur: '#e8a846',
     resume: "Petit cordon fibreux entre l'artère pulmonaire gauche et la crosse aortique : c'est le vestige du canal artériel, un raccourci qui existait avant la naissance, quand les poumons ne servaient pas encore.",
     details: ["Le canal se ferme dans les premiers jours de vie. S'il reste ouvert (persistance du canal artériel), on peut le fermer par cathéter."],
   },
   'veine-cave-superieure': {
-    nom: 'Veine cave supérieure', latin: 'Vena cava superior', groupe: 'vaisseaux', couleur: '#43589f',
+    nom: 'Veine cave supérieure', latin: 'Vena cava superior', groupe: 'vaisseaux', couleur: '#3e519e',
     resume: "Grosse veine qui ramène dans l'oreillette droite le sang de la tête, du cou, des bras et du thorax.",
     details: ["Longue de 7 cm, sans valvule, elle s'abouche au toit de l'oreillette droite. Les sondes de stimulateur cardiaque (pacemaker) passent par elle."],
   },
   'veine-cave-inferieure': {
-    nom: 'Veine cave inférieure', latin: 'Vena cava inferior', groupe: 'vaisseaux', couleur: '#43589f',
+    nom: 'Veine cave inférieure', latin: 'Vena cava inferior', groupe: 'vaisseaux', couleur: '#3e519e',
     resume: "Grosse veine qui ramène dans l'oreillette droite le sang de tout le bas du corps : jambes, bassin, abdomen.",
     details: ["Elle traverse le diaphragme et s'abouche à la partie basse et postérieure de l'oreillette droite, après un court trajet dans le thorax."],
   },
@@ -228,7 +228,7 @@ export const STRUCTURES = {
     ],
   },
   'sinus-coronaire': {
-    nom: 'Sinus coronaire', latin: 'Sinus coronarius', groupe: 'coronaires', couleur: '#43589f',
+    nom: 'Sinus coronaire', latin: 'Sinus coronarius', groupe: 'coronaires', couleur: '#3e519e',
     resume: "Grosse veine de la face arrière du cœur qui collecte le sang veineux du muscle cardiaque et le déverse dans l'oreillette droite.",
     details: [
       "Long de 3 à 5 cm, dans le sillon atrio‑ventriculaire postérieur. Il reçoit la grande veine cardiaque (qui accompagne l'IVA puis la circonflexe), la veine cardiaque moyenne et la petite veine cardiaque.",
@@ -236,7 +236,7 @@ export const STRUCTURES = {
     ],
   },
   'sillons': {
-    nom: 'Sillons du cœur', latin: 'Sulcus coronarius, sulci interventriculares', groupe: 'coronaires', couleur: '#e5d2a6',
+    nom: 'Sillons du cœur', latin: 'Sulcus coronarius, sulci interventriculares', groupe: 'coronaires', couleur: '#e8a846',
     resume: "Rainures à la surface du cœur, comblées de graisse, où cheminent les artères et veines coronaires. Elles marquent la limite entre les cavités.",
     details: [
       "Le sillon coronaire (atrio‑ventriculaire) fait le tour du cœur entre oreillettes et ventricules.",
