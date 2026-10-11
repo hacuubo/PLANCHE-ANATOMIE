@@ -1,0 +1,32 @@
+// Service worker — mise en cache de l'enveloppe applicative et des modules three.js
+const VERSION = 'planche-coeur-v1';
+const THREE = 'https://cdn.jsdelivr.net/npm/three@0.169.0/';
+const SHELL = [
+  './', './index.html', './css/style.css', './js/app.js', './js/heart.js', './js/data.js',
+  './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
+  THREE + 'build/three.module.js',
+  THREE + 'examples/jsm/controls/OrbitControls.js',
+  THREE + 'examples/jsm/renderers/CSS2DRenderer.js',
+  THREE + 'examples/jsm/environments/RoomEnvironment.js',
+  THREE + 'examples/jsm/geometries/ParametricGeometry.js',
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  e.respondWith(
+    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+      if (res.ok && (req.url.startsWith(self.location.origin) || req.url.startsWith(THREE))) {
+        const copy = res.clone();
+        caches.open(VERSION).then((c) => c.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match('./index.html')))
+  );
+});

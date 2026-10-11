@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Planche d'anatomie — Le cœur</title>
+  <meta name="description" content="Planche d'anatomie interactive en 3D du cœur et de ses vaisseaux, pour expliquer aux patients.">
+  <meta name="theme-color" content="#f4efe6">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.3 3 4.5 6.6 4.5c2 0 3.4 1.1 4.4 2.5 1-1.4 2.4-2.5 4.4-2.5 3.6 0 5.7 3.8 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg>
+      <div>
+        <div class="title">Planche d'anatomie</div>
+        <div class="subtitle">Le cœur et ses vaisseaux</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="install" class="btn ghost hidden" type="button">Installer l'application</button>
+      <button id="panel-toggle" class="btn ghost only-mobile" type="button" aria-label="Afficher les explications">Explications</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section id="scene" class="scene" aria-label="Modèle 3D du cœur">
+      <div class="toolbar" role="toolbar" aria-label="Affichage">
+        <button class="tool" data-toggle="coupe" type="button" aria-pressed="false" title="Ouvrir le cœur pour voir les cavités">✂︎ Coupe</button>
+        <button class="tool" data-toggle="circulation" type="button" aria-pressed="false" title="Voir le trajet du sang">⟳ Circulation</button>
+        <button class="tool" data-toggle="etiquettes" type="button" aria-pressed="false" title="Afficher toutes les étiquettes numérotées">№ Étiquettes</button>
+        <button class="tool" data-toggle="coronaires" type="button" aria-pressed="true" title="Afficher ou masquer les artères coronaires">Coronaires</button>
+        <button class="tool" data-toggle="battement" type="button" aria-pressed="true" title="Animer le battement">♥ Battement</button>
+      </div>
+      <div id="cut-tools" class="cut-tools hidden">
+        <div class="seg">
+          <button data-cut="grand-axe" class="active" type="button">Grand axe</button>
+          <button data-cut="frontale" type="button">Frontale</button>
+          <button data-cut="horizontale" type="button">Horizontale</button>
+        </div>
+        <label>Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label>
+      </div>
+      <div class="legend">
+        <span><i style="background:#cf3b3b"></i>Sang riche en oxygène</span>
+        <span><i style="background:#4a62b8"></i>Sang pauvre en oxygène</span>
+        <span><i style="background:#e9cd86"></i>Graisse des sillons</span>
+      </div>
+      <div class="orient">Vue : <span id="orient-hint">le côté gauche du patient est à votre droite</span></div>
+    </section>
+
+    <aside id="panel" class="panel">
+      <button id="panel-handle" class="handle only-mobile" type="button" aria-label="Ouvrir ou fermer le panneau"><span></span></button>
+      <div class="panel-inner">
+        <div id="fiche" class="fiche"></div>
+        <h3 class="section-title">Points de vue</h3>
+        <div id="views" class="views"></div>
+        <h3 class="section-title">Structures</h3>
+        <div id="structures" class="structures"></div>
+        <p class="footnote">Modèle schématique à visée pédagogique, d'après les atlas d'anatomie de référence. Il ne remplace pas l'avis de votre médecin.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
