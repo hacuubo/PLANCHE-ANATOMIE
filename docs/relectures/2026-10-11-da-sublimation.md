@@ -41,7 +41,7 @@ Après : le lavis **fonce et sature** (mélange vers `c²/max(c)` à 45 %, comme
 **Texture aquarelle (`watercolorTexture`)** — avant : 256 px, 3 octaves (4, 9, 21), amplitude 0,93–1,00, une seule texture partagée sans réglage d'échelle.
 Après : 512 px, 5 octaves (3, 6, 13, 37, 83 : plages larges + nuages + grain de pigment), **contraste ré-étiré** (×2,6 autour du milieu) puis amplitude 0,82–1,03, anisotropie 4, **répétition par géométrie** (`repeat`) : masse 7 × 3, oreillettes 2 × 1, endocarde 2 × 2, graisse 1 × 3, piliers 1 × 2, capuchons de coupe 14 × 14. La fonction est exportée pour les capuchons dans `app.js`.
 
-**Dégradé peint par couleurs de sommets (`tintGradient`, nouveau)** — la masse ventriculaire reçoit un attribut `color` (aucun sommet déplacé) : base et face antérieure du VD claires (×1,06), charge vers l'apex (−0,16·t²) et la face postéro-gauche (−0,08), plus un bruit à 2 %. Le facteur agit davantage sur vert/bleu que sur rouge : la chair qui fonce rougit au lieu de grisonner. L'infundibulum, qui partage `myoMat`, reçoit une teinte constante de base (×1,04). `myoMat.vertexColors = true`.
+**Dégradé peint par couleurs de sommets (`tintGradient`, nouveau)** — la masse ventriculaire reçoit un attribut `color` (aucun sommet déplacé) : base et face antérieure du VD claires (×1,06), charge vers l'apex (−0,16·t²) et la face postéro-gauche (−0,08), plus un bruit à 2 %. Le facteur agit davantage sur vert/bleu que sur rouge : la chair qui fonce rougit au lieu de grisonner. `myoMat.vertexColors = true`. Note : pendant cette passe, une modification concurrente (hors périmètre DA) a fondu l'infundibulum dans la géométrie de la masse (`conusLift`) à la place du tube rapporté ; le cône artériel hérite donc automatiquement du dégradé et de la texture, et la « couture » visible sur les captures « avant » a disparu (vérifié sur les captures « après » finales).
 
 **Matériaux (`mkMat`)** :
 
@@ -128,19 +128,18 @@ Nouvelle icône « planche » : silhouette anatomique au trait d'encre `#2b2420`
   un `WebGLRenderTarget` avec stencil dans l'`EffectComposer`. À envisager dans une passe dédiée, bureau seulement.
 - **Hachures sur la tranche de coupe** : écartées (risque de moiré à l'échelle des capuchons et sur mobile) ;
   la texture aquarelle suffit à casser l'aplat.
-- **Jointure infundibulum / masse** : le cône artériel reste visible comme un bloc légèrement plus clair en vue de
-  face : c'est une limite de la géométrie (tube posé sur la masse), hors périmètre de cette passe.
+- **Liseré d'encre au bord des capuchons de coupe** : non fait (voir recommandations).
 
 ## 5. Recommandations pour la suite
 
 1. Mesurer les temps d'image sur le portable et la tablette cibles (`renderer.info`, rAF) ; si besoin, réduire la
    carte d'ombre à 1024² sous `(pointer: coarse)`.
-2. Fondre l'infundibulum dans la masse (profil de la `ParametricGeometry` prolongé vers la valve pulmonaire) lors
-   de la prochaine passe anatomique — cela supprimera la seule « couture » visible.
-3. Aligner `js/data.en.js` sur les six jetons de couleur.
-4. Étudier une AO en calques (bureau uniquement) une fois la coupe stabilisée.
-5. Pour la coupe, envisager un liseré d'encre au bord des capuchons (second plan stencil légèrement décalé, encre
+2. Aligner `js/data.en.js` sur les six jetons de couleur.
+3. Étudier une AO en calques (bureau uniquement) une fois la coupe stabilisée.
+4. Pour la coupe, envisager un liseré d'encre au bord des capuchons (second plan stencil légèrement décalé, encre
    à 40 %) : c'est le dernier détail qui sépare la tranche actuelle d'une planche imprimée.
+5. Les lobules de graisse restent des ellipsoïdes distincts ; une passe de modelage (fusion en coussinet continu le
+   long du sillon, hors tolérance ±20 % de cette passe) rapprocherait encore la graisse des planches.
 
 ## 6. Suite immédiate (après la passe DA)
 
