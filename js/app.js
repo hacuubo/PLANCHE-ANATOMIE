@@ -80,8 +80,9 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   });
   heart.materials.forEach((m) => { m.clipShadows = true; });
   toWrap.forEach((o) => {
-    const om = new THREE.MeshBasicMaterial({ color: 0x3a2b26, side: THREE.BackSide, transparent: true, opacity: 0.9 });
-    om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed += normal * 0.045;'); };
+    // contour doux, un peu plus fin : trait de plume sous un lavis plutôt que cerne de bande dessinée
+    const om = new THREE.MeshBasicMaterial({ color: 0x4a2a28, side: THREE.BackSide, transparent: true, opacity: 0.6 });
+    om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed += normal * 0.035;'); };
     const ol = new THREE.Mesh(o.geometry, om);
     ol.renderOrder = -1; ol.userData.outline = true;
     o.add(ol); outlineMats.push(om); outlines.push(ol);
@@ -120,20 +121,22 @@ function makeStencilMeshes(solid, order) {
   return g;
 }
 
-// Regroupement : masse ventriculaire + oreillettes + cavités (trous) → capuchon « myocarde sectionné » ;
-// chaque couleur de vaisseau → son propre capuchon (lumière pleine de sang).
+// Regroupement par clé de capuchon (s.cap) : chaque groupe a sa passe de stencil et son capuchon coloré.
+// 'fat' = enveloppe de graisse épicardique (masse − copie réduite), 'myo' = muscle (copie réduite − cavités),
+// 'atr' = oreillettes − leurs cavités, 'artere' / 'veine' = lumière des vaisseaux (sang), 'conduction'.
+const CAP_COLORS = { fat: COL.graisseCoupe, myo: COL.myocardeCoupe, atr: COL.oreilletteCoupe, artere: COL.lumenArtere, veine: COL.lumenVeine, conduction: COL.conduction };
 const orderByCap = new Map();
 let orderCursor = 100;
 heart.solids.forEach((s) => {
-  // la masse ventriculaire, les oreillettes et leurs cavités (trous) doivent partager la même passe de stencil
-  const capKey = s.hole ? 'myo' : (s.capColor === COL.myocardeCoupe ? 'myo' : String(s.capColor));
+  const capKey = String(s.cap ?? 'myo');
   if (!orderByCap.has(capKey)) { orderByCap.set(capKey, orderCursor); orderCursor += 3; }
   const order = orderByCap.get(capKey);
   s.stencil = makeStencilMeshes(s, order);
   s.stencil.visible = false;
   if (!capGroups.has(capKey)) {
-    const color = capKey === 'myo' ? COL.myocardeCoupe : s.capColor;
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp });
+    const color = CAP_COLORS[capKey] ?? parseInt(capKey, 10);
+    const rank = orderByCap.size; // les groupes suivants passent devant en cas de chevauchement (décalage de polygone)
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank });
     const cap = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat);
     cap.renderOrder = order + 1;
     cap.onAfterRender = (r) => r.clearStencil();

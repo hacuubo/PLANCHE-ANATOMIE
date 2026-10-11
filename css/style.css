@@ -127,21 +127,25 @@ button { font: inherit; color: inherit; }
 /* ── planche numérotée ── */
 .planche { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .leaders { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.leaders polyline.halo { fill: none; stroke: var(--paper); stroke-width: 3; opacity: .85; }
-.leaders polyline.line { fill: none; stroke: var(--ink); stroke-width: .8; opacity: .9; }
+.leaders polyline.halo { fill: none; stroke: var(--paper); stroke-width: 3; opacity: .8; }
+.leaders polyline.line { fill: none; stroke: var(--ink); stroke-width: .7; opacity: .9; }
 .leaders circle { fill: var(--ink); stroke: #fff; stroke-width: 1.2; }
+/* étiquettes de planche : serif d'atlas, sans cartouche, halo papier pour la lisibilité */
 .plabel {
   position: absolute; left: 16px; transform: translateY(-50%); pointer-events: auto; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
-  border: 1px solid transparent; background: var(--card); border-radius: 999px; padding: 3px 11px 3px 3px;
-  font-size: 14px; max-width: 260px; min-height: 30px;
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+  border: 1px solid transparent; background: transparent; border-radius: 999px; padding: 3px 8px 3px 2px;
+  font-family: var(--serif); font-size: 14.5px; letter-spacing: .1px; max-width: 270px; min-height: 30px;
+  text-shadow: 0 0 3px var(--paper), 0 0 6px var(--paper), 0 0 10px var(--paper);
 }
 .plabel::after { content: ""; position: absolute; inset: -7px; } /* zone tactile élargie */
 .plabel .txt { overflow: hidden; text-overflow: ellipsis; }
-.plabel.right { left: auto; right: 16px; flex-direction: row-reverse; padding: 3px 3px 3px 11px; }
-.plabel.numonly { padding: 0; background: transparent; }
+.plabel.right { left: auto; right: 16px; flex-direction: row-reverse; padding: 3px 2px 3px 8px; }
+.plabel.numonly { padding: 0; }
 .plabel.numonly .txt { display: none; }
-.plabel:hover, .plabel.hover { border-color: var(--ink); }
+.plabel:hover .txt, .plabel.hover .txt { text-decoration: underline; text-underline-offset: 3px; }
+/* pastilles de planche : encre sur papier (monochrome, comme un numéro d'atlas) */
+.plabel .num, .label .num { background: var(--card) !important; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-family: var(--sans); width: 20px; height: 20px; font-size: 11.5px; }
 
 /* ── panneau ── */
 .panel { background: var(--card); border-left: 1px solid var(--line); overflow: hidden; display: flex; flex-direction: column; }

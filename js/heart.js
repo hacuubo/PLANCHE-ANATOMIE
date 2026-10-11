@@ -7,24 +7,30 @@ import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.j
 
 // Six jetons sémantiques, identiques aux variables CSS (--sang-riche, --sang-pauvre, --muscle, --graisse, --valve, --conduction)
 // et aux couleurs de pastille de js/data.js.
+// Direction artistique « planche peinte » (atlas type Netter) : chair rose-rouge des ventricules, oreillettes mauves,
+// graisse épicardique orange, vaisseaux rouge profond / bleu marine, intérieur des cavités rose avec cordages nacrés.
 export const COL = {
-  myocarde: 0xb25048,
-  myocardeCoupe: 0xa3463f,
-  endocarde: 0x5e2222,
-  oreillette: 0xc98078,
-  artere: 0xc43a33,
-  arterePulm: 0x43589f,   // sang pauvre en oxygène
-  veine: 0x43589f,
-  veinePulm: 0xc43a33,    // sang riche en oxygène
-  graisse: 0xe5d2a6,
-  coronaire: 0xc43a33,
-  veineCard: 0x43589f,
-  valve: 0xefe3d3,
+  myocarde: 0xc2605a,
+  myocardeCoupe: 0xd98f88,   // tranche de muscle, rosée
+  endocarde: 0xb86864,       // paroi interne des cavités (trabéculée)
+  papillaire: 0xb0524f,
+  oreillette: 0xa98bb8,      // mauve
+  oreilletteCoupe: 0xc4a8cc,
+  artere: 0xb52a2e,
+  arterePulm: 0x2f4290,      // sang pauvre en oxygène
+  veine: 0x2f4290,
+  veinePulm: 0xb52a2e,       // sang riche en oxygène
+  graisse: 0xe9a53f,         // graisse épicardique
+  graisseCoupe: 0xf0b650,
+  coronaire: 0xb8302f,
+  veineCard: 0x2f4290,
+  valve: 0xdde6ea,           // feuillets nacrés
+  cordage: 0xf1f4f5,
   conduction: 0xf3c23b,
   ligament: 0xcbb79a,
-  // lumière des vaisseaux sectionnés (teinte de la paroi, assombrie) et anneau de paroi
-  lumenArtere: 0x7a2522, lumenVeine: 0x2a3870,
-  paroiArtere: 0xa9312b, paroiVeine: 0x384a86,
+  // lumière des vaisseaux sectionnés (sang) et anneau de paroi
+  lumenArtere: 0x6e1a1c, lumenVeine: 0x1f2b60,
+  paroiArtere: 0x9a2326, paroiVeine: 0x283877,
 };
 
 /* ─────────── repère local du cœur ─────────── */
@@ -131,6 +137,19 @@ export function tubeGeometry(points, radiusFn, segs = 64, radial = 20) {
       idx.push(a, b, d, b, c, d);
     }
   }
+  // Disques terminaux : la surface est fermée (indispensable au comptage stencil des coupes ; un tube ouvert
+  // produit de faux capuchons partout où le rayon de vue traverse son extrémité).
+  const T0 = curve.getTangentAt(0), T1 = curve.getTangentAt(1);
+  const P0 = curve.getPointAt(0), P1 = curve.getPointAt(1);
+  const c0 = pos.length / 3;
+  pos.push(P0.x, P0.y, P0.z); nor.push(-T0.x, -T0.y, -T0.z); uv.push(0.5, 0);
+  const c1 = pos.length / 3;
+  pos.push(P1.x, P1.y, P1.z); nor.push(T1.x, T1.y, T1.z); uv.push(0.5, 1);
+  for (let j = 0; j < radial; j++) {
+    idx.push(c0, j, j + 1);
+    const e = segs * (radial + 1) + j;
+    idx.push(c1, e + 1, e);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
@@ -147,15 +166,81 @@ function lumenCap(curve, atEnd, r, lumMat, wallMat, wallFrac) {
   const tan = curve.getTangentAt(t);
   const group = new THREE.Group();
   const lum = new THREE.Mesh(new THREE.CircleGeometry(r * 0.98, 32), lumMat);
-  lum.position.set(0, 0, -0.03); // local +z = vers l'extérieur après lookAt
+  lum.position.set(0, 0, 0.015); // local +z = vers l'extérieur après lookAt ; légèrement devant le disque terminal du tube
   const wall = new THREE.Mesh(new THREE.RingGeometry(r * (1 - wallFrac), r * 0.99, 32), wallMat);
-  wall.position.set(0, 0, -0.01);
+  wall.position.set(0, 0, 0.03);
   group.add(lum, wall);
   group.position.copy(p);
   group.lookAt(p.clone().add(tan.clone().multiplyScalar(atEnd ? 1 : -1)));
   [lum, wall].forEach((m) => { m.userData.cap = true; });
   group.userData.cap = true;
   return group;
+}
+
+// Texture « aquarelle » : bruit de valeur doux, multiplié à la couleur (±7 %) pour casser l'aplat.
+let noiseTex = null;
+function watercolorTexture() {
+  if (noiseTex) return noiseTex;
+  const S = 256, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(S, S);
+  const rnd = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const smooth = (x, y, f) => {
+    const gx = (x / S) * f, gy = (y / S) * f;
+    const i = Math.floor(gx), j = Math.floor(gy), fx = gx - i, fy = gy - j;
+    const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const a = rnd(i % f, j % f), b = rnd((i + 1) % f, j % f), cc = rnd(i % f, (j + 1) % f), d = rnd((i + 1) % f, (j + 1) % f);
+    return (a * (1 - u) + b * u) * (1 - v) + (cc * (1 - u) + d * u) * v;
+  };
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const n = 0.55 * smooth(x, y, 4) + 0.3 * smooth(x, y, 9) + 0.15 * smooth(x, y, 21);
+    const val = Math.round(255 * (0.93 + 0.07 * n));
+    const o = (y * S + x) * 4;
+    img.data[o] = img.data[o + 1] = img.data[o + 2] = val; img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  noiseTex = new THREE.CanvasTexture(c);
+  noiseTex.wrapS = noiseTex.wrapT = THREE.RepeatWrapping;
+  noiseTex.colorSpace = THREE.NoColorSpace;
+  return noiseTex;
+}
+
+// Rendu « peint » : assombrissement des bords (fresnel) comme un lavis, léger éclaircissement des faces tournées vers l'œil.
+function painterly(mat, edge = 0.72) {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      { float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
+        float fres = pow(1.0 - ndv, 2.2);
+        diffuseColor.rgb *= mix(1.0, ${edge.toFixed(3)}, fres);
+        diffuseColor.rgb *= 1.0 + 0.05 * ndv; }`);
+  };
+  mat.customProgramCacheKey = () => 'painterly' + edge;
+  return mat;
+}
+
+// Cône d'axe base → pointe (muscles papillaires, lobules).
+function coneBetween(base, tip, rBase, mat, rTip = 0.06) {
+  const dir = tip.clone().sub(base), h = dir.length();
+  const g = new THREE.CylinderGeometry(rTip, rBase, h, 14, 1, false);
+  g.translate(0, h / 2, 0);
+  const m = new THREE.Mesh(g, mat);
+  m.position.copy(base);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  return m;
+}
+
+// Trabécules charnues : relief irrégulier de la paroi interne (déplacement le long des normales, surface restant fermée).
+function trabeculate(geo, amp = 0.1, freq = 2.2) {
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const d = amp * (0.6 * Math.sin(freq * 2.3 * x + 1.7 * y) * Math.cos(freq * 1.9 * z - 0.8 * y) + 0.4 * Math.sin(freq * 3.1 * y + 2.2 * z) * Math.cos(freq * 2.6 * x));
+    p.setXYZ(i, x + n.getX(i) * d, y + n.getY(i) * d, z + n.getZ(i) * d);
+  }
+  p.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
 }
 
 /* ─────────── construction ─────────── */
@@ -173,8 +258,15 @@ export function buildHeart() {
   const cutOnly = [];         // objets visibles seulement en coupe
   const flowPaths = [];       // { points:[Vector3], color, speed }
 
+  const aquarelle = watercolorTexture();
+  // organic : texture aquarelle + lavis de bord prononcé (muscle, graisse, oreillettes) ; physical : vernis (vaisseaux, reflet peint)
   const mkMat = (color, opts = {}) => {
-    const m = new THREE.MeshStandardMaterial({ color, roughness: 0.62, metalness: 0.0, side: THREE.DoubleSide, ...opts });
+    const { organic = false, physical = false, ...rest } = opts;
+    const Cls = physical ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
+    const m = new Cls({ color, roughness: 0.62, metalness: 0.0, side: THREE.DoubleSide, ...rest });
+    if (physical) { m.clearcoat = 0.3; m.clearcoatRoughness = 0.4; }
+    if (organic) m.map = aquarelle;
+    painterly(m, organic ? 0.68 : 0.78);
     m.userData.baseColor = new THREE.Color(color);
     m.userData.baseOpacity = 1;
     materials.push(m);
@@ -191,9 +283,9 @@ export function buildHeart() {
     if (anchorWorld && !registry[id].anchor) registry[id].anchor = anchorWorld.clone();
     return mesh;
   };
-  const vessel = (id, points, radius, color, { caps = [false, false], seg = 64, group = root, anchorT = 0.5, capColor, type = 'artere', roughness = 0.55 } = {}) => {
+  const vessel = (id, points, radius, color, { caps = [false, false], seg = 64, group = root, anchorT = 0.5, cap, type = 'artere', roughness = 0.45, physical = true } = {}) => {
     const g = tubeGeometry(points, radius, seg, 22);
-    const mat = mkMat(color, { roughness });
+    const mat = mkMat(color, { roughness, physical });
     const mesh = new THREE.Mesh(g, mat);
     const curve = g.userData.curve;
     const anchor = curve.getPointAt(anchorT);
@@ -205,16 +297,28 @@ export function buildHeart() {
       const cap = lumenCap(curve, i === 1, r, lumMats[type], wallMats[type], type === 'artere' ? 0.2 : 0.12);
       register(id, cap, null, group);
     });
-    solids.push({ mesh, hole: false, capColor: capColor ?? color, open: true });
+    solids.push({ mesh, hole: false, cap: cap ?? type, open: true });
     return mesh;
   };
 
   /* ── Masse ventriculaire ── */
-  const myoMat = mkMat(COL.myocarde, { roughness: 0.74 });
-  const mass = new THREE.Mesh(ventricularMassGeometry(), myoMat);
+  const myoMat = mkMat(COL.myocarde, { roughness: 0.74, organic: true });
+  const massGeo = ventricularMassGeometry();
+  const mass = new THREE.Mesh(massGeo, myoMat);
   mass.userData.id = 'ventricule-droit'; // par défaut, résolu finement au clic (voir pickId)
   local.add(mass);
-  solids.push({ mesh: mass, hole: false, capColor: COL.myocardeCoupe });
+  // Coupe en deux couches : enveloppe de graisse épicardique (≈ 0,25 cm, capuchon orange) puis muscle (capuchon rosé).
+  // La surface interne de la graisse est une copie réduite de la masse ; elle sert de « trou » au groupe graisse et de
+  // « plein » au groupe muscle (maillages invisibles, utilisés seulement par le stencil).
+  solids.push({ mesh: mass, hole: false, cap: 'fat' });
+  const innerGeo = massGeo.clone();
+  innerGeo.scale(0.94, 0.97, 0.94);
+  const hiddenMat = new THREE.MeshBasicMaterial({ visible: false });
+  const innerHole = new THREE.Mesh(innerGeo, hiddenMat);
+  const innerSolid = new THREE.Mesh(innerGeo, hiddenMat);
+  local.add(innerHole, innerSolid);
+  solids.push({ mesh: innerHole, hole: true, cap: 'fat' });
+  solids.push({ mesh: innerSolid, hole: false, cap: 'myo' });
   registry['ventricule-droit'] = { meshes: [mass], anchor: L2W(surf(0.42, -45, 0)) };
   registry['ventricule-gauche'] = { meshes: [mass], anchor: L2W(surf(0.5, 75, 0)) };
   registry['apex'] = { meshes: [mass], anchor: L2W(surf(0.985, 20, 0)) };
@@ -223,82 +327,102 @@ export function buildHeart() {
   // Infundibulum (cône artériel du VD) montant vers la valve pulmonaire
   const PT_ROOT_L = new THREE.Vector3(1.45, 1.9, 2.15); // en avant et à gauche de la racine aortique (axes distants ≥ 3 cm)
   const infund = vessel('ventricule-droit', [new THREE.Vector3(0.2, -1.6, 2.4), new THREE.Vector3(0.7, -0.2, 2.5), PT_ROOT_L.clone().add(new THREE.Vector3(0, 0.1, 0))],
-    (t) => 1.75 - 0.3 * t, COL.myocarde, { group: local, seg: 24 });
+    (t) => 1.75 - 0.3 * t, COL.myocarde, { group: local, seg: 24, cap: 'myo', physical: false });
   infund.material = myoMat;
 
   /* ── Cavités ventriculaires (trous pour la coupe) ── */
-  const endoMat = mkMat(COL.endocarde, { side: THREE.BackSide, roughness: 0.8 });
-  // VG : cavité conique à paroi épaisse (≈ 1 cm), dans la moitié postéro-gauche de la masse.
+  const endoMat = mkMat(COL.endocarde, { side: THREE.BackSide, roughness: 0.8, organic: true });
+  // VG : cavité conique à paroi épaisse (≈ 1 cm), dans la moitié postéro-gauche de la masse ; paroi légèrement trabéculée.
   const LV_C = new THREE.Vector3(1.0, -3.0, -0.6);
-  const lvCav = new THREE.Mesh(ellipsoid(2.0, 2.9, 1.9), endoMat); // paroi VG ≈ 1,0–1,2 cm
+  const lvCav = new THREE.Mesh(trabeculate(ellipsoid(2.0, 2.9, 1.9, 64), 0.07, 2.0), endoMat); // paroi VG ≈ 1,0–1,2 cm
   lvCav.position.copy(LV_C);
   lvCav.userData.id = 'ventricule-gauche';
   local.add(lvCav);
-  solids.push({ mesh: lvCav, hole: true });
+  solids.push({ mesh: lvCav, hole: true, cap: 'myo' });
   cutOnly.push(lvCav);
 
   // VD : cavité en croissant qui s'enroule en avant et à droite du VG (ellipsoïde « plié » autour de l'axe du VG),
-  // paroi libre mince (≈ 0,4 cm), septum ≈ 0,7 cm. Surface fermée sans auto-intersection (requis par le stencil).
-  // croissant large (≈ 1,6 cm d'épaisseur), paroi libre 0,4–0,8 cm, septum 0,6–1,0 cm
-  const rvCav = new THREE.Mesh(bentEllipsoid(3.2, 2.6, 0.8, 2.85, THREE.MathUtils.degToRad(-45)), endoMat);
-  rvCav.position.set(LV_C.x - 0.75, -2.3, LV_C.z + 0.3);
+  // croissant large (≈ 1,5 cm d'épaisseur), paroi libre 0,4–0,8 cm, septum 0,6–1,0 cm ; paroi très trabéculée.
+  const RV_P = new THREE.Vector3(LV_C.x - 0.75, -2.3, LV_C.z + 0.3);
+  const rvCav = new THREE.Mesh(trabeculate(bentEllipsoid(3.2, 2.6, 0.75, 2.85, THREE.MathUtils.degToRad(-45), 64), 0.09, 2.4), endoMat);
+  rvCav.position.copy(RV_P);
   rvCav.userData.id = 'ventricule-droit';
   local.add(rvCav);
-  solids.push({ mesh: rvCav, hole: true });
+  solids.push({ mesh: rvCav, hole: true, cap: 'myo' });
   cutOnly.push(rvCav);
 
-  /* ── Oreillettes ── */
-  const atrMat = mkMat(COL.oreillette, { roughness: 0.7 });
+  /* ── Oreillettes (mauves, parois minces) ── */
+  const atrMat = mkMat(COL.oreillette, { roughness: 0.72, organic: true });
+  const atrEndoMat = mkMat(0xb597c0, { side: THREE.BackSide, roughness: 0.8, organic: true });
   const ra = new THREE.Mesh(ellipsoid(2.2, 2.45, 2.1), atrMat);
   ra.position.set(-2.5, 1.95, -0.4);
   register('oreillette-droite', ra, L2W(new THREE.Vector3(-4.6, 2.8, 0.4)), local);
-  solids.push({ mesh: ra, hole: false, capColor: COL.myocardeCoupe });
-  const raCav = new THREE.Mesh(ellipsoid(1.9, 2.1, 1.8), endoMat);
+  solids.push({ mesh: ra, hole: false, cap: 'atr' });
+  const raCav = new THREE.Mesh(ellipsoid(1.95, 2.2, 1.85), atrEndoMat);
   raCav.position.copy(ra.position);
   raCav.userData.id = 'oreillette-droite';
   local.add(raCav);
-  solids.push({ mesh: raCav, hole: true });
+  solids.push({ mesh: raCav, hole: true, cap: 'atr' });
   cutOnly.push(raCav);
 
   const raAur = new THREE.Mesh(ellipsoid(1.35, 0.95, 1.25), atrMat);
   raAur.position.set(-1.55, 1.9, 1.55);
   raAur.rotation.y = -0.4;
   register('auricule-droite', raAur, L2W(new THREE.Vector3(-1.9, 2.4, 3.0)), local);
-  solids.push({ mesh: raAur, hole: false, capColor: COL.myocardeCoupe });
+  solids.push({ mesh: raAur, hole: false, cap: 'atr' });
 
   const la = new THREE.Mesh(ellipsoid(2.7, 2.1, 1.9), atrMat);
   la.position.set(0.55, 2.05, -2.7);
   register('oreillette-gauche', la, L2W(new THREE.Vector3(1.2, 3.2, -4.7)), local);
-  solids.push({ mesh: la, hole: false, capColor: COL.myocardeCoupe });
-  const laCav = new THREE.Mesh(ellipsoid(2.35, 1.75, 1.55), endoMat);
+  solids.push({ mesh: la, hole: false, cap: 'atr' });
+  const laCav = new THREE.Mesh(ellipsoid(2.42, 1.82, 1.62), atrEndoMat);
   laCav.position.copy(la.position);
   laCav.userData.id = 'oreillette-gauche';
   local.add(laCav);
-  solids.push({ mesh: laCav, hole: true });
+  solids.push({ mesh: laCav, hole: true, cap: 'atr' });
   cutOnly.push(laCav);
 
   const laAur = vessel('auricule-gauche', [new THREE.Vector3(2.6, 2.0, -1.2), new THREE.Vector3(3.2, 1.7, 0.2), new THREE.Vector3(3.1, 1.35, 1.6), new THREE.Vector3(2.5, 1.1, 2.5)],
-    (t) => 0.75 - 0.35 * t, COL.oreillette, { group: local, seg: 24, anchorT: 0.8 });
+    (t) => 0.75 - 0.35 * t, COL.oreillette, { group: local, seg: 24, anchorT: 0.8, cap: 'atr', physical: false });
   laAur.material = atrMat;
 
   /* ── Sillons (graisse épicardique) ── */
-  const fatMat = mkMat(COL.graisse, { roughness: 0.88 });
+  const fatMat = mkMat(COL.graisse, { roughness: 0.9, organic: true });
   // la graisse est enfoncée dans la surface (-0.08) : coussinet qui comble le sillon plutôt que tube posé dessus
   const sulcusPts = (list) => list.map(([t, th]) => surf(t, th, -0.08));
+  const fatOpts = { group: local, cap: 'fat', physical: false, roughness: 0.9 };
   // sillon coronaire : interrompu en avant par l'infundibulum et le tronc pulmonaire (de -20° à +35°)
   const coroD = [], coroG = [];
   for (let th = -20; th >= -180; th -= 12) coroD.push(surf(0.01, th, 0.0));
   for (let th = 35; th <= 180; th += 12) coroG.push(surf(0.01, th, 0.0));
-  const sCoroD = vessel('sillons', coroD, 0.45, COL.graisse, { group: local, seg: 48, anchorT: 0.3 });
+  const sCoroD = vessel('sillons', coroD, 0.5, COL.graisse, { ...fatOpts, seg: 48, anchorT: 0.3 });
   sCoroD.material = fatMat;
-  const sCoroG = vessel('sillons', coroG, 0.45, COL.graisse, { group: local, seg: 48, anchorT: 0.3 });
+  const sCoroG = vessel('sillons', coroG, 0.5, COL.graisse, { ...fatOpts, seg: 48, anchorT: 0.3 });
   sCoroG.material = fatMat;
   // sillon interventriculaire antérieur
-  const sIVA = vessel('sillons', sulcusPts([[0.0, 24], [0.2, 22], [0.4, 20], [0.6, 18], [0.8, 15], [0.95, 12]]), 0.36, COL.graisse, { group: local, seg: 32 });
+  const ivaPts = [[0.0, 24], [0.2, 22], [0.4, 20], [0.6, 18], [0.8, 15], [0.95, 12]];
+  const sIVA = vessel('sillons', sulcusPts(ivaPts), 0.4, COL.graisse, { ...fatOpts, seg: 32 });
   sIVA.material = fatMat;
   // sillon interventriculaire postérieur
-  const sIVP = vessel('sillons', sulcusPts([[0.0, -168], [0.2, -166], [0.4, -164], [0.6, -162], [0.8, -160], [0.93, -158]]), 0.36, COL.graisse, { group: local, seg: 32 });
+  const ivpPts = [[0.0, -168], [0.2, -166], [0.4, -164], [0.6, -162], [0.8, -160], [0.93, -158]];
+  const sIVP = vessel('sillons', sulcusPts(ivpPts), 0.4, COL.graisse, { ...fatOpts, seg: 32 });
   sIVP.material = fatMat;
+  // Lobules de graisse : amas irréguliers le long des sillons (aspect bosselé des planches)
+  let lobK = 0;
+  const lobule = (pL, s = 1) => {
+    const m = new THREE.Mesh(ellipsoid(0.46 * s, 0.26 * s, 0.36 * s, 18), fatMat);
+    m.position.copy(pL);
+    m.rotation.set(lobK * 1.7, lobK * 2.3, lobK * 0.9);
+    lobK++;
+    m.userData.id = 'sillons';
+    local.add(m);
+    registry['sillons'].meshes.push(m);
+    solids.push({ mesh: m, hole: false, cap: 'fat' });
+  };
+  for (let th = -30; th >= -175; th -= 22) lobule(surf(0.03 + 0.02 * Math.sin(th), th, 0.1), 1 + 0.25 * Math.cos(th * 3));
+  for (let th = 45; th <= 175; th += 22) lobule(surf(0.03 + 0.02 * Math.cos(th), th, 0.1), 1 + 0.25 * Math.sin(th * 3));
+  [[0.08, 27], [0.3, 24], [0.55, 20], [0.78, 16]].forEach(([t, th]) => lobule(surf(t, th + 1.5, 0.02), 0.8));
+  [[0.1, -170], [0.33, -166], [0.58, -162], [0.8, -159]].forEach(([t, th]) => lobule(surf(t, th - 1.5, 0.02), 0.8));
 
   /* ── Grands vaisseaux (repère monde) ── */
   const AO_ROOT = l(-0.25, 1.75, 0.55);
@@ -380,38 +504,77 @@ export function buildHeart() {
   // Branche du nœud sinusal (depuis la CD, vers la jonction VCS/OD)
   cor('coronaire-droite', [surf(0.0, -45, 0.3), new THREE.Vector3(-2.5, 2.2, 1.9), new THREE.Vector3(-2.9, 3.9, 0.6)], 0.09, { seg: 12 });
 
-  /* ── Valves (anneaux, visibles en coupe) ── */
-  const valveMat = mkMat(COL.valve, { roughness: 0.6 });
-  const commMat = mkMat(0x8a6e5a, { roughness: 0.7 });
-  // Anneau fin + disque plat (feuillets fermés) + lignes de commissure (3 feuillets, 2 pour la mitrale)
-  const ring = (id, pos, r, rot, nLeaf) => {
+  /* ── Valves et appareil sous-valvulaire (visibles en coupe) ── */
+  const valveMat = mkMat(COL.valve, { roughness: 0.42, transparent: true, opacity: 0.94 });
+  const cordMat = mkMat(COL.cordage, { roughness: 0.55 });
+  cordMat.userData.noTranslucent = true;
+  const papMat = mkMat(COL.papillaire, { roughness: 0.78, organic: true });
+  // Rattache un groupe « intérieur » à une structure (sélectionnable, visible seulement en coupe, sans contour ni ombre portée)
+  const addCut = (obj, id, leaf = true) => {
+    obj.traverse((o) => { if (o.isMesh) { o.userData.id = id; if (leaf) o.userData.leaf = true; } });
+    local.add(obj);
+    cutOnly.push(obj);
+    if (!registry[id]) registry[id] = { meshes: [], anchor: null };
+    obj.traverse((o) => { if (o.isMesh) registry[id].meshes.push(o); });
+    return obj;
+  };
+  // Valve atrio-ventriculaire : anneau fibreux + feuillets en entonnoir pendant dans le ventricule
+  const avValve = (id, c, r, depth) => {
     const grp = new THREE.Group();
-    grp.position.copy(pos);
-    grp.rotation.set(rot[0], rot[1], rot[2]);
-    const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.08, 10, 48), valveMat);
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(r * 0.96, 48), valveMat);
-    disc.userData.leaf = true;
-    grp.add(m, disc);
-    for (let k = 0; k < nLeaf; k++) {
-      const a = (k / nLeaf) * Math.PI * 2 + (nLeaf === 2 ? Math.PI / 2 : 0);
-      const seg = new THREE.Mesh(new THREE.BoxGeometry(r * 0.9, 0.05, 0.05), commMat);
-      seg.position.set(Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45, 0.03);
-      seg.rotation.z = a;
-      seg.userData.leaf = true;
-      grp.add(seg);
-    }
-    grp.traverse((o) => { if (o.isMesh) { o.userData.id = id; } });
-    register(id, m, L2W(pos), local);
-    local.add(grp);
-    grp.children.forEach((c) => { if (c !== m) registry[id].meshes.push(c); });
-    grp.remove(m); grp.add(m); // m reste enfant du groupe (register l'avait rattaché à local)
-    cutOnly.push(grp);
+    grp.position.copy(c);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.09, 10, 48), valveMat);
+    ring.rotation.x = Math.PI / 2;
+    const leaf = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r * 0.5, depth, 40, 1, true), valveMat);
+    leaf.position.y = -depth / 2;
+    grp.add(ring, leaf);
+    addCut(grp, id);
+    registry[id].anchor = L2W(c);
     return grp;
   };
-  ring('valve-tricuspide', new THREE.Vector3(-2.0, 0.25, 0.95), 1.65, [Math.PI / 2, 0, 0], 3);
-  ring('valve-mitrale', new THREE.Vector3(1.05, 0.25, -1.05), 1.4, [Math.PI / 2, 0, 0.1], 2);
-  ring('valve-aortique', new THREE.Vector3(-0.25, 1.1, 0.55), 1.05, [Math.PI / 2 + 0.3, 0, 0], 3);
-  ring('valve-pulmonaire', new THREE.Vector3(1.45, 1.5, 2.15), 1.05, [Math.PI / 2 + 0.6, 0.2, 0], 3);
+  // Valve semi-lunaire : anneau + trois cuspides en poches (coupoles ouvertes vers l'artère)
+  const slValve = (id, c, r, rot) => {
+    const grp = new THREE.Group();
+    grp.position.copy(c);
+    grp.rotation.set(rot[0], rot[1], rot[2]);
+    grp.add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.09, 10, 48), valveMat));
+    for (let k = 0; k < 3; k++) {
+      const g = new THREE.SphereGeometry(r * 0.92, 20, 10, (k / 3) * Math.PI * 2, (Math.PI * 2) / 3, Math.PI / 2, Math.PI / 2);
+      g.rotateX(-Math.PI / 2); // ouverture des poches vers l'aval (artère)
+      grp.add(new THREE.Mesh(g, valveMat));
+    }
+    addCut(grp, id);
+    registry[id].anchor = L2W(c);
+    return grp;
+  };
+  // Cordages tendineux : éventail de fils nacrés entre la pointe d'un pilier et le bord libre des feuillets
+  const chordae = (id, tip, c, rEdge, yEdge, baseAngle, n = 5) => {
+    const grp = new THREE.Group();
+    for (let k = 0; k < n; k++) {
+      const a = baseAngle + ((k / (n - 1)) - 0.5) * 1.3;
+      const target = new THREE.Vector3(c.x + rEdge * Math.sin(a), yEdge, c.z + rEdge * Math.cos(a));
+      grp.add(new THREE.Mesh(tubeGeometry([tip, target], 0.028, 4, 6), cordMat));
+    }
+    addCut(grp, id);
+  };
+  const ML = new THREE.Vector3(1.05, 0.25, -1.05), TL = new THREE.Vector3(-2.0, 0.25, 0.95);
+  avValve('valve-tricuspide', TL, 1.65, 1.1);
+  avValve('valve-mitrale', ML, 1.4, 1.2);
+  slValve('valve-aortique', new THREE.Vector3(-0.25, 1.1, 0.55), 1.05, [Math.PI / 2 + 0.3, 0, 0]);
+  slValve('valve-pulmonaire', new THREE.Vector3(1.45, 1.5, 2.15), 1.05, [Math.PI / 2 + 0.6, 0.2, 0]);
+  // Muscles papillaires du VG (antéro-latéral, postéro-médial) et leurs cordages vers la mitrale
+  const papLV = [
+    { base: new THREE.Vector3(2.56, -3.9, 0.43), tip: new THREE.Vector3(1.5, -1.3, -0.7), ang: 0.9 },
+    { base: new THREE.Vector3(0.83, -3.9, -2.4), tip: new THREE.Vector3(0.7, -1.3, -1.3), ang: 3.3 },
+  ];
+  papLV.forEach((p) => { addCut(coneBetween(p.base, p.tip, 0.42, papMat), 'ventricule-gauche', false); chordae('valve-mitrale', p.tip, ML, 0.7, -0.95, p.ang); });
+  // Muscles papillaires du VD (antérieur, postérieur, septal), bande modératrice, cordages vers la tricuspide
+  const papRV = [
+    { base: new THREE.Vector3(-1.47, -3.4, 2.69), tip: new THREE.Vector3(-1.7, -1.2, 1.45), ang: 0.6, r: 0.36 },
+    { base: new THREE.Vector3(-3.2, -3.2, -0.3), tip: new THREE.Vector3(-2.6, -1.2, 0.75), ang: -1.9, r: 0.34 },
+    { base: new THREE.Vector3(-1.44, -2.6, 1.11), tip: new THREE.Vector3(-1.8, -1.1, 0.95), ang: 2.6, r: 0.22 },
+  ];
+  papRV.forEach((p) => { addCut(coneBetween(p.base, p.tip, p.r, papMat), 'ventricule-droit', false); chordae('valve-tricuspide', p.tip, TL, 0.8, -0.85, p.ang, 4); });
+  addCut(new THREE.Mesh(tubeGeometry([new THREE.Vector3(-1.1, -3.3, 1.0), new THREE.Vector3(-1.3, -3.5, 1.9), papRV[0].base], 0.17, 8, 10), papMat), 'ventricule-droit', false);
 
   /* ── Système de conduction (visible en coupe) ── */
   const condMat = mkMat(COL.conduction, { emissive: 0xffb300, emissiveIntensity: 0.45, roughness: 0.4 });
@@ -424,14 +587,14 @@ export function buildHeart() {
   };
   node('noeud-sinusal', new THREE.Vector3(-2.7, 3.75, 0.5), 0.5);
   node('noeud-av', new THREE.Vector3(-0.9, 0.45, -0.25), 0.4);
-  const his = vessel('faisceau-his', [new THREE.Vector3(-0.9, 0.45, -0.25), new THREE.Vector3(-0.5, -0.3, 0.3), new THREE.Vector3(-0.35, -1.6, 0.55), new THREE.Vector3(-0.1, -3.2, 0.9), new THREE.Vector3(0.6, -5.0, 1.4)], (t) => 0.14 - 0.04 * t, COL.conduction, { group: local, seg: 24, anchorT: 0.4 });
+  const his = vessel('faisceau-his', [new THREE.Vector3(-0.9, 0.45, -0.25), new THREE.Vector3(-0.5, -0.3, 0.3), new THREE.Vector3(-0.35, -1.6, 0.55), new THREE.Vector3(-0.1, -3.2, 0.9), new THREE.Vector3(0.6, -5.0, 1.4)], (t) => 0.14 - 0.04 * t, COL.conduction, { group: local, seg: 24, anchorT: 0.4, cap: 'conduction', physical: false });
   his.material = condMat;
   cutOnly.push(his);
   // Branche gauche : en nappe sous l'endocarde de la face septale du VG (elle ne traverse pas la cavité)
-  const hisG = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.4), new THREE.Vector3(-0.25, -2.6, 0.6), new THREE.Vector3(-0.12, -4.3, 0.5), new THREE.Vector3(0.4, -5.5, 0.1)], 0.09, COL.conduction, { group: local, seg: 16 });
+  const hisG = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.4), new THREE.Vector3(-0.25, -2.6, 0.6), new THREE.Vector3(-0.12, -4.3, 0.5), new THREE.Vector3(0.4, -5.5, 0.1)], 0.09, COL.conduction, { group: local, seg: 16, cap: 'conduction', physical: false });
   hisG.material = condMat;
   cutOnly.push(hisG);
-  const hisD = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.7), new THREE.Vector3(-1.0, -2.6, 1.4), new THREE.Vector3(-1.6, -3.8, 1.9)], 0.09, COL.conduction, { group: local, seg: 16 });
+  const hisD = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.7), new THREE.Vector3(-1.0, -2.6, 1.4), new THREE.Vector3(-1.6, -3.8, 1.9)], 0.09, COL.conduction, { group: local, seg: 16, cap: 'conduction', physical: false });
   hisD.material = condMat;
   cutOnly.push(hisD);
 
