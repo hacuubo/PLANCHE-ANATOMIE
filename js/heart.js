@@ -5,22 +5,26 @@
 import * as THREE from 'three';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
 
+// Six jetons sémantiques, identiques aux variables CSS (--sang-riche, --sang-pauvre, --muscle, --graisse, --valve, --conduction)
+// et aux couleurs de pastille de js/data.js.
 export const COL = {
-  myocarde: 0xb95a52,
-  myocardeCoupe: 0x9c3f3a,
-  endocarde: 0x6b2626,
-  oreillette: 0xc46e66,
-  artere: 0xcf3b3b,
-  arterePulm: 0x4f66c0,
-  veine: 0x4a62b8,
-  veinePulm: 0xd04a4a,
-  graisse: 0xe9cd86,
-  coronaire: 0xd33a3a,
-  veineCard: 0x4a5fb0,
-  valve: 0xf0e2d2,
-  conduction: 0xffd54a,
-  ligament: 0xb9a08a,
-  lumen: 0x3a1414,
+  myocarde: 0xb25048,
+  myocardeCoupe: 0xa3463f,
+  endocarde: 0x5e2222,
+  oreillette: 0xc98078,
+  artere: 0xc43a33,
+  arterePulm: 0x43589f,   // sang pauvre en oxygène
+  veine: 0x43589f,
+  veinePulm: 0xc43a33,    // sang riche en oxygène
+  graisse: 0xe5d2a6,
+  coronaire: 0xc43a33,
+  veineCard: 0x43589f,
+  valve: 0xefe3d3,
+  conduction: 0xf3c23b,
+  ligament: 0xcbb79a,
+  // lumière des vaisseaux sectionnés (teinte de la paroi, assombrie) et anneau de paroi
+  lumenArtere: 0x7a2522, lumenVeine: 0x2a3870,
+  paroiArtere: 0xa9312b, paroiVeine: 0x384a86,
 };
 
 /* ─────────── repère local du cœur ─────────── */
@@ -136,17 +140,22 @@ export function tubeGeometry(points, radiusFn, segs = 64, radial = 20) {
   return g;
 }
 
-// Disque de lumière sombre pour fermer l'extrémité « sectionnée » d'un vaisseau.
-function lumenCap(curve, atEnd, r, mat) {
+// Extrémité « sectionnée » d'un vaisseau : lumière colorée + anneau de paroi (plus épais pour une artère).
+function lumenCap(curve, atEnd, r, lumMat, wallMat, wallFrac) {
   const t = atEnd ? 1 : 0;
   const p = curve.getPointAt(t);
   const tan = curve.getTangentAt(t);
-  const g = new THREE.CircleGeometry(r * 0.98, 32);
-  const m = new THREE.Mesh(g, mat);
-  m.position.copy(p).addScaledVector(tan, atEnd ? -0.02 : 0.02);
-  m.lookAt(p.clone().add(tan.clone().multiplyScalar(atEnd ? 1 : -1)));
-  m.userData.cap = true;
-  return m;
+  const group = new THREE.Group();
+  const lum = new THREE.Mesh(new THREE.CircleGeometry(r * 0.98, 32), lumMat);
+  lum.position.set(0, 0, -0.03); // local +z = vers l'extérieur après lookAt
+  const wall = new THREE.Mesh(new THREE.RingGeometry(r * (1 - wallFrac), r * 0.99, 32), wallMat);
+  wall.position.set(0, 0, -0.01);
+  group.add(lum, wall);
+  group.position.copy(p);
+  group.lookAt(p.clone().add(tan.clone().multiplyScalar(atEnd ? 1 : -1)));
+  [lum, wall].forEach((m) => { m.userData.cap = true; });
+  group.userData.cap = true;
+  return group;
 }
 
 /* ─────────── construction ─────────── */
@@ -171,6 +180,9 @@ export function buildHeart() {
     materials.push(m);
     return m;
   };
+  // matériaux partagés des extrémités sectionnées
+  const lumMats = { artere: mkMat(COL.lumenArtere, { roughness: 0.85 }), veine: mkMat(COL.lumenVeine, { roughness: 0.85 }) };
+  const wallMats = { artere: mkMat(COL.paroiArtere, { roughness: 0.7 }), veine: mkMat(COL.paroiVeine, { roughness: 0.7 }) };
   const register = (id, mesh, anchorWorld, group = root) => {
     mesh.userData.id = id;
     group.add(mesh);
@@ -179,19 +191,18 @@ export function buildHeart() {
     if (anchorWorld && !registry[id].anchor) registry[id].anchor = anchorWorld.clone();
     return mesh;
   };
-  const vessel = (id, points, radius, color, { caps = [false, false], seg = 64, group = root, anchorT = 0.5, capColor } = {}) => {
+  const vessel = (id, points, radius, color, { caps = [false, false], seg = 64, group = root, anchorT = 0.5, capColor, type = 'artere', roughness = 0.55 } = {}) => {
     const g = tubeGeometry(points, radius, seg, 22);
-    const mat = mkMat(color);
+    const mat = mkMat(color, { roughness });
     const mesh = new THREE.Mesh(g, mat);
     const curve = g.userData.curve;
     const anchor = curve.getPointAt(anchorT);
     const anchorW = group === local ? L2W(anchor) : anchor;
     register(id, mesh, anchorW, group);
-    const lumMat = mkMat(COL.lumen, { roughness: 0.9 });
     caps.forEach((c, i) => {
       if (!c) return;
       const r = typeof radius === 'function' ? radius(i) : radius;
-      const cap = lumenCap(curve, i === 1, r, lumMat);
+      const cap = lumenCap(curve, i === 1, r, lumMats[type], wallMats[type], type === 'artere' ? 0.2 : 0.12);
       register(id, cap, null, group);
     });
     solids.push({ mesh, hole: false, capColor: capColor ?? color, open: true });
@@ -199,7 +210,7 @@ export function buildHeart() {
   };
 
   /* ── Masse ventriculaire ── */
-  const myoMat = mkMat(COL.myocarde, { roughness: 0.58 });
+  const myoMat = mkMat(COL.myocarde, { roughness: 0.74 });
   const mass = new THREE.Mesh(ventricularMassGeometry(), myoMat);
   mass.userData.id = 'ventricule-droit'; // par défaut, résolu finement au clic (voir pickId)
   local.add(mass);
@@ -210,7 +221,7 @@ export function buildHeart() {
   registry['septum-interventriculaire'] = { meshes: [], anchor: l(-0.35, -3.0, 0.5) };
 
   // Infundibulum (cône artériel du VD) montant vers la valve pulmonaire
-  const PT_ROOT_L = new THREE.Vector3(1.15, 1.9, 1.95);
+  const PT_ROOT_L = new THREE.Vector3(1.45, 1.9, 2.15); // en avant et à gauche de la racine aortique (axes distants ≥ 3 cm)
   const infund = vessel('ventricule-droit', [new THREE.Vector3(0.2, -1.6, 2.4), new THREE.Vector3(0.7, -0.2, 2.5), PT_ROOT_L.clone().add(new THREE.Vector3(0, 0.1, 0))],
     (t) => 1.75 - 0.3 * t, COL.myocarde, { group: local, seg: 24 });
   infund.material = myoMat;
@@ -218,8 +229,8 @@ export function buildHeart() {
   /* ── Cavités ventriculaires (trous pour la coupe) ── */
   const endoMat = mkMat(COL.endocarde, { side: THREE.BackSide, roughness: 0.8 });
   // VG : cavité conique à paroi épaisse (≈ 1 cm), dans la moitié postéro-gauche de la masse.
-  const LV_C = new THREE.Vector3(1.0, -3.0, -0.5);
-  const lvCav = new THREE.Mesh(ellipsoid(1.65, 2.9, 1.6), endoMat);
+  const LV_C = new THREE.Vector3(1.0, -3.0, -0.6);
+  const lvCav = new THREE.Mesh(ellipsoid(2.0, 2.9, 1.9), endoMat); // paroi VG ≈ 1,0–1,2 cm
   lvCav.position.copy(LV_C);
   lvCav.userData.id = 'ventricule-gauche';
   local.add(lvCav);
@@ -228,15 +239,16 @@ export function buildHeart() {
 
   // VD : cavité en croissant qui s'enroule en avant et à droite du VG (ellipsoïde « plié » autour de l'axe du VG),
   // paroi libre mince (≈ 0,4 cm), septum ≈ 0,7 cm. Surface fermée sans auto-intersection (requis par le stencil).
-  const rvCav = new THREE.Mesh(bentEllipsoid(3.0, 2.5, 0.65, 2.95, THREE.MathUtils.degToRad(-40)), endoMat);
-  rvCav.position.set(LV_C.x, -2.1, LV_C.z);
+  // croissant large (≈ 1,6 cm d'épaisseur), paroi libre 0,4–0,8 cm, septum 0,6–1,0 cm
+  const rvCav = new THREE.Mesh(bentEllipsoid(3.2, 2.6, 0.8, 2.85, THREE.MathUtils.degToRad(-45)), endoMat);
+  rvCav.position.set(LV_C.x - 0.75, -2.3, LV_C.z + 0.3);
   rvCav.userData.id = 'ventricule-droit';
   local.add(rvCav);
   solids.push({ mesh: rvCav, hole: true });
   cutOnly.push(rvCav);
 
   /* ── Oreillettes ── */
-  const atrMat = mkMat(COL.oreillette, { roughness: 0.6 });
+  const atrMat = mkMat(COL.oreillette, { roughness: 0.7 });
   const ra = new THREE.Mesh(ellipsoid(2.2, 2.45, 2.1), atrMat);
   ra.position.set(-2.5, 1.95, -0.4);
   register('oreillette-droite', ra, L2W(new THREE.Vector3(-4.6, 2.8, 0.4)), local);
@@ -270,21 +282,22 @@ export function buildHeart() {
   laAur.material = atrMat;
 
   /* ── Sillons (graisse épicardique) ── */
-  const fatMat = mkMat(COL.graisse, { roughness: 0.75 });
-  const sulcusPts = (list) => list.map(([t, th]) => surf(t, th, 0.05));
+  const fatMat = mkMat(COL.graisse, { roughness: 0.88 });
+  // la graisse est enfoncée dans la surface (-0.08) : coussinet qui comble le sillon plutôt que tube posé dessus
+  const sulcusPts = (list) => list.map(([t, th]) => surf(t, th, -0.08));
   // sillon coronaire : interrompu en avant par l'infundibulum et le tronc pulmonaire (de -20° à +35°)
   const coroD = [], coroG = [];
-  for (let th = -20; th >= -180; th -= 12) coroD.push(surf(0.01, th, 0.12));
-  for (let th = 35; th <= 180; th += 12) coroG.push(surf(0.01, th, 0.12));
-  const sCoroD = vessel('sillons', coroD, 0.42, COL.graisse, { group: local, seg: 48, anchorT: 0.3 });
+  for (let th = -20; th >= -180; th -= 12) coroD.push(surf(0.01, th, 0.0));
+  for (let th = 35; th <= 180; th += 12) coroG.push(surf(0.01, th, 0.0));
+  const sCoroD = vessel('sillons', coroD, 0.45, COL.graisse, { group: local, seg: 48, anchorT: 0.3 });
   sCoroD.material = fatMat;
-  const sCoroG = vessel('sillons', coroG, 0.42, COL.graisse, { group: local, seg: 48, anchorT: 0.3 });
+  const sCoroG = vessel('sillons', coroG, 0.45, COL.graisse, { group: local, seg: 48, anchorT: 0.3 });
   sCoroG.material = fatMat;
   // sillon interventriculaire antérieur
-  const sIVA = vessel('sillons', sulcusPts([[0.0, 24], [0.2, 22], [0.4, 20], [0.6, 18], [0.8, 15], [0.95, 12]]), 0.34, COL.graisse, { group: local, seg: 32 });
+  const sIVA = vessel('sillons', sulcusPts([[0.0, 24], [0.2, 22], [0.4, 20], [0.6, 18], [0.8, 15], [0.95, 12]]), 0.36, COL.graisse, { group: local, seg: 32 });
   sIVA.material = fatMat;
   // sillon interventriculaire postérieur
-  const sIVP = vessel('sillons', sulcusPts([[0.0, -168], [0.2, -166], [0.4, -164], [0.6, -162], [0.8, -160], [0.93, -158]]), 0.34, COL.graisse, { group: local, seg: 32 });
+  const sIVP = vessel('sillons', sulcusPts([[0.0, -168], [0.2, -166], [0.4, -164], [0.6, -162], [0.8, -160], [0.93, -158]]), 0.36, COL.graisse, { group: local, seg: 32 });
   sIVP.material = fatMat;
 
   /* ── Grands vaisseaux (repère monde) ── */
@@ -292,11 +305,13 @@ export function buildHeart() {
   const PT_ROOT = L2W(PT_ROOT_L);
 
   // Aorte : ascendante → crosse → descendante
+  // Aorte ascendante à droite et en arrière du tronc pulmonaire (axes distants ≥ 3 cm) ; crosse relevée pour
+  // ménager l'intervalle du ligament artériel au-dessus de l'artère pulmonaire gauche.
   const aortePts = [
     AO_ROOT, l(-0.3, 2.6, 0.5),
-    new THREE.Vector3(-1.35, 5.0, -0.15), new THREE.Vector3(-1.0, 7.1, -0.5),
-    new THREE.Vector3(0.0, 8.9, -1.2), new THREE.Vector3(1.3, 9.45, -2.25), new THREE.Vector3(2.5, 8.8, -3.5),
-    new THREE.Vector3(3.3, 7.0, -4.4), new THREE.Vector3(3.5, 4.0, -5.2), new THREE.Vector3(3.3, 0.0, -5.6), new THREE.Vector3(3.0, -4.0, -5.9), new THREE.Vector3(2.8, -8.0, -6.1),
+    new THREE.Vector3(-1.7, 5.0, -0.45), new THREE.Vector3(-1.3, 7.3, -0.8),
+    new THREE.Vector3(0.0, 9.8, -1.2), new THREE.Vector3(1.3, 10.3, -2.2), new THREE.Vector3(2.5, 9.7, -3.8),
+    new THREE.Vector3(3.3, 7.6, -4.6), new THREE.Vector3(3.5, 4.0, -5.2), new THREE.Vector3(3.3, 0.0, -5.6), new THREE.Vector3(3.0, -4.0, -5.9), new THREE.Vector3(2.8, -8.0, -6.1),
   ];
   const aorte = vessel('aorte', aortePts, (t) => {
     if (t < 0.05) return 1.55 + 0.25 * Math.sin(t / 0.05 * Math.PI); // sinus de Valsalva
@@ -304,32 +319,32 @@ export function buildHeart() {
     if (t < 0.55) return 1.4 - 0.2 * (t - 0.35) / 0.2;
     return 1.2 - 0.1 * (t - 0.55) / 0.45;
   }, COL.artere, { caps: [false, true], seg: 110, anchorT: 0.3 });
-  registry['aorte'].anchor = new THREE.Vector3(-1.2, 6.2, -0.3);
+  registry['aorte'].anchor = new THREE.Vector3(-1.7, 5.6, 0.95); // face antérieure de l'aorte ascendante (visible en vue de face)
 
   // Branches de la crosse
-  vessel('tronc-brachio-cephalique', [new THREE.Vector3(0.15, 8.9, -1.25), new THREE.Vector3(-0.4, 10.4, -1.0), new THREE.Vector3(-1.2, 11.5, -0.85)], 0.62, COL.artere, { seg: 16, anchorT: 0.6 });
-  vessel('tronc-brachio-cephalique', [new THREE.Vector3(-1.2, 11.5, -0.85), new THREE.Vector3(-1.5, 12.6, -0.7), new THREE.Vector3(-1.7, 13.8, -0.6)], 0.45, COL.artere, { caps: [false, true], seg: 12 }); // carotide commune droite
-  vessel('tronc-brachio-cephalique', [new THREE.Vector3(-1.2, 11.5, -0.85), new THREE.Vector3(-2.6, 12.3, -0.95), new THREE.Vector3(-4.6, 12.6, -1.1)], 0.45, COL.artere, { caps: [false, true], seg: 12 }); // subclavière droite
-  vessel('carotide-commune-gauche', [new THREE.Vector3(1.25, 9.45, -2.2), new THREE.Vector3(1.2, 11.5, -2.0), new THREE.Vector3(1.1, 13.8, -1.9)], 0.46, COL.artere, { caps: [false, true], seg: 12, anchorT: 0.7 });
-  vessel('subclaviere-gauche', [new THREE.Vector3(2.15, 9.2, -2.95), new THREE.Vector3(2.9, 11.0, -3.1), new THREE.Vector3(4.8, 12.1, -3.3)], 0.46, COL.artere, { caps: [false, true], seg: 12, anchorT: 0.7 });
+  vessel('tronc-brachio-cephalique', [new THREE.Vector3(0.15, 9.8, -1.25), new THREE.Vector3(-0.4, 11.3, -1.0), new THREE.Vector3(-1.2, 12.4, -0.85)], 0.62, COL.artere, { seg: 16, anchorT: 0.6 });
+  vessel('tronc-brachio-cephalique', [new THREE.Vector3(-1.2, 12.4, -0.85), new THREE.Vector3(-1.5, 13.5, -0.7), new THREE.Vector3(-1.7, 14.7, -0.6)], 0.45, COL.artere, { caps: [false, true], seg: 12 }); // carotide commune droite
+  vessel('tronc-brachio-cephalique', [new THREE.Vector3(-1.2, 12.4, -0.85), new THREE.Vector3(-2.6, 13.2, -0.95), new THREE.Vector3(-4.6, 13.5, -1.1)], 0.45, COL.artere, { caps: [false, true], seg: 12 }); // subclavière droite
+  vessel('carotide-commune-gauche', [new THREE.Vector3(1.25, 10.3, -2.2), new THREE.Vector3(1.2, 12.4, -2.0), new THREE.Vector3(1.1, 14.7, -1.9)], 0.46, COL.artere, { caps: [false, true], seg: 12, anchorT: 0.7 });
+  vessel('subclaviere-gauche', [new THREE.Vector3(2.15, 10.05, -2.95), new THREE.Vector3(2.9, 11.9, -3.1), new THREE.Vector3(4.8, 13.0, -3.3)], 0.46, COL.artere, { caps: [false, true], seg: 12, anchorT: 0.7 });
 
-  // Tronc pulmonaire et bifurcation
-  const ptPts = [PT_ROOT, PT_ROOT.clone().add(new THREE.Vector3(0.3, 1.2, -0.1)), new THREE.Vector3(0.5, 6.2, 0.1), new THREE.Vector3(1.0, 7.3, -0.9), new THREE.Vector3(1.2, 7.55, -1.6)];
-  vessel('tronc-pulmonaire', ptPts, (t) => 1.45 - 0.1 * t, COL.arterePulm, { seg: 48, anchorT: 0.45 });
-  const BIF = new THREE.Vector3(1.2, 7.55, -1.6);
-  vessel('artere-pulmonaire-droite', [BIF, new THREE.Vector3(-0.4, 7.35, -2.1), new THREE.Vector3(-2.6, 7.1, -2.45), new THREE.Vector3(-5.2, 6.8, -2.6)], (t) => 1.1 - 0.15 * t, COL.arterePulm, { caps: [false, true], seg: 32, anchorT: 0.75 });
-  vessel('artere-pulmonaire-gauche', [BIF, new THREE.Vector3(2.4, 7.9, -2.3), new THREE.Vector3(4.3, 7.7, -3.1), new THREE.Vector3(5.6, 7.3, -3.6)], (t) => 1.05 - 0.15 * t, COL.arterePulm, { caps: [false, true], seg: 32, anchorT: 0.7 });
-  // Ligament artériel : de l'AP gauche vers la face inférieure de la crosse
-  vessel('ligament-arteriel', [new THREE.Vector3(2.3, 8.75, -2.4), new THREE.Vector3(2.2, 8.0, -2.55)], 0.17, COL.ligament, { seg: 6, anchorT: 0.5 });
+  // Tronc pulmonaire : naît en avant et à gauche de l'aorte, longe son bord gauche sans la recouvrir, se divise sous la crosse
+  const BIF = new THREE.Vector3(1.6, 7.5, -1.4);
+  const ptPts = [PT_ROOT, PT_ROOT.clone().add(new THREE.Vector3(0.3, 1.2, -0.1)), new THREE.Vector3(1.3, 6.0, 0.7), new THREE.Vector3(1.5, 7.2, -0.6), BIF];
+  vessel('tronc-pulmonaire', ptPts, (t) => 1.45 - 0.1 * t, COL.arterePulm, { seg: 48, anchorT: 0.45, type: 'veine' });
+  vessel('artere-pulmonaire-droite', [BIF, new THREE.Vector3(-0.4, 7.3, -2.4), new THREE.Vector3(-2.6, 7.1, -3.2), new THREE.Vector3(-5.2, 6.8, -3.6)], (t) => 1.1 - 0.15 * t, COL.arterePulm, { caps: [false, true], seg: 32, anchorT: 0.75, type: 'veine' });
+  vessel('artere-pulmonaire-gauche', [BIF, new THREE.Vector3(2.4, 7.4, -2.0), new THREE.Vector3(4.3, 7.4, -2.9), new THREE.Vector3(5.6, 7.0, -3.4)], (t) => 1.05 - 0.15 * t, COL.arterePulm, { caps: [false, true], seg: 32, anchorT: 0.7, type: 'veine' });
+  // Ligament artériel : de la face supérieure de l'AP gauche à la face inférieure de la crosse (≈ 0,5 cm visibles)
+  vessel('ligament-arteriel', [new THREE.Vector3(2.4, 8.3, -2.05), new THREE.Vector3(2.35, 8.85, -2.9)], 0.2, COL.ligament, { seg: 6, anchorT: 0.5, roughness: 0.8 });
 
-  // Veines caves
+  // Veines caves (la VCS reste à droite de l'aorte ascendante, en avant de l'AP droite)
   const RA_W = L2W(ra.position);
-  vessel('veine-cave-superieure', [new THREE.Vector3(-3.1, 13.5, -1.2), new THREE.Vector3(-3.1, 9.5, -1.2), new THREE.Vector3(-3.2, 6.5, -1.3), RA_W.clone().add(new THREE.Vector3(0.2, 1.6, 0.1))], (t) => 1.0 + 0.1 * t, COL.veine, { caps: [true, false], seg: 32, anchorT: 0.4 });
-  vessel('veine-cave-inferieure', [RA_W.clone().add(new THREE.Vector3(0.2, -1.6, -0.5)), new THREE.Vector3(-3.1, -1.6, -2.3), new THREE.Vector3(-2.9, -4.3, -2.7), new THREE.Vector3(-2.7, -6.5, -2.9)], (t) => 1.1 + 0.1 * t, COL.veine, { caps: [false, true], seg: 24, anchorT: 0.6 });
+  vessel('veine-cave-superieure', [new THREE.Vector3(-3.8, 12.0, -1.6), new THREE.Vector3(-3.8, 9.5, -1.6), new THREE.Vector3(-3.7, 6.5, -1.6), RA_W.clone().add(new THREE.Vector3(0.1, 1.6, 0.0))], (t) => 1.0 + 0.1 * t, COL.veine, { caps: [true, false], seg: 32, anchorT: 0.4, type: 'veine', roughness: 0.6 });
+  vessel('veine-cave-inferieure', [RA_W.clone().add(new THREE.Vector3(0.2, -1.6, -0.5)), new THREE.Vector3(-3.1, -1.6, -2.3), new THREE.Vector3(-2.9, -4.3, -2.7), new THREE.Vector3(-2.7, -6.5, -2.9)], (t) => 1.1 + 0.1 * t, COL.veine, { caps: [false, true], seg: 24, anchorT: 0.6, type: 'veine', roughness: 0.6 });
 
   // Veines pulmonaires (sang oxygéné → rouge)
   const LA_W = L2W(la.position);
-  const pv = (dx, dy, dz, ex, ey, ez) => vessel('veines-pulmonaires', [LA_W.clone().add(new THREE.Vector3(dx, dy, dz)), LA_W.clone().add(new THREE.Vector3(ex * 0.6, ey, ez)), LA_W.clone().add(new THREE.Vector3(ex, ey, ez))], 0.55, COL.veinePulm, { caps: [false, true], seg: 12, anchorT: 0.8 });
+  const pv = (dx, dy, dz, ex, ey, ez) => vessel('veines-pulmonaires', [LA_W.clone().add(new THREE.Vector3(dx, dy, dz)), LA_W.clone().add(new THREE.Vector3(ex * 0.6, ey, ez)), LA_W.clone().add(new THREE.Vector3(ex, ey, ez))], 0.55, COL.veinePulm, { caps: [false, true], seg: 12, anchorT: 0.8, type: 'veine', roughness: 0.6 });
   pv(-1.4, 0.9, -0.9, -4.6, 1.3, -1.2);   // VP supérieure droite
   pv(-1.4, -0.7, -1.0, -4.6, -1.1, -1.3); // VP inférieure droite
   pv(1.6, 0.9, -0.9, 4.4, 1.5, -1.2);     // VP supérieure gauche
@@ -338,22 +353,22 @@ export function buildHeart() {
   // Sinus coronaire (face postérieure, sillon AV) → OD
   const sc = [];
   for (let th = 125; th <= 180; th += 11) sc.push(surf(-0.05, th, 0.45));
-  for (let th = -180; th <= -160; th += 10) sc.push(surf(-0.05, th, 0.45));
-  sc.push(new THREE.Vector3(-3.0, 0.5, -1.4));
-  vessel('sinus-coronaire', sc, (t) => 0.22 + 0.18 * t, COL.veineCard, { group: local, seg: 40, anchorT: 0.5 });
+  for (let th = -180; th <= -160; th += 10) sc.push(surf(-0.05, th, 0.55));
+  sc.push(new THREE.Vector3(-2.6, 0.3, -0.5)); // ostium en avant et en dedans de la VCI, au plancher de l'OD
+  vessel('sinus-coronaire', sc, (t) => 0.28 + 0.2 * t, COL.veineCard, { group: local, seg: 40, anchorT: 0.5, roughness: 0.6 });
 
   /* ── Artères coronaires (repère local, posées sur la surface) ── */
   const cor = (id, pts, r = 0.2, opts = {}) => vessel(id, pts, r, COL.coronaire, { group: local, seg: 48, ...opts });
-  // Tronc commun : sinus aortique gauche → derrière le tronc pulmonaire → bifurcation
+  // Tronc commun : sinus aortique postéro-gauche → entre le tronc pulmonaire (en avant) et l'auricule gauche (en arrière) → sillon AV gauche
   const AO_L = new THREE.Vector3(-0.25, 1.75, 0.55);
-  cor('tronc-commun', [AO_L.clone().add(new THREE.Vector3(0.9, -0.3, 0.9)), new THREE.Vector3(1.4, 1.0, 1.7), new THREE.Vector3(1.9, 0.35, 2.4), surf(0.02, 30, 0.22)], 0.26, { seg: 16, anchorT: 0.5 });
+  cor('tronc-commun', [AO_L.clone().add(new THREE.Vector3(0.95, -0.35, -0.15)), new THREE.Vector3(1.55, 0.95, 0.55), new THREE.Vector3(2.25, 0.45, 1.15), surf(0.02, 38, 0.25)], 0.26, { seg: 16, anchorT: 0.5 });
   // IVA : sillon interventriculaire antérieur jusqu'à l'apex
-  cor('iva', [surf(0.02, 30, 0.22), surf(0.1, 26, 0.22), surf(0.25, 23, 0.22), surf(0.45, 20, 0.22), surf(0.65, 18, 0.22), surf(0.85, 15, 0.22), surf(0.97, 12, 0.22), surf(1.0, 5, 0.25)], 0.22, { anchorT: 0.45 });
+  cor('iva', [surf(0.02, 38, 0.25), surf(0.1, 28, 0.22), surf(0.25, 23, 0.22), surf(0.45, 20, 0.22), surf(0.65, 18, 0.22), surf(0.85, 15, 0.22), surf(0.97, 12, 0.22), surf(1.0, 5, 0.25)], 0.22, { anchorT: 0.45 });
   // Diagonales
   cor('iva', [surf(0.2, 24, 0.2), surf(0.35, 42, 0.17), surf(0.55, 58, 0.15), surf(0.72, 66, 0.13)], 0.12, { seg: 20 });
   cor('iva', [surf(0.42, 21, 0.2), surf(0.58, 36, 0.16), surf(0.78, 46, 0.13)], 0.1, { seg: 16 });
   // Circonflexe : sillon AV gauche, sous l'auricule gauche, vers la face postérieure
-  cor('circonflexe', [surf(0.02, 30, 0.22), surf(0.0, 50, 0.3), surf(-0.02, 75, 0.32), surf(-0.02, 100, 0.32), surf(-0.02, 125, 0.32), surf(0.0, 148, 0.3)], 0.21, { anchorT: 0.5 });
+  cor('circonflexe', [surf(0.02, 38, 0.25), surf(0.0, 52, 0.3), surf(-0.02, 75, 0.32), surf(-0.02, 100, 0.32), surf(-0.02, 125, 0.32), surf(0.0, 148, 0.3)], 0.21, { anchorT: 0.5 });
   // Marginale obtuse
   cor('circonflexe', [surf(0.0, 88, 0.3), surf(0.2, 95, 0.2), surf(0.45, 100, 0.17), surf(0.7, 104, 0.14)], 0.13, { seg: 20 });
   // Coronaire droite : sinus aortique droit → sillon AV droit → croix du cœur → IVP
@@ -366,28 +381,37 @@ export function buildHeart() {
   cor('coronaire-droite', [surf(0.0, -45, 0.3), new THREE.Vector3(-2.5, 2.2, 1.9), new THREE.Vector3(-2.9, 3.9, 0.6)], 0.09, { seg: 12 });
 
   /* ── Valves (anneaux, visibles en coupe) ── */
-  const valveMat = mkMat(COL.valve, { roughness: 0.5 });
-  const ring = (id, pos, r, rot, anchorOff) => {
-    const g = new THREE.TorusGeometry(r, 0.12, 10, 48);
-    const m = new THREE.Mesh(g, valveMat);
-    m.position.copy(pos);
-    m.rotation.set(rot[0], rot[1], rot[2]);
-    register(id, m, L2W(pos.clone().add(anchorOff || new THREE.Vector3())), local);
-    cutOnly.push(m);
-    // feuillets stylisés : cône très plat
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(r * 0.95, r * 0.9, 3, 1, true), mkMat(COL.valve, { roughness: 0.5, transparent: true, opacity: 0.55 }));
-    leaf.position.copy(pos);
-    leaf.rotation.set(rot[0] + Math.PI, rot[1], rot[2]);
-    leaf.userData.id = id;
-    local.add(leaf);
-    cutOnly.push(leaf);
-    registry[id].meshes.push(leaf);
-    return m;
+  const valveMat = mkMat(COL.valve, { roughness: 0.6 });
+  const commMat = mkMat(0x8a6e5a, { roughness: 0.7 });
+  // Anneau fin + disque plat (feuillets fermés) + lignes de commissure (3 feuillets, 2 pour la mitrale)
+  const ring = (id, pos, r, rot, nLeaf) => {
+    const grp = new THREE.Group();
+    grp.position.copy(pos);
+    grp.rotation.set(rot[0], rot[1], rot[2]);
+    const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.08, 10, 48), valveMat);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r * 0.96, 48), valveMat);
+    disc.userData.leaf = true;
+    grp.add(m, disc);
+    for (let k = 0; k < nLeaf; k++) {
+      const a = (k / nLeaf) * Math.PI * 2 + (nLeaf === 2 ? Math.PI / 2 : 0);
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(r * 0.9, 0.05, 0.05), commMat);
+      seg.position.set(Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45, 0.03);
+      seg.rotation.z = a;
+      seg.userData.leaf = true;
+      grp.add(seg);
+    }
+    grp.traverse((o) => { if (o.isMesh) { o.userData.id = id; } });
+    register(id, m, L2W(pos), local);
+    local.add(grp);
+    grp.children.forEach((c) => { if (c !== m) registry[id].meshes.push(c); });
+    grp.remove(m); grp.add(m); // m reste enfant du groupe (register l'avait rattaché à local)
+    cutOnly.push(grp);
+    return grp;
   };
-  ring('valve-tricuspide', new THREE.Vector3(-2.0, 0.25, 0.95), 1.65, [Math.PI / 2, 0, 0], new THREE.Vector3(0, 0, 0));
-  ring('valve-mitrale', new THREE.Vector3(1.05, 0.25, -1.05), 1.4, [Math.PI / 2, 0, 0.1]);
-  ring('valve-aortique', new THREE.Vector3(-0.25, 1.1, 0.55), 1.05, [Math.PI / 2 + 0.3, 0, 0]);
-  ring('valve-pulmonaire', new THREE.Vector3(1.15, 1.5, 1.95), 1.05, [Math.PI / 2 + 0.6, 0.2, 0]);
+  ring('valve-tricuspide', new THREE.Vector3(-2.0, 0.25, 0.95), 1.65, [Math.PI / 2, 0, 0], 3);
+  ring('valve-mitrale', new THREE.Vector3(1.05, 0.25, -1.05), 1.4, [Math.PI / 2, 0, 0.1], 2);
+  ring('valve-aortique', new THREE.Vector3(-0.25, 1.1, 0.55), 1.05, [Math.PI / 2 + 0.3, 0, 0], 3);
+  ring('valve-pulmonaire', new THREE.Vector3(1.45, 1.5, 2.15), 1.05, [Math.PI / 2 + 0.6, 0.2, 0], 3);
 
   /* ── Système de conduction (visible en coupe) ── */
   const condMat = mkMat(COL.conduction, { emissive: 0xffb300, emissiveIntensity: 0.45, roughness: 0.4 });
@@ -403,7 +427,8 @@ export function buildHeart() {
   const his = vessel('faisceau-his', [new THREE.Vector3(-0.9, 0.45, -0.25), new THREE.Vector3(-0.5, -0.3, 0.3), new THREE.Vector3(-0.35, -1.6, 0.55), new THREE.Vector3(-0.1, -3.2, 0.9), new THREE.Vector3(0.6, -5.0, 1.4)], (t) => 0.14 - 0.04 * t, COL.conduction, { group: local, seg: 24, anchorT: 0.4 });
   his.material = condMat;
   cutOnly.push(his);
-  const hisG = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.4), new THREE.Vector3(0.2, -2.6, -0.1), new THREE.Vector3(1.0, -4.3, -0.4), new THREE.Vector3(2.0, -5.6, 0.2)], 0.09, COL.conduction, { group: local, seg: 16 });
+  // Branche gauche : en nappe sous l'endocarde de la face septale du VG (elle ne traverse pas la cavité)
+  const hisG = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.4), new THREE.Vector3(-0.25, -2.6, 0.6), new THREE.Vector3(-0.12, -4.3, 0.5), new THREE.Vector3(0.4, -5.5, 0.1)], 0.09, COL.conduction, { group: local, seg: 16 });
   hisG.material = condMat;
   cutOnly.push(hisG);
   const hisD = vessel('faisceau-his', [new THREE.Vector3(-0.4, -1.4, 0.7), new THREE.Vector3(-1.0, -2.6, 1.4), new THREE.Vector3(-1.6, -3.8, 1.9)], 0.09, COL.conduction, { group: local, seg: 16 });
@@ -413,13 +438,14 @@ export function buildHeart() {
   /* ── Trajets du sang (mode circulation) ── */
   const W = (pts) => pts.map((p) => (p.isVector3 ? p : L2W(new THREE.Vector3(...p))));
   // Côté droit : VCS → OD → VD → tronc pulmonaire → AP droite / gauche
-  flowPaths.push({ color: 0x5b73c9, speed: 0.11, points: [new THREE.Vector3(-3.1, 13.0, -1.2), new THREE.Vector3(-3.15, 8.0, -1.25), RA_W.clone().add(new THREE.Vector3(0.1, 0.8, 0.0)), ...W([[-2.4, 1.4, 0.3], [-2.0, 0.2, 0.95], [-1.9, -1.6, 1.8], [-1.2, -3.0, 1.9], [-0.1, -1.4, 2.4], [0.7, 0.2, 2.4]]), PT_ROOT, new THREE.Vector3(0.5, 6.2, 0.1), BIF, new THREE.Vector3(-2.6, 7.1, -2.45), new THREE.Vector3(-5.2, 6.8, -2.6)] });
-  flowPaths.push({ color: 0x5b73c9, speed: 0.11, points: [new THREE.Vector3(-2.7, -6.5, -2.9), new THREE.Vector3(-3.0, -2.0, -2.4), RA_W.clone().add(new THREE.Vector3(0.1, -0.9, -0.3)), ...W([[-2.4, 1.0, 0.2], [-2.0, 0.2, 0.95], [-2.0, -1.8, 1.9], [-1.0, -3.2, 2.0], [0.0, -1.2, 2.4], [0.8, 0.3, 2.4]]), PT_ROOT, new THREE.Vector3(0.5, 6.2, 0.1), BIF, new THREE.Vector3(2.4, 7.9, -2.3), new THREE.Vector3(5.6, 7.3, -3.6)] });
+  const PT_MID = new THREE.Vector3(1.3, 6.0, 0.7);
+  flowPaths.push({ color: 0x43589f, speed: 0.11, points: [new THREE.Vector3(-3.8, 11.5, -1.6), new THREE.Vector3(-3.8, 8.0, -1.6), RA_W.clone().add(new THREE.Vector3(0.1, 0.8, 0.0)), ...W([[-2.4, 1.4, 0.3], [-2.0, 0.2, 0.95], [-2.2, -1.6, 1.6], [-1.5, -3.2, 1.9], [-0.1, -1.4, 2.4], [0.9, 0.2, 2.4]]), PT_ROOT, PT_MID, BIF, new THREE.Vector3(-2.6, 7.1, -3.2), new THREE.Vector3(-5.2, 6.8, -3.6)] });
+  flowPaths.push({ color: 0x43589f, speed: 0.11, points: [new THREE.Vector3(-2.7, -6.5, -2.9), new THREE.Vector3(-3.0, -2.0, -2.4), RA_W.clone().add(new THREE.Vector3(0.1, -0.9, -0.3)), ...W([[-2.4, 1.0, 0.2], [-2.0, 0.2, 0.95], [-2.3, -1.8, 1.7], [-1.3, -3.4, 2.0], [0.0, -1.2, 2.4], [1.0, 0.3, 2.4]]), PT_ROOT, PT_MID, BIF, new THREE.Vector3(2.4, 7.4, -2.0), new THREE.Vector3(5.6, 7.0, -3.4)] });
   // Côté gauche : veines pulmonaires → OG → VG → aorte
-  const leftCore = [...W([[0.9, 2.3, -2.6], [1.05, 0.25, -1.05], [1.3, -2.0, -0.8], [1.6, -4.2, -0.3], [1.0, -2.5, -0.1], [0.2, -0.5, 0.3], [-0.25, 1.1, 0.55]]), AO_ROOT, new THREE.Vector3(-1.35, 5.0, -0.15), new THREE.Vector3(0.0, 8.9, -1.2), new THREE.Vector3(2.5, 8.8, -3.5), new THREE.Vector3(3.5, 4.0, -5.2), new THREE.Vector3(3.0, -4.0, -5.9), new THREE.Vector3(2.8, -8.0, -6.1)];
-  flowPaths.push({ color: 0xd04a4a, speed: 0.12, points: [LA_W.clone().add(new THREE.Vector3(-4.6, 1.3, -1.2)), LA_W.clone().add(new THREE.Vector3(-1.4, 0.9, -0.9)), ...leftCore] });
-  flowPaths.push({ color: 0xd04a4a, speed: 0.12, points: [LA_W.clone().add(new THREE.Vector3(4.4, -0.9, -1.4)), LA_W.clone().add(new THREE.Vector3(1.6, -0.6, -1.0)), ...leftCore] });
-  flowPaths.push({ color: 0xd04a4a, speed: 0.12, points: [AO_ROOT, new THREE.Vector3(-1.35, 5.0, -0.15), new THREE.Vector3(-1.0, 7.1, -0.5), new THREE.Vector3(0.15, 8.9, -1.25), new THREE.Vector3(-1.2, 11.5, -0.85), new THREE.Vector3(-1.7, 13.8, -0.6)] });
+  const leftCore = [...W([[0.9, 2.3, -2.6], [1.05, 0.25, -1.05], [1.3, -2.0, -0.8], [1.6, -4.2, -0.3], [1.0, -2.5, -0.1], [0.2, -0.5, 0.3], [-0.25, 1.1, 0.55]]), AO_ROOT, new THREE.Vector3(-1.7, 5.0, -0.45), new THREE.Vector3(0.0, 9.8, -1.2), new THREE.Vector3(2.5, 9.7, -3.8), new THREE.Vector3(3.5, 4.0, -5.2), new THREE.Vector3(3.0, -4.0, -5.9), new THREE.Vector3(2.8, -8.0, -6.1)];
+  flowPaths.push({ color: 0xc43a33, speed: 0.12, points: [LA_W.clone().add(new THREE.Vector3(-4.6, 1.3, -1.2)), LA_W.clone().add(new THREE.Vector3(-1.4, 0.9, -0.9)), ...leftCore] });
+  flowPaths.push({ color: 0xc43a33, speed: 0.12, points: [LA_W.clone().add(new THREE.Vector3(4.4, -0.9, -1.4)), LA_W.clone().add(new THREE.Vector3(1.6, -0.6, -1.0)), ...leftCore] });
+  flowPaths.push({ color: 0xc43a33, speed: 0.12, points: [AO_ROOT, new THREE.Vector3(-1.7, 5.0, -0.45), new THREE.Vector3(-1.3, 7.3, -0.8), new THREE.Vector3(0.15, 9.8, -1.25), new THREE.Vector3(-1.2, 12.4, -0.85), new THREE.Vector3(-1.7, 14.7, -0.6)] });
 
   // Résolution fine du clic sur la masse ventriculaire (VD / VG / apex / septum).
   const invM = M.clone().invert();

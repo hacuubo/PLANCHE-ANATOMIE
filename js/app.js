@@ -2,17 +2,30 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { buildHeart } from './heart.js';
+import { buildHeart, COL } from './heart.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
+
+// Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
+function luminance(hex) {
+  const c = new THREE.Color(hex);
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; // composantes déjà linéarisées par THREE.Color
+}
+function numHtml(id, big = false) {
+  const s = STRUCTURES[id];
+  const dark = luminance(s.couleur) > 0.35;
+  return `<span class="num${big ? ' big' : ''}${dark ? ' dark' : ''}" style="background:${s.couleur}">${ORDRE.indexOf(id) + 1}</span>`;
+}
 
 /* ─────────── scène ─────────── */
 const canvasWrap = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.localClippingEnabled = true;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMapping = THREE.NeutralToneMapping; // teintes fidèles : la légende doit correspondre au modèle
+renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 canvasWrap.appendChild(renderer.domElement);
 
 const labelRenderer = new CSS2DRenderer();
@@ -22,7 +35,7 @@ canvasWrap.appendChild(labelRenderer.domElement);
 const scene = new THREE.Scene();
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.55;
+scene.environmentIntensity = 0.35;
 
 const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
 const CENTER = new THREE.Vector3(0, 3.0, -1.2);
@@ -33,13 +46,18 @@ controls.dampingFactor = 0.08;
 controls.minDistance = 8;
 controls.maxDistance = 60;
 
-const key = new THREE.DirectionalLight(0xfff3e6, 2.2);
-key.position.set(6, 12, 14);
-const fill = new THREE.DirectionalLight(0xdfe7ff, 0.9);
+const key = new THREE.DirectionalLight(0xfff1e0, 1.6);
+key.position.set(5, 10, 12);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -16; key.shadow.camera.right = 16; key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
+key.shadow.camera.near = 1; key.shadow.camera.far = 60;
+key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03; key.shadow.radius = 4;
+const fill = new THREE.DirectionalLight(0xe4ebff, 0.45);
 fill.position.set(-10, 4, 6);
-const rim = new THREE.DirectionalLight(0xffffff, 0.8);
+const rim = new THREE.DirectionalLight(0xffffff, 0.5);
 rim.position.set(2, 8, -14);
-scene.add(key, fill, rim, new THREE.HemisphereLight(0xffffff, 0x8a6a5a, 0.5));
+scene.add(key, key.target, fill, rim, new THREE.HemisphereLight(0xfaf4ea, 0x7a5a4e, 0.3));
 
 /* ─────────── cœur ─────────── */
 const heart = buildHeart();
@@ -48,6 +66,32 @@ pivot.position.copy(CENTER);
 heart.root.position.copy(CENTER.clone().negate());
 pivot.add(heart.root);
 scene.add(pivot);
+key.target.position.copy(CENTER);
+
+// Ombres, contour d'encre (coque inversée) et « fantôme » de la partie retirée par la coupe.
+const outlineMats = [], ghostMats = [], outlines = [], ghosts = [];
+const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+{
+  const toWrap = [];
+  heart.root.traverse((o) => {
+    if (!o.isMesh || !o.userData.id || o.userData.cap || o.userData.leaf || o.material.side === THREE.BackSide) return;
+    o.castShadow = true; o.receiveShadow = true;
+    toWrap.push(o);
+  });
+  heart.materials.forEach((m) => { m.clipShadows = true; });
+  toWrap.forEach((o) => {
+    const om = new THREE.MeshBasicMaterial({ color: 0x3a2b26, side: THREE.BackSide, transparent: true, opacity: 0.9 });
+    om.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed += normal * 0.045;'); };
+    const ol = new THREE.Mesh(o.geometry, om);
+    ol.renderOrder = -1; ol.userData.outline = true;
+    o.add(ol); outlineMats.push(om); outlines.push(ol);
+    const gm = new THREE.MeshBasicMaterial({ color: 0x2b2420, transparent: true, opacity: 0.07, depthWrite: false, clippingPlanes: [ghostPlane] });
+    const gh = new THREE.Mesh(o.geometry, gm);
+    gh.visible = false; gh.userData.ghost = true;
+    o.add(gh); ghostMats.push(gm); ghosts.push(gh);
+  });
+}
+function syncGhost() { ghostPlane.normal.copy(cutPlane.normal).negate(); ghostPlane.constant = -cutPlane.constant; }
 
 /* ─────────── coupe (plan de clipping + capuchons stencil) ─────────── */
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
@@ -81,13 +125,14 @@ function makeStencilMeshes(solid, order) {
 const orderByCap = new Map();
 let orderCursor = 100;
 heart.solids.forEach((s) => {
-  const capKey = s.hole ? 'myo' : (s.capColor === 0x9c3f3a ? 'myo' : String(s.capColor));
+  // la masse ventriculaire, les oreillettes et leurs cavités (trous) doivent partager la même passe de stencil
+  const capKey = s.hole ? 'myo' : (s.capColor === COL.myocardeCoupe ? 'myo' : String(s.capColor));
   if (!orderByCap.has(capKey)) { orderByCap.set(capKey, orderCursor); orderCursor += 3; }
   const order = orderByCap.get(capKey);
   s.stencil = makeStencilMeshes(s, order);
   s.stencil.visible = false;
   if (!capGroups.has(capKey)) {
-    const color = capKey === 'myo' ? 0x9c3f3a : s.capColor;
+    const color = capKey === 'myo' ? COL.myocardeCoupe : s.capColor;
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp });
     const cap = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat);
     cap.renderOrder = order + 1;
@@ -107,14 +152,18 @@ function updateCapPlanes() {
   });
 }
 
-const state = { coupe: false, modeCoupe: 'frontale', circulation: false, battement: true, etiquettes: false, coronaires: true, selected: null, hovered: null };
+const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: false, etiquettes: false, coronaires: true, selected: null, hovered: null, vue: 'anterieure' };
 
 function applyClipping() {
   const planes = state.coupe ? [cutPlane] : [];
   heart.materials.forEach((m) => { m.clippingPlanes = planes; m.needsUpdate = true; });
+  outlineMats.forEach((m) => { m.clippingPlanes = planes; m.needsUpdate = true; });
+  ghosts.forEach((g) => { g.visible = state.coupe; });
   heart.solids.forEach((s) => { s.stencil.visible = state.coupe; });
   capGroups.forEach((cap) => { cap.visible = state.coupe; });
   heart.cutOnly.forEach((m) => { m.visible = state.coupe; });
+  canvasWrap.classList.toggle('is-cut', state.coupe);
+  syncGhost();
   updateCapPlanes();
 }
 
@@ -127,6 +176,7 @@ function setCutMode(mode, value) {
   slider.min = cfg.min; slider.max = cfg.max; slider.step = 0.1;
   slider.value = value ?? cfg.def;
   cutPlane.constant = parseFloat(slider.value) - cutPlaneOffset();
+  syncGhost();
   updateCapPlanes();
 }
 function localAnterior() { const v = new THREE.Vector3(); heart.matrixLocal.extractBasis(new THREE.Vector3(), new THREE.Vector3(), v); return v; }
@@ -136,30 +186,38 @@ function cutPlaneOffset() { return 0; }
 /* ─────────── circulation (particules) ─────────── */
 const flowGroup = new THREE.Group();
 heart.root.add(flowGroup);
-const PER_PATH = 70;
+const PER_PATH = 90;
 const flowCurves = heart.flowPaths.map((p) => ({ curve: new THREE.CatmullRomCurve3(p.points, false, 'centripetal', 0.5), color: new THREE.Color(p.color), speed: p.speed }));
 const flowCount = flowCurves.length * PER_PATH;
-const flowMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 8, 6), new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.1, emissive: 0x222222 }), flowCount);
+// Capsules orientées le long du trajet, matériau non éclairé (couleurs saturées qui dominent les parois translucides)
+const capsuleGeo = new THREE.CapsuleGeometry(0.11, 0.35, 3, 8);
+capsuleGeo.rotateX(Math.PI / 2); // axe de la capsule sur +z → orientée par lookAt
+const flowMesh = new THREE.InstancedMesh(capsuleGeo, new THREE.MeshBasicMaterial({ toneMapped: false }), flowCount);
 flowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-const flowPhase = new Float32Array(flowCount);
+const flowPhase = new Float32Array(flowCount), flowSize = new Float32Array(flowCount);
 {
   const c = new THREE.Color();
   for (let i = 0; i < flowCount; i++) {
     const pi = Math.floor(i / PER_PATH);
     flowPhase[i] = Math.random();
-    c.copy(flowCurves[pi].color).offsetHSL(0, 0, (Math.random() - 0.5) * 0.15);
+    flowSize[i] = 0.85 + Math.random() * 0.3;
+    c.copy(flowCurves[pi].color).offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
     flowMesh.setColorAt(i, c);
   }
 }
 flowMesh.visible = false;
 flowGroup.add(flowMesh);
-const tmpM = new THREE.Matrix4(), tmpP = new THREE.Vector3();
+const tmpM = new THREE.Matrix4(), tmpP = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpT = new THREE.Vector3(), tmpLook = new THREE.Matrix4();
 function updateFlow(time) {
   for (let i = 0; i < flowCount; i++) {
     const pc = flowCurves[Math.floor(i / PER_PATH)];
     const t = (flowPhase[i] + time * pc.speed) % 1;
     pc.curve.getPointAt(t, tmpP);
-    tmpM.makeTranslation(tmpP.x, tmpP.y, tmpP.z);
+    pc.curve.getTangentAt(t, tmpT);
+    tmpLook.lookAt(tmpT, new THREE.Vector3(0, 0, 0), THREE.Object3D.DEFAULT_UP);
+    tmpQ.setFromRotationMatrix(tmpLook);
+    tmpS.setScalar(flowSize[i]);
+    tmpM.compose(tmpP, tmpQ, tmpS);
     flowMesh.setMatrixAt(i, tmpM);
   }
   flowMesh.instanceMatrix.needsUpdate = true;
@@ -168,10 +226,15 @@ function setTranslucent(on) {
   heart.materials.forEach((m) => {
     if (m.userData.noTranslucent) return;
     m.transparent = on;
-    m.opacity = on ? 0.22 : 1;
+    m.opacity = on ? 0.3 : 1;
     m.depthWrite = !on;
+    if (m.side !== THREE.BackSide) m.side = on ? THREE.FrontSide : THREE.DoubleSide; // une seule couche par paroi
     m.needsUpdate = true;
   });
+  heart.root.traverse((o) => { if (o.userData.cap) o.visible = !on; });
+  outlines.forEach((o) => { o.visible = !on; });
+  renderer.toneMappingExposure = on ? 0.9 : 1.0;
+  canvasWrap.classList.toggle('is-flow', on);
 }
 
 /* ─────────── étiquettes ─────────── */
@@ -182,7 +245,7 @@ ORDRE.forEach((id, i) => {
   if (!entry || !entry.anchor) return;
   const el = document.createElement('div');
   el.className = 'label';
-  el.innerHTML = `<span class="num">${i + 1}</span><span class="txt">${s.nom}</span>`;
+  el.innerHTML = `${numHtml(id)}<span class="txt">${s.nom}</span>`;
   el.addEventListener('pointerdown', (e) => { e.stopPropagation(); select(id); });
   const obj = new CSS2DObject(el);
   obj.position.copy(entry.anchor);
@@ -216,7 +279,7 @@ ORDRE.forEach((id, i) => {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = 'plabel';
-  el.innerHTML = `<span class="num" style="background:${STRUCTURES[id].couleur}">${i + 1}</span><span class="txt">${STRUCTURES[id].nom}</span>`;
+  el.innerHTML = `${numHtml(id)}<span class="txt">${STRUCTURES[id].nom}</span>`;
   el.addEventListener('click', () => select(id));
   planche.appendChild(el);
   plabels[id] = el;
@@ -224,7 +287,7 @@ ORDRE.forEach((id, i) => {
 const projP = new THREE.Vector3();
 function layoutPlanche() {
   const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-  const narrow = w < 700;
+  const narrow = w < 700; // téléphone : numéros seuls au bout des lignes, la clé est dans le tiroir « Structures »
   const items = [];
   for (const id in labels) {
     const L = labels[id];
@@ -247,10 +310,12 @@ function layoutPlanche() {
       el.style.display = '';
       el.style.top = `${ys[k]}px`;
       el.classList.toggle('right', side === 1);
+      el.classList.toggle('numonly', narrow);
       el.classList.toggle('hover', state.hovered === it.id);
       const ex = side === 0 ? 16 + el.offsetWidth : w - 16 - el.offsetWidth;
-      const kx = side === 0 ? ex + 10 : ex - 10;
-      svg += `<polyline points="${ex},${ys[k]} ${kx},${ys[k]} ${it.sx},${it.sy}"/><circle cx="${it.sx}" cy="${it.sy}" r="2.6"/>`;
+      const kx = side === 0 ? ex + 14 : ex - 14;
+      const pts = `${ex},${ys[k]} ${kx},${ys[k]} ${it.sx},${it.sy}`;
+      svg += `<polyline class="halo" points="${pts}"/><polyline class="line" points="${pts}"/><circle cx="${it.sx}" cy="${it.sy}" r="2.4"/>`;
     });
   });
   leaders.innerHTML = svg;
@@ -283,7 +348,11 @@ function select(id) {
   highlight(id);
   renderFiche(id);
   refreshLabels();
-  document.querySelectorAll('.struct-btn').forEach((b) => b.classList.toggle('active', b.dataset.id === id));
+  document.querySelectorAll('.struct-btn').forEach((b) => {
+    const on = b.dataset.id === id;
+    b.classList.toggle('active', on);
+    if (on) b.closest('details').open = true; // pas de défilement : la fiche doit rester lisible en haut du panneau
+  });
   if (id && STRUCTURES[id].coupe && !state.coupe) toggle('coupe', true);
   if (window.innerWidth < 900) document.getElementById('panel').classList.add('open');
 }
@@ -335,9 +404,10 @@ const VUES = {
 };
 let camAnim = null;
 // Distance de cadrage : le modèle fait ≈ 22 cm de haut (de l'aorte descendante aux branches de la crosse).
-function viewDistance() { return 38 * Math.max(1, 1.2 / camera.aspect); }
+function viewDistance() { return 38 * Math.max(1, 1.2 / camera.aspect) * (state.etiquettes ? 1.2 : 1); } // recul en mode planche : place pour les colonnes
 function goView(name, instant = false) {
   const v = VUES[name];
+  state.vue = name;
   const to = CENTER.clone().add(new THREE.Vector3(...v.dir).normalize().multiplyScalar(viewDistance()));
   if (instant) { camera.position.copy(to); camAnim = null; }
   else camAnim = { from: camera.position.clone(), to, t: 0 };
@@ -351,7 +421,7 @@ function toggle(name, value) {
   if (name === 'coupe') { applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
   if (name === 'circulation') { setTranslucent(state.circulation); flowMesh.visible = state.circulation; }
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire'].forEach((id) => heart.registry[id].meshes.forEach((m) => { m.visible = state.coronaires; })); }
-  if (name === 'etiquettes') refreshLabels();
+  if (name === 'etiquettes') { refreshLabels(); goView(state.vue); }
 }
 
 function renderFiche(id) {
@@ -363,7 +433,7 @@ function renderFiche(id) {
   const s = STRUCTURES[id];
   const num = ORDRE.indexOf(id) + 1;
   box.innerHTML = `
-    <div class="fiche-head"><span class="num big" style="background:${s.couleur}">${num}</span><div><h2>${s.nom}</h2><div class="latin">${s.latin}</div></div></div>
+    <div class="fiche-head">${numHtml(id, true)}<div><h2>${s.nom}</h2><div class="latin">${s.latin}</div></div></div>
     <p class="resume">${s.resume}</p>
     ${s.details?.length ? `<h3>Pour aller plus loin</h3><ul>${s.details.map((d) => `<li>${d}</li>`).join('')}</ul>` : ''}
     ${s.chiffres?.length ? `<div class="chiffres">${s.chiffres.map((c) => `<span>${c}</span>`).join('')}</div>` : ''}
@@ -392,7 +462,7 @@ function buildPanel() {
       const s = STRUCTURES[id];
       const b = document.createElement('button');
       b.className = 'struct-btn'; b.dataset.id = id;
-      b.innerHTML = `<span class="num" style="background:${s.couleur}">${ORDRE.indexOf(id) + 1}</span>${s.nom}`;
+      b.innerHTML = `${numHtml(id)}${s.nom}`;
       b.addEventListener('click', () => select(id));
       ul.appendChild(b);
     });
@@ -405,12 +475,12 @@ function buildPanel() {
     setCutMode(b.dataset.cut);
     if (b.dataset.cut === 'horizontale') goView('superieure');
   }));
-  document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); updateCapPlanes(); });
+  document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); syncGhost(); updateCapPlanes(); });
   document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   renderFiche(null);
-  // états initiaux
-  ['battement', 'coronaires'].forEach((n) => { const b = document.querySelector(`[data-toggle="${n}"]`); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); });
+  // états initiaux (le battement est désactivé par défaut : le patient voit d'abord une planche)
+  ['coronaires'].forEach((n) => { const b = document.querySelector(`[data-toggle="${n}"]`); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); });
 }
 buildPanel();
 setCutMode('grand-axe'); // coupe par défaut : plan du grand axe, montre VD en croissant, VG, septum et oreillettes
@@ -447,6 +517,9 @@ function occludeLabels() {
     if (!L.obj.visible && !state.etiquettes) continue;
     if (state.selected === id || state.circulation) { L.occluded = false; L.el.style.visibility = ''; continue; }
     L.obj.getWorldPosition(occPos);
+    // étiquette flottante : à gauche du point si l'on est près du bord droit de la scène
+    const px = (occPos.clone().project(camera).x + 1) / 2 * canvasWrap.clientWidth;
+    L.el.classList.toggle('flip', px > canvasWrap.clientWidth - 200);
     occDir.copy(occPos).sub(camera.position);
     const dist = occDir.length();
     occRay.set(camera.position, occDir.normalize());
