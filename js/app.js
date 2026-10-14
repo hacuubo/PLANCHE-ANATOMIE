@@ -407,7 +407,7 @@ function toggle(name, value) {
   if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
   if (name === 'coupe') { applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
   if (name === 'circulation') { setTranslucent(state.circulation); flowMesh.visible = state.circulation; }
-  if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire'].forEach((id) => heart.registry[id].meshes.forEach((m) => { m.visible = state.coronaires; })); }
+  if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires; })); }
   if (name === 'etiquettes') { refreshLabels(); goView(state.vue); }
 }
 
@@ -521,6 +521,19 @@ function occludeLabels() {
   }
 }
 
+// Repère d'orientation : indique ce qui est à gauche et à droite de l'écran selon le point de vue
+// (patient vu de face : sa droite à gauche de l'écran ; de dos : l'inverse ; de profil : avant / arrière).
+const orientEl = document.querySelector('.orient');
+const camRight = new THREE.Vector3();
+let orientTxt = '';
+function updateOrientation() {
+  camRight.setFromMatrixColumn(camera.matrixWorld, 0); // direction « droite de l'écran » dans le repère du patient
+  let txt;
+  if (Math.abs(camRight.x) >= Math.abs(camRight.z)) txt = camRight.x > 0 ? '<b>D</b> ← patient → <b>G</b>' : '<b>G</b> ← patient → <b>D</b>';
+  else txt = camRight.z > 0 ? '<b>Arrière</b> ← patient → <b>Avant</b>' : '<b>Avant</b> ← patient → <b>Arrière</b>';
+  if (txt !== orientTxt) { orientEl.innerHTML = txt; orientTxt = txt; }
+}
+
 const clock = new THREE.Clock();
 const BPM = 68;
 let frame = 0;
@@ -546,6 +559,7 @@ function animate() {
   pivot.scale.setScalar(s);
   if (state.circulation) updateFlow(t);
   controls.update();
+  if ((frame & 7) === 0) updateOrientation();
   if ((frame++ & 3) === 0) occludeLabels();
   if (state.etiquettes && (frame & 1) === 0) layoutPlanche();
   renderer.render(scene, camera);

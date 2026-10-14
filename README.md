@@ -47,7 +47,13 @@ node tools/build-heart-mesh.mjs
 L'outil (Node, sans dépendance, ≈ 30 s) extrait la surface par « surface nets », cuit couleurs,
 tissus et occlusion ambiante, plaque les coronaires sur la surface et écrit `assets/heart.bin`
 (≈ 5 Mo : maillage visuel d'environ 114 000 sommets et maillage simplifié pour le clic).
-Incrémenter ensuite `VERSION` dans `sw.js` pour que les applications installées se mettent à jour.
+Vérifier ensuite l'intérieur (épaisseur des parois, septum, faisceau de His dans le septum, piliers dans leur cavité) :
+
+```bash
+node tools/check-walls.mjs
+```
+
+Incrémenter enfin `VERSION` dans `sw.js` pour que les applications installées se mettent à jour.
 
 ## Organisation
 
@@ -60,6 +66,7 @@ Incrémenter ensuite `VERSION` dans `sw.js` pour que les applications installée
 | `js/heart.js` | Chargement de l'enveloppe, matériau « tissu » (shader), coronaires, structures internes, trajets du sang |
 | `assets/heart.bin` | Maillage généré (ne pas modifier à la main) |
 | `tools/build-heart-mesh.mjs` | Génère `assets/heart.bin` (`node tools/build-heart-mesh.mjs`) |
+| `tools/check-walls.mjs` | Contrôle anatomique de l'intérieur : parois, septum, conduction, piliers |
 | `js/app.js` | Scène, coupe (clipping + capuchons stencil), circulation, étiquettes, interface |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |

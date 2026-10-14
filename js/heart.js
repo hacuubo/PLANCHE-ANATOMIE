@@ -21,7 +21,7 @@ export const COL = {
   valve: 0xf1e4c6,           // feuillets crème nacrés
   cordage: 0xfbf6ec,
   conduction: 0xf3c23b,
-  coronaire: 0xc96c70,       // fines artères en surface : lignes rose-rouge
+  coronaire: 0xc25e60,       // fines artères en surface : lignes rose-rouge
   veineCard: 0xa194b6,       // veines du cœur : lignes mauves
   lumenArtere: 0xb0585b, lumenVeine: 0x857a9c,
 };
@@ -44,6 +44,7 @@ uniform float uHi;
 uniform float uBump;
 uniform float uSSS;
 uniform float uRim;
+uniform float uFocus;
 float hash13(vec3 p3) { p3 = fract(p3 * 0.1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec3 p) {
   vec3 i = floor(p), f = fract(p); vec3 u = f * f * (3.0 - 2.0 * f);
@@ -108,7 +109,8 @@ function patchShader(sh) {
       normal = perturbN(-vViewPosition, normal, vec2(dFdx(dH), dFdy(dH)) * uBump, faceDirection);`)
     .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       roughnessFactor = clamp(roughnessFactor * mix(1.0, 1.25, vTis.x) * mix(1.0, 0.85, vTis.y) * (1.12 - 0.24 * dTint), 0.08, 1.0);`)
-    .replace('#include <aomap_fragment>', `{
+    .replace('#include <aomap_fragment>', `float hlF = max(uHi, 1.0 - step(0.5, abs(vSid - uSel)));
+    {
       float ao = vTis.w;
       reflectedLight.indirectDiffuse *= ao;
       reflectedLight.indirectSpecular *= mix(0.3, 1.0, ao);
@@ -125,14 +127,16 @@ function patchShader(sh) {
       #endif
       float fres = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
       totalEmissiveRadiance += (diffuseColor.rgb * sssTint + vec3(0.25 * vTis.y)) * fres * uRim * ao;
-      float hl = max(uHi, 1.0 - step(0.5, abs(vSid - uSel)));
-      // surbrillance : voile doré + liseré lumineux (lisible sur le muscle rose comme sur les vaisseaux ivoire)
-      vec3 hlCol = vec3(1.0, 0.68, 0.22);
-      reflectedLight.directDiffuse = mix(reflectedLight.directDiffuse, reflectedLight.directDiffuse * hlCol * 1.15, hl * 0.65);
-      reflectedLight.indirectDiffuse = mix(reflectedLight.indirectDiffuse, reflectedLight.indirectDiffuse * hlCol * 1.15, hl * 0.65);
-      totalEmissiveRadiance += hl * (hlCol * 0.06 + pow(fres, 0.7) * hlCol * 0.75);
+      // sélection : la structure garde sa couleur naturelle, un liseré clair et chaud la détache
+      totalEmissiveRadiance += hlF * (diffuseColor.rgb * 0.1 + pow(fres, 0.8) * vec3(1.0, 0.9, 0.72) * 0.9);
     }
-    #include <aomap_fragment>`);
+    #include <aomap_fragment>`)
+    .replace('#include <opaque_fragment>', `// mode focus : tout ce qui n'est pas sélectionné s'estompe vers un gris clair désaturé (procédé des animations médicales)
+    if (uFocus > 0.5 && hlF < 0.5) {
+      float lum = dot(outgoingLight, vec3(0.299, 0.587, 0.114));
+      outgoingLight = mix(outgoingLight, vec3(lum) * 0.55 + vec3(0.3, 0.31, 0.33), 0.6);
+    }
+    #include <opaque_fragment>`);
 }
 
 /* ─────────── utilitaires géométriques ─────────── */
@@ -217,6 +221,28 @@ function trabeculate(geo, amp = 0.1, freq = 2.2) {
   p.needsUpdate = true;
   geo.computeVertexNormals();
   return geo;
+}
+
+// Fusionne des géométries indexées (position, normale) en une seule.
+function mergeIndexed(geos) {
+  let nv = 0, ni = 0;
+  geos.forEach((g) => { nv += g.attributes.position.count; ni += g.index.count; });
+  const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), idx = new Uint32Array(ni);
+  let ov = 0, oi = 0;
+  for (const g of geos) {
+    pos.set(g.attributes.position.array, ov * 3);
+    nor.set(g.attributes.normal.array, ov * 3);
+    const src = g.index.array;
+    for (let i = 0; i < src.length; i++) idx[oi + i] = src[i] + ov;
+    ov += g.attributes.position.count; oi += src.length;
+    g.dispose();
+  }
+  const m = new THREE.BufferGeometry();
+  m.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  m.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  m.setIndex(new THREE.BufferAttribute(idx, 1));
+  m.computeBoundingSphere();
+  return m;
 }
 
 /* ─────────── lancer de rayons accéléré (grille régulière) ─────────── */
@@ -355,6 +381,7 @@ export async function buildHeart() {
   const cutOnly = [];         // objets visibles seulement en coupe
   const flowPaths = [];       // { points:[Vector3], color, speed }
   const selUniform = { value: -1 };
+  const focusUniform = { value: 0 }; // partagé par tous les tissus : estompe ce qui n'est pas sélectionné
 
   const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, bump = 0.35, sss = 0.42, rim = 0.32, flowOpacity, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
@@ -364,7 +391,7 @@ export async function buildHeart() {
     if (envelope) m.defines = { ...m.defines, ENVELOPPE: '' };
     const uniforms = {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
-      uBump: { value: bump }, uSSS: { value: sss }, uRim: { value: rim },
+      uBump: { value: bump }, uSSS: { value: sss }, uRim: { value: rim }, uFocus: focusUniform,
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
     m.customProgramCacheKey = () => (envelope ? 'tissu-enveloppe' : 'tissu');
@@ -383,7 +410,7 @@ export async function buildHeart() {
     cordage: () => { const m = tissue(COL.cordage, { tis: [0, 1, 0, 1], roughness: 0.4, bump: 0.05 }); m.userData.noTranslucent = true; return m; },
     papillaire: () => tissue(COL.papillaire, { roughness: 0.5, bump: 0.3 }),
     conduction: () => tissue(COL.conduction, { tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
-    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.35, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
+    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.1, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
     coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.35, bump: 0.08, sss: 0.3, flowOpacity: 0.14 }),
   };
   const matFor = (id, preset) => {
@@ -429,7 +456,7 @@ export async function buildHeart() {
       reg(id).anchor = anchor;
     }
   }
-  reg('septum-interventriculaire').anchor = L2W(new THREE.Vector3(-0.35, -3.0, 0.5));
+  reg('septum-interventriculaire').anchor = L2W(new THREE.Vector3(-1.1, -2.6, 0.94));
 
   // Lumière des vaisseaux : solides invisibles qui colorent la coupe du sang (groupe stencil « artere » / « veine »)
   const lumenMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
@@ -441,17 +468,24 @@ export async function buildHeart() {
     solids.push({ mesh: m, hole: false, cap: type });
   });
 
+  // Graisse des sillons : solides invisibles qui colorent la coupe en crème (groupe stencil « fat »)
+  S.GRAISSE.forEach(({ pts, r }) => {
+    const m = new THREE.Mesh(tubeGeometry(pts.map(v3), r, 64, 16), lumenMat);
+    m.renderOrder = -2;
+    local.add(m);
+    solids.push({ mesh: m, hole: false, cap: 'fat' });
+  });
+
   /* ── Cavités (paroi interne, visibles en coupe ; « trous » pour les surfaces de coupe) ── */
-  const LV_C = new THREE.Vector3(1.0, -3.0, -0.6);
-  const lvCav = new THREE.Mesh(trabeculate(ellipsoid(2.3, 3.2, 2.1, 64), 0.07, 2.0), matFor('ventricule-gauche', 'endo'));
-  lvCav.position.copy(LV_C);
+  const { VG, VD, OD, OG } = S.CAVITES;
+  const lvCav = new THREE.Mesh(trabeculate(ellipsoid(...VG.rayons, 64), 0.07, 2.0), matFor('ventricule-gauche', 'endo'));
+  lvCav.position.copy(v3(VG.centre));
   lvCav.userData.id = 'ventricule-gauche';
   local.add(lvCav);
   solids.push({ mesh: lvCav, hole: true, cap: 'myo' });
   cutOnly.push(lvCav);
-  const RV_P = new THREE.Vector3(LV_C.x - 0.75, -2.3, LV_C.z + 0.3);
-  const rvCav = new THREE.Mesh(trabeculate(bentEllipsoid(3.6, 3.0, 1.0, 2.95, THREE.MathUtils.degToRad(-45), 64), 0.09, 2.4), matFor('ventricule-droit', 'endo'));
-  rvCav.position.copy(RV_P);
+  const rvCav = new THREE.Mesh(trabeculate(bentEllipsoid(VD.ax, VD.ay, VD.az, VD.R, VD.phiC, 64), 0.09, 2.4), matFor('ventricule-droit', 'endo'));
+  rvCav.position.copy(v3(VD.pos));
   rvCav.userData.id = 'ventricule-droit';
   local.add(rvCav);
   solids.push({ mesh: rvCav, hole: true, cap: 'myo' });
@@ -464,15 +498,15 @@ export async function buildHeart() {
     solids.push({ mesh: m, hole: true, cap: 'myo' });
     cutOnly.push(m);
   };
-  outflow('ventricule-gauche', [new THREE.Vector3(0.9, -0.6, -0.3), new THREE.Vector3(0.3, 0.3, 0.15), new THREE.Vector3(-0.25, 1.1, 0.55)], 0.9);
-  outflow('ventricule-droit', [new THREE.Vector3(-0.4, -1.0, 1.9), new THREE.Vector3(0.6, 0.3, 2.2), new THREE.Vector3(1.45, 1.5, 2.15)], 1.0);
-  const raCav = new THREE.Mesh(ellipsoid(1.95, 2.2, 1.85), matFor('oreillette-droite', 'endoAtr'));
+  outflow('ventricule-gauche', S.CAVITES.chasseVG.pts.map(v3), S.CAVITES.chasseVG.r);
+  outflow('ventricule-droit', S.CAVITES.infundibulum.pts.map(v3), S.CAVITES.infundibulum.r);
+  const raCav = new THREE.Mesh(ellipsoid(...OD.rayons), matFor('oreillette-droite', 'endoAtr'));
   raCav.position.copy(v3(S.RA_C));
   raCav.userData.id = 'oreillette-droite';
   local.add(raCav);
   solids.push({ mesh: raCav, hole: true, cap: 'myo' });
   cutOnly.push(raCav);
-  const laCav = new THREE.Mesh(ellipsoid(2.42, 1.82, 1.62), matFor('oreillette-gauche', 'endoAtr'));
+  const laCav = new THREE.Mesh(ellipsoid(...OG.rayons), matFor('oreillette-gauche', 'endoAtr'));
   laCav.position.copy(v3(S.LA_C));
   laCav.userData.id = 'oreillette-gauche';
   local.add(laCav);
@@ -480,15 +514,24 @@ export async function buildHeart() {
   cutOnly.push(laCav);
 
   /* ── Coronaires et veines du cœur (tubes posés dans les sillons, à fleur de muscle) ── */
+  const coroGroups = new Map();
   env.coronaires.forEach((c) => {
-    const pts = c.pts.map(v3);
     const rr = S.radiusAlong(c.r);
     const small = rr(0) < 0.1;
-    const g = tubeGeometry(pts, rr, small ? 20 : 48, small ? 8 : 14);
-    const mesh = new THREE.Mesh(g, matFor(c.id, c.kind === 'veine' ? 'coroV' : 'coroA'));
+    const g = tubeGeometry(c.pts.map(v3), rr, small ? 20 : 48, small ? 8 : 14);
+    const key = `${c.id}|${c.kind}`;
+    if (!coroGroups.has(key)) coroGroups.set(key, { id: c.id, kind: c.kind, geos: [], anchor: null });
+    const G = coroGroups.get(key);
+    G.geos.push(g);
+    if (c.anchorT !== undefined && !G.anchor) G.anchor = L2W(g.userData.curve.getPointAt(c.anchorT));
+  });
+  coroGroups.forEach((G) => {
+    const geo = mergeIndexed(G.geos);
+    const mesh = new THREE.Mesh(geo, matFor(G.id, G.kind === 'veine' ? 'coroV' : 'coroA'));
     mesh.castShadow = true; mesh.receiveShadow = true;
-    const anchor = c.anchorT !== undefined ? L2W(g.userData.curve.getPointAt(c.anchorT)) : null;
-    register(c.id, mesh, anchor, local);
+    mesh.userData.grid = buildRayGrid(geo, 0.4);
+    mesh.raycast = gridRaycast;
+    register(G.id, mesh, G.anchor, local);
   });
 
   /* ── Valves et appareil sous-valvulaire (visibles en coupe) ── */
@@ -538,17 +581,17 @@ export async function buildHeart() {
   slValve('valve-aortique', new THREE.Vector3(-0.25, 1.1, 0.55), 1.05, [Math.PI / 2 + 0.3, 0, 0]);
   slValve('valve-pulmonaire', new THREE.Vector3(1.45, 1.5, 2.15), 1.05, [Math.PI / 2 + 0.6, 0.2, 0]);
   const papLV = [
-    { base: new THREE.Vector3(2.56, -3.9, 0.43), tip: new THREE.Vector3(1.5, -1.3, -0.7), ang: 0.9 },
-    { base: new THREE.Vector3(0.83, -3.9, -2.4), tip: new THREE.Vector3(0.7, -1.3, -1.3), ang: 3.3 },
+    { base: new THREE.Vector3(2.4, -3.77, 0.35), tip: new THREE.Vector3(1.5, -1.3, -0.7), ang: 0.9 },
+    { base: new THREE.Vector3(0.83, -3.6, -1.97), tip: new THREE.Vector3(0.7, -1.3, -1.3), ang: 3.3 },
   ];
   papLV.forEach((p) => { addCut(coneBetween(p.base, p.tip, 0.42, matFor('ventricule-gauche', 'papillaire')), 'ventricule-gauche', false); chordae('valve-mitrale', p.tip, ML, 0.7, -0.95, p.ang); });
   const papRV = [
-    { base: new THREE.Vector3(-1.47, -3.4, 2.69), tip: new THREE.Vector3(-1.7, -1.2, 1.45), ang: 0.6, r: 0.36 },
-    { base: new THREE.Vector3(-3.2, -3.2, -0.3), tip: new THREE.Vector3(-2.6, -1.2, 0.75), ang: -1.9, r: 0.34 },
-    { base: new THREE.Vector3(-1.44, -2.6, 1.11), tip: new THREE.Vector3(-1.8, -1.1, 0.95), ang: 2.6, r: 0.22 },
+    { base: new THREE.Vector3(-1.78, -3.16, 2.4), tip: new THREE.Vector3(-1.7, -1.2, 1.45), ang: 0.6, r: 0.36 },
+    { base: new THREE.Vector3(-3.26, -3.42, -0.54), tip: new THREE.Vector3(-2.6, -1.2, 0.75), ang: -1.9, r: 0.34 },
+    { base: new THREE.Vector3(-1.37, -2.6, 1.26), tip: new THREE.Vector3(-1.8, -1.1, 0.95), ang: 2.6, r: 0.22 },
   ];
   papRV.forEach((p) => { addCut(coneBetween(p.base, p.tip, p.r, matFor('ventricule-droit', 'papillaire')), 'ventricule-droit', false); chordae('valve-tricuspide', p.tip, TL, 0.8, -0.85, p.ang, 4); });
-  addCut(new THREE.Mesh(tubeGeometry([new THREE.Vector3(-1.1, -3.3, 1.0), new THREE.Vector3(-1.3, -3.5, 1.9), papRV[0].base], 0.17, 8, 10), matFor('ventricule-droit', 'papillaire')), 'ventricule-droit', false); // bande modératrice
+  addCut(new THREE.Mesh(tubeGeometry([new THREE.Vector3(-1.44, -3.2, 1.34), new THREE.Vector3(-1.6, -3.35, 1.9), papRV[0].base], 0.17, 8, 10), matFor('ventricule-droit', 'papillaire')), 'ventricule-droit', false); // bande modératrice
 
   /* ── Système de conduction (visible en coupe) ── */
   const node = (id, posL, r) => {
@@ -567,9 +610,9 @@ export async function buildHeart() {
     cutOnly.push(m);
     solids.push({ mesh: m, hole: false, cap: 'conduction' });
   };
-  hisTube([new THREE.Vector3(-0.9, 0.45, -0.25), new THREE.Vector3(-0.5, -0.3, 0.3), new THREE.Vector3(-0.35, -1.6, 0.55), new THREE.Vector3(-0.1, -3.2, 0.9), new THREE.Vector3(0.6, -5.0, 1.4)], (t) => 0.14 - 0.04 * t, 0.4);
-  hisTube([new THREE.Vector3(-0.4, -1.4, 0.4), new THREE.Vector3(-0.25, -2.6, 0.6), new THREE.Vector3(-0.12, -4.3, 0.5), new THREE.Vector3(0.4, -5.5, 0.1)], 0.09); // branche gauche
-  hisTube([new THREE.Vector3(-0.4, -1.4, 0.7), new THREE.Vector3(-1.0, -2.6, 1.4), new THREE.Vector3(-1.6, -3.8, 1.9)], 0.09); // branche droite
+  hisTube([new THREE.Vector3(-0.9, 0.45, -0.25), new THREE.Vector3(-1.0, -0.4, 0.3), new THREE.Vector3(-1.05, -1.4, 0.87), new THREE.Vector3(-1.1, -2.6, 0.94), new THREE.Vector3(-1.15, -3.8, 1.0)], (t) => 0.14 - 0.04 * t, 0.4);
+  hisTube([new THREE.Vector3(-1.05, -1.4, 0.87), new THREE.Vector3(-0.75, -1.6, 0.5), new THREE.Vector3(-0.84, -2.6, 0.62), new THREE.Vector3(-0.69, -3.8, 0.45)], 0.09); // branche gauche
+  hisTube([new THREE.Vector3(-1.05, -1.4, 0.87), new THREE.Vector3(-1.37, -2.6, 1.26), new THREE.Vector3(-1.44, -3.2, 1.34), new THREE.Vector3(-1.6, -3.35, 1.9)], 0.09); // branche droite (par la bande modératrice)
 
   /* ── Trajets du sang (mode circulation) ── */
   const W = (pts) => pts.map((p) => (p.isVector3 ? p : L2W(new THREE.Vector3(...p))));
@@ -596,8 +639,9 @@ export async function buildHeart() {
   const setHighlight = (id) => {
     selUniform.value = id ? env.ids.indexOf(id) : -1;
     tissueMats.forEach((m) => { m.userData.uniforms.uHi.value = 0; });
-    if (!id || !registry[id]) return;
-    registry[id].meshes.forEach((mesh) => { const u = mesh.material?.userData?.uniforms; if (u) u.uHi.value = 1; });
+    let any = selUniform.value >= 0;
+    (id && registry[id] ? registry[id].meshes : []).forEach((mesh) => { const u = mesh.material?.userData?.uniforms; if (u) { u.uHi.value = 1; any = true; } });
+    focusUniform.value = any ? 1 : 0; // pas de mise en retrait si rien n'est éclairé (septum, par exemple)
   };
 
   cutOnly.forEach((m) => { m.visible = false; });

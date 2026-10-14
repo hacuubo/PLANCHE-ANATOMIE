@@ -86,3 +86,29 @@ L'auricule doit déborder à gauche du TP et recouvrir l'origine de la circonfle
 | S2, S3, S6 | Muscle plus rosé (0xe2a09e, diffusion 1,0/0,55/0,60) ; contre-jours 2,1 et 1,4 ; limites VD/VG qui suivent les sillons. | — |
 
 Restent ouverts : I2 (fiches distinctes pour les veines du cœur), I3 (mention D/G selon la vue), S1 (réseau coronaire plus fin), S4 (surbrillance « mode focus »), S5 (silhouette plus conique), S7.
+
+## 7. Points restants traités (14 octobre 2026, seconde passe)
+
+| Point | Correction | Vérification |
+|---|---|---|
+| I2 | Fiches et identifiants distincts « Grande veine du cœur » et « Veine cardiaque moyenne » (FR et EN), regroupés avec le sinus coronaire dans la planche. | Clic et étiquette n° 28 (v5-02, v5-04). |
+| I3 | Repère d'orientation calculé depuis la caméra : « D ← → G » de face, « G ← → D » de dos, « Avant ← → Arrière » de profil. | Contrôlé sur les vues antérieure, postérieure et gauche. |
+| S1 | Vingt-neuf petites branches supplémentaires (r 0,035–0,05), enfoncées à 35 % du diamètre ; troncs à 50 % ; artères 0xc25e60, vernis 0,1. | v5-01. |
+| S4 | Mode focus : la structure choisie garde sa couleur avec un liseré clair, le reste s'estompe en gris clair désaturé. | v5-02, v5-04. |
+| S5 | `PROFIL` et `Z_SCALE` 0,8 proposés. | v5-01. |
+| S6 | Limites VD/VG qui suivent les sillons (déjà appliqué en première passe). | — |
+| S7 | Branche rétroventriculaire gauche de la CD au-delà de la croix. | — |
+| B1.3 | Couleur crème de la graisse dans les surfaces de coupe (solides « fat »). | v5-03. |
+
+**Effet de bord traité.** La silhouette plus conique amincissait les parois. Les cavités ont donc été réajustées par recherche sous contraintes, et le nouvel outil `tools/check-walls.mjs` le vérifie :
+
+| Paroi | Épaisseur |
+|---|---|
+| VG | 0,75 à 1,35 cm (médiane) |
+| VD paroi libre | 0,32 à 0,66 cm |
+| Septum | ≥ 0,88 cm |
+| Oreillettes | 0,23 à 0,31 cm |
+
+L'outil a aussi révélé un défaut antérieur. Le faisceau de His et sa branche gauche couraient dans la cavité du VG, et non dans le septum. Ils sont désormais au milieu du septum et, pour la branche gauche, sous l'endocarde septal du VG. Les bases des piliers et la bande modératrice sont ramenées sur la paroi.
+
+**Synchronisation anglaise.** Les corrections de texte de la relecture anatomique du 11/10 n'avaient pas été reportées dans `js/data.en.js`. Elles l'ont été, ainsi que les couleurs : pressions de l'OG, auricule gauche, sténose aortique, tronc commun, codominance, nœud AV et faisceau de His.

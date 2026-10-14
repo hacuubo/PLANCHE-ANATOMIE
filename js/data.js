@@ -227,6 +227,23 @@ export const STRUCTURES = {
       "Chez environ 10 % des personnes, elle donne l'artère interventriculaire postérieure (« dominance gauche ») ; chez d'autres, les deux coronaires se partagent la face inférieure (« codominance »).",
     ],
   },
+  'grande-veine-cardiaque': {
+    nom: 'Grande veine du cœur', latin: 'Vena cardiaca magna', groupe: 'coronaires', couleur: '#a194b6',
+    resume: "Principale veine de la face avant du cœur. Elle naît près de la pointe, remonte le long de l'artère interventriculaire antérieure, puis contourne le bord gauche du cœur avec l'artère circonflexe pour se jeter dans le sinus coronaire.",
+    details: [
+      "Elle draine le sang veineux de la plus grande partie du ventricule gauche et de la partie antérieure de la cloison.",
+      "En chemin, elle reçoit la veine marginale gauche, qui descend le long du bord gauche du cœur.",
+      "Elle se prolonge par le sinus coronaire, en arrière du cœur ; une petite valvule marque souvent leur jonction.",
+    ],
+  },
+  'veine-cardiaque-moyenne': {
+    nom: 'Veine cardiaque moyenne', latin: 'Vena cardiaca media', groupe: 'coronaires', couleur: '#a194b6',
+    resume: "Veine de la face inférieure du cœur. Elle remonte de la pointe dans le sillon interventriculaire postérieur, à côté de l'artère interventriculaire postérieure, et se jette dans le sinus coronaire près de son abouchement.",
+    details: [
+      "Elle draine la face inférieure des deux ventricules et la partie postérieure de la cloison.",
+      "Elle accompagne l'artère interventriculaire postérieure, le plus souvent une branche de la coronaire droite.",
+    ],
+  },
   'sinus-coronaire': {
     nom: 'Sinus coronaire', latin: 'Sinus coronarius', groupe: 'coronaires', couleur: '#3e519e',
     resume: "Grosse veine de la face arrière du cœur qui collecte le sang veineux du muscle cardiaque et le déverse dans l'oreillette droite.",
@@ -272,7 +289,7 @@ export const ORDRE = [
   'aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche',
   'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'ligament-arteriel',
   'veine-cave-superieure', 'veine-cave-inferieure', 'veines-pulmonaires',
-  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'sillons',
+  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'sinus-coronaire', 'sillons',
   'noeud-sinusal', 'noeud-av', 'faisceau-his',
 ];
 

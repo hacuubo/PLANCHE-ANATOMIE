@@ -26,7 +26,7 @@ export const L = vlen(vsub(APEX, BASE));
 export const AXIS = vnorm(vsub(APEX, BASE));
 export const U = vnorm(vsub([0, 0, 1], vscale(AXIS, AXIS[2])));  // « avant » local
 export const V = vnorm(vcross(U, AXIS));                           // « gauche » local
-export const Z_SCALE = 0.86; // aplatissement antéro-postérieur de la masse ventriculaire
+export const Z_SCALE = 0.8; // aplatissement antéro-postérieur de la masse ventriculaire
 // Base du repère local : x = V, y = −AXIS, z = U (orthonormée directe), origine BASE.
 export function l2w(p) {
   return [
@@ -38,7 +38,7 @@ export function l2w(p) {
 export function w2l(p) { const d = vsub(p, BASE); return [vdot(d, V), -vdot(d, AXIS), vdot(d, U)]; }
 
 // Profil de rayon de la masse ventriculaire (t = 0 base → 1 apex), interpolation Catmull-Rom.
-const PROFIL = [3.75, 4.15, 4.35, 4.3, 4.15, 3.85, 3.4, 2.8, 2.05, 1.15, 0.0];
+const PROFIL = [3.6, 4.0, 4.15, 4.1, 3.9, 3.6, 3.15, 2.6, 1.95, 1.1, 0.0];
 export function rOf(t) {
   t = clamp(t, 0, 1);
   const n = PROFIL.length - 1;
@@ -274,6 +274,17 @@ export const LA_C = [0.55, 2.05, -2.7];
 export const PT_ROOT_L = [1.45, 1.9, 2.15];     // racine du tronc pulmonaire, au sommet du cône artériel
 export const AO_ROOT_L = [-0.25, 1.75, 0.55];
 export const RA_W = l2w(RA_C), LA_W = l2w(LA_C);
+// Cavités (repère local), ajustées à l'enveloppe par tools/check-walls.mjs : paroi VG 0,8–1,35 cm, paroi libre du VD
+// 0,3–0,7 cm, septum 0,9–1,4 cm. VD = ellipsoïde plié en croissant autour du VG (voir bentEllipsoid dans heart.js).
+export const CAVITES = {
+  VG: { centre: [0.85, -2.53, -0.39], rayons: [2.0, 2.68, 1.72] },
+  VD: { pos: [-0.02, -2.02, -0.35], ax: 2.75, ay: 2.18, az: 0.79, R: 2.81, phiC: -1.15 },
+  OD: { centre: RA_C, rayons: [1.95, 2.2, 1.85] },
+  OG: { centre: LA_C, rayons: [2.42, 1.82, 1.62] },
+  // chambres de chasse : VG → valve aortique, infundibulum du VD → valve pulmonaire
+  chasseVG: { pts: [[0.5, -1.0, -0.1], [0.0, 0.0, 0.35], [-0.25, 1.1, 0.55]], r: 0.6 },
+  infundibulum: { pts: [[-0.9, -1.4, 1.5], [0.6, 0.2, 1.7], [1.45, 1.5, 2.15]], r: 0.6 },
+};
 export const AO_ROOT = l2w(AO_ROOT_L), PT_ROOT = l2w(PT_ROOT_L);
 export const BIF = [1.6, 7.5, -1.4];             // bifurcation du tronc pulmonaire
 export const PT_MID = [1.3, 6.0, 0.7];
@@ -322,7 +333,8 @@ addCore(chain({ id: 'auricule-gauche', tissue: 'oreillette', color: TEINTES.orei
 const coroD = [], coroG = [];
 for (let th = -20; th >= -180; th -= 12) coroD.push(surf(0.01, th, -0.12));
 for (let th = 35; th <= 180; th += 12) coroG.push(surf(0.01, th, -0.12));
-const fat = (pts, r, anchor) => addCore(chain({ id: 'sillons', tissue: 'graisse', color: TEINTES.graisse, local: true, hollow: false, points: pts, r, billow: 0.04, billowFreq: 2.6, anchor }), 0.45);
+export const GRAISSE = []; // [{ pts (local), r }] : solides de coupe « graisse »
+const fat = (pts, r, anchor) => GRAISSE.push({ pts, r: typeof r === 'function' ? r : () => r }) && addCore(chain({ id: 'sillons', tissue: 'graisse', color: TEINTES.graisse, local: true, hollow: false, points: pts, r, billow: 0.04, billowFreq: 2.6, anchor }), 0.45);
 fat(coroD, 0.42, l2w(curvePoint(coroD, 0.3)));
 fat(coroG, 0.4);
 fat([[0.0, 24], [0.2, 22], [0.4, 20], [0.6, 18], [0.8, 15], [0.95, 12]].map(([t, th]) => surf(t, th, -0.18)), (t) => 0.38 - 0.16 * t);
@@ -450,7 +462,7 @@ export function attributes(x, y, z) {
 // Les artères sont enchâssées dans la graisse des sillons ; les petites branches courent à fleur de muscle.
 const AO_L = AO_ROOT_L;
 const taper = (r0, r1) => (t) => r0 + (r1 - r0) * t;
-const twigs = (id, path, side, list, r0 = 0.065) => list.map(([t, th], k) => ({
+const twigs = (id, path, side, list, r0 = 0.05) => list.map(([t, th], k) => ({
   id, kind: 'artere', r: taper(r0, 0.022), pts: [surf(t, th, 0.02), surf(t + 0.05, th + side * 7, 0.02), surf(t + 0.11, th + side * (11 + (k % 3) * 2), 0.0), surf(t + 0.17, th + side * (13 + (k % 2) * 4), -0.04)],
 }));
 const GUIDES = [
@@ -472,9 +484,18 @@ const GUIDES = [
   ...twigs('circonflexe', null, -1, [[0.02, 115], [0.02, 135]], 0.07),
   ...twigs('coronaire-droite', null, 1, [[0.02, -55], [0.02, -72], [0.3, -97]], 0.07),
   ...twigs('coronaire-droite', null, -1, [[0.02, -112], [0.02, -135], [0.35, -165]], 0.06),
+  ...twigs('iva', null, 1, [[0.1, 26], [0.22, 23.5], [0.4, 20.5], [0.58, 18.5], [0.76, 16], [0.88, 14]], 0.04),
+  ...twigs('iva', null, -1, [[0.12, 24], [0.3, 21], [0.5, 18.5], [0.7, 16.5], [0.86, 14]], 0.035),
+  ...twigs('iva', null, 1, [[0.3, 36], [0.46, 50], [0.62, 60], [0.66, 44]], 0.04),
+  ...twigs('circonflexe', null, 1, [[0.15, 93], [0.38, 99], [0.6, 103]], 0.04),
+  ...twigs('circonflexe', null, -1, [[0.02, 82], [0.02, 105], [0.02, 140]], 0.045),
+  ...twigs('coronaire-droite', null, 1, [[0.02, -45], [0.02, -100], [0.15, -92], [0.5, -101]], 0.045),
+  ...twigs('coronaire-droite', null, -1, [[0.02, -125], [0.02, -145], [0.2, -167], [0.5, -163]], 0.04),
+  // branche rétroventriculaire gauche de la CD au-delà de la croix (dominance droite)
+  { id: 'coronaire-droite', kind: 'artere', r: taper(0.12, 0.04), pts: [surf(0.0, -170, 0.42), surf(-0.01, 178, 0.42), surf(-0.01, 168, 0.4), surf(0.03, 158, 0.3), surf(0.18, 152, 0.1), surf(0.38, 148, 0.05), surf(0.5, 146, 0.0)] },
   // veines : grande veine du cœur (le long de l'IVA puis du sillon AV gauche), veine moyenne (sillon IV postérieur)
-  { id: 'sinus-coronaire', kind: 'veine', r: taper(0.09, 0.2), pts: [surf(0.85, 19, 0.04), surf(0.6, 22.5, 0.1), surf(0.35, 26, 0.14), surf(0.12, 31, 0.2), surf(0.02, 44, 0.32), surf(-0.02, 70, 0.4), surf(-0.03, 100, 0.42), surf(-0.04, 124, 0.44)] },
-  { id: 'sinus-coronaire', kind: 'veine', r: taper(0.08, 0.17), pts: [surf(0.88, -155, 0.03), surf(0.6, -158, 0.1), surf(0.3, -160.5, 0.14), surf(0.06, -163, 0.3), surf(-0.04, -164, 0.5)] },
+  { id: 'grande-veine-cardiaque', kind: 'veine', r: taper(0.09, 0.2), anchorT: 0.15, pts: [surf(0.85, 19, 0.04), surf(0.6, 22.5, 0.1), surf(0.35, 26, 0.14), surf(0.12, 31, 0.2), surf(0.02, 44, 0.32), surf(-0.02, 70, 0.4), surf(-0.03, 100, 0.42), surf(-0.04, 124, 0.44)] },
+  { id: 'veine-cardiaque-moyenne', kind: 'veine', r: taper(0.08, 0.17), anchorT: 0.4, pts: [surf(0.88, -155, 0.03), surf(0.6, -158, 0.1), surf(0.3, -160.5, 0.14), surf(0.06, -163, 0.3), surf(-0.04, -164, 0.5)] },
 ];
 // Sinus coronaire : face postérieure, dans le sillon AV, jusqu'à son ostium au plancher de l'OD
 const scPts = [];
@@ -509,7 +530,7 @@ export function coronaryPaths() {
     const S = sampleCurve(c.pts, 0.45);
     const pts = [], r = [];
     for (const { p, t } of S) {
-      let off = rr(t) * 0.55;
+      let off = rr(t) * (rr(0) >= 0.15 ? 0.5 : 0.35); // troncs bien lisibles, petites branches à fleur de muscle
       if (c.sink !== false && t > 0.8) off -= ((t - 0.8) / 0.2) * rr(t) * 1.5;
       pts.push(snap(p, off).map((v) => Math.round(v * 1000) / 1000));
       r.push(Math.round(rr(t) * 1000) / 1000);
