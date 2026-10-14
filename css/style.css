@@ -11,8 +11,12 @@
   /* six jetons sémantiques partagés avec js/heart.js (COL) et js/data.js (couleur) */
   --sang-riche: #c43a33;
   --sang-pauvre: #3e519e;
-  --muscle: #b25048;
-  --graisse: #e8a846;
+  --muscle: #b4544f;
+  --graisse: #eed8a8;
+  --coronaire: #c96c70;
+  --veine-coeur: #a194b6;
+  --vaisseau-riche: #f3dac6;
+  --vaisseau-pauvre: #d5daf0;
   --valve: #e3e8ea;
   --conduction: #f3c23b;
   --radius: 14px;
@@ -57,7 +61,13 @@ button { font: inherit; color: inherit; }
 
 /* ── disposition ── */
 .layout { position: relative; z-index: 1; height: calc(100% - var(--topbar)); display: grid; grid-template-columns: 1fr clamp(300px, 32vw, 380px); }
-.scene { position: relative; overflow: hidden; cursor: grab; }
+/* fond de studio : dégradé gris-bleu très clair, comme en animation médicale (le modèle s'en détache par contre-jour) */
+.scene { position: relative; overflow: hidden; cursor: grab;
+  background: radial-gradient(75% 70% at 45% 42%, #fbfcfd 0%, #e2e8ef 45%, #c4ced9 100%); }
+.scene:not(.ready)::after {
+  content: "Chargement du modèle…"; position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 15px; color: var(--ink-2); letter-spacing: .02em;
+}
 .scene canvas { display: block; }
 .labels { position: absolute; inset: 0; }
 
@@ -102,18 +112,19 @@ button { font: inherit; color: inherit; }
 .orient b { font-weight: 700; }
 .only-cut, .only-flow { display: none; }
 .scene.is-cut .only-cut, .scene.is-flow .only-flow { display: inline; }
+.scene.is-flow .not-flow { display: none; }
 
 /* ── étiquettes 3D (survol / sélection) ── */
 .label {
   pointer-events: auto; cursor: pointer; white-space: nowrap;
   display: inline-flex; align-items: center; gap: 6px;
-  transform: translate(10px, -50%);
+  margin-left: 10px; /* l'ancrage (centre de CSS2DObject) est réglé dans app.js */
   font-size: 14px; color: var(--ink);
   background: rgba(255, 253, 249, .95); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 10px 2px 3px;
   box-shadow: 0 2px 6px rgba(0,0,0,.08);
 }
 .label::before { content: ""; position: absolute; left: -10px; top: 50%; width: 10px; height: 1px; background: var(--ink); }
-.label.flip { transform: translate(calc(-100% - 10px), -50%); }
+.label.flip { margin-left: -10px; }
 .label.flip::before { left: auto; right: -10px; }
 .label.selected { background: var(--ink); color: #fff; border-color: var(--ink); }
 .label.hover { border-color: var(--ink); }
