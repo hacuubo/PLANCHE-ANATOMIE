@@ -1,8 +1,8 @@
 // Service worker — mise en cache de l'enveloppe applicative et des modules three.js
-const VERSION = 'planche-coeur-v4';
+const VERSION = 'planche-coeur-v5';
 const THREE = 'https://cdn.jsdelivr.net/npm/three@0.169.0/';
 const SHELL = [
-  './', './index.html', './css/style.css', './js/app.js', './js/heart.js', './js/heart-shape.js', './js/data.js', './assets/heart.bin',
+  './', './index.html', './css/style.css', './js/app.js', './js/heart.js', './js/data.js', './assets/heart.bin',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
   THREE + 'build/three.module.js',
   THREE + 'examples/jsm/controls/OrbitControls.js',

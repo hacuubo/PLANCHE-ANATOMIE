@@ -6,25 +6,23 @@ des étiquettes numérotées avec lignes de rappel, et une fiche explicative par
 
 ## Fonctions
 
-- **Modèle 3D organique** (three.js), dans le style des animations médicales (type Nucleus) :
-  une enveloppe continue (masse ventriculaire, oreillettes et auricules, graisse des sillons,
-  aorte avec crosse et ses trois branches, tronc pulmonaire et artères pulmonaires, veines caves,
-  quatre veines pulmonaires, ligament artériel) raccordée en douceur et sectionnée « à vif »
-  aux extrémités des vaisseaux ; artères coronaires (coronaire droite, tronc commun, IVA,
-  circonflexe et leurs branches), grande veine du cœur, veine moyenne et sinus coronaire
-  posés sur la surface.
-- **Rendu « tissu vivant »** : fibres myocardiques et lobules de graisse en relief procédural,
-  film humide satiné, diffusion sous la surface (translucidité), liseré lumineux, occlusion
-  ambiante cuite dans le maillage, éclairage de studio sur fond clair.
-- **Coupe** (grand axe, frontale, horizontale, profondeur réglable) : cavités, septum,
-  anneaux valvulaires, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His.
-- **Circulation** : parois translucides et particules suivant le trajet du sang
-  (bleu = pauvre en oxygène, rouge = riche en oxygène).
+- **Modèle 3D issu de données anatomiques réelles** (BodyParts3D, voir plus bas) : cavités,
+  oreillettes et auricules, feuillets valvulaires avec leurs cordages, muscles papillaires,
+  arbre coronaire et veines du cœur, gros vaisseaux (aorte et crosse, tronc pulmonaire et artères
+  pulmonaires, veines caves, veines pulmonaires). Le myocarde ventriculaire, absent de
+  BodyParts3D, est reconstruit autour des cavités réelles, son épaisseur étant calée sur le
+  trajet réel des coronaires ; la graisse des sillons suit les troncs coronaires.
+- **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques et
+  lobules de graisse en relief procédural, film humide satiné, translucidité, liseré lumineux,
+  occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
+- **Coupe** (grand axe, frontale, horizontale, profondeur réglable) : cavités, septum, valves et
+  cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
+- **Circulation** : parois translucides et particules suivant le trajet du sang à travers les
+  cavités et les valves (bleu = pauvre en oxygène, rouge = riche en oxygène).
 - **Étiquettes** : planche numérotée en deux colonnes avec lignes de rappel ; les étiquettes
-  masquées par le modèle sont retirées automatiquement.
-- **Fiche** par structure : nom courant, nom anatomique, résumé pour le patient,
-  détails, repères chiffrés.
-- **Hors ligne** : service worker mettant en cache l'application et les modules three.js.
+  masquées par le modèle sont retirées automatiquement. Sélection en « mode focus ».
+- **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
+- **Hors ligne** : service worker mettant en cache l'application, le modèle et three.js.
 
 ## Lancer en local
 
@@ -35,25 +33,22 @@ npx --yes http-server . -p 8765 -c-1
 Puis ouvrir <http://localhost:8765/>. Fichiers statiques ; three.js est chargé depuis jsDelivr
 (version épinglée dans `index.html` et `sw.js`).
 
-### Régénérer le maillage du cœur
+### Régénérer le modèle
 
-L'enveloppe est décrite par une fonction de distance signée dans `js/heart-shape.js`
-(positions anatomiques, rayons, raccords, teintes). Après toute modification de ce fichier :
+`assets/heart.bin` est produit par `tools/build-heart-bp3d.mjs` (Node, sans dépendance) à partir
+des maillages BodyParts3D, qui ne sont pas versionnés dans ce dépôt :
 
-```bash
-node tools/build-heart-mesh.mjs
-```
-
-L'outil (Node, sans dépendance, ≈ 30 s) extrait la surface par « surface nets », cuit couleurs,
-tissus et occlusion ambiante, plaque les coronaires sur la surface et écrit `assets/heart.bin`
-(≈ 5 Mo : maillage visuel d'environ 114 000 sommets et maillage simplifié pour le clic).
-Vérifier ensuite l'intérieur (épaisseur des parois, septum, faisceau de His dans le septum, piliers dans leur cavité) :
+1. Télécharger `partof_BP3D_4.0_obj_99.zip` (62 Mo) depuis la
+   [page de téléchargement BodyParts3D](https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html)
+   et le décompresser hors du dépôt.
+2. Lancer la génération (≈ 15 à 20 min) :
 
 ```bash
-node tools/check-walls.mjs
+node tools/build-heart-bp3d.mjs <chemin>/partof_BP3D_4.0_obj_99
 ```
 
-Incrémenter enfin `VERSION` dans `sw.js` pour que les applications installées se mettent à jour.
+L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. Incrémenter ensuite
+`VERSION` dans `sw.js` pour que les applications installées se mettent à jour.
 
 ## Organisation
 
@@ -61,13 +56,12 @@ Incrémenter enfin `VERSION` dans `sw.js` pour que les applications installées 
 | --- | --- |
 | `index.html` | Page, barre d'outils, panneau |
 | `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, panneau mobile en tiroir) |
-| `js/data.js` | Contenu pédagogique : structures, textes, ordre de la planche |
-| `js/heart-shape.js` | Forme du cœur (fonction de distance), repère local, trajets des coronaires ; partagé avec l'outil de génération |
-| `js/heart.js` | Chargement de l'enveloppe, matériau « tissu » (shader), coronaires, structures internes, trajets du sang |
-| `assets/heart.bin` | Maillage généré (ne pas modifier à la main) |
-| `tools/build-heart-mesh.mjs` | Génère `assets/heart.bin` (`node tools/build-heart-mesh.mjs`) |
-| `tools/check-walls.mjs` | Contrôle anatomique de l'intérieur : parois, septum, conduction, piliers |
+| `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
+| `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), conduction, trajets du sang, clic et surbrillance |
 | `js/app.js` | Scène, coupe (clipping + capuchons stencil), circulation, étiquettes, interface |
+| `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
+| `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
+| `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |
 
@@ -75,8 +69,17 @@ Incrémenter enfin `VERSION` dans `sw.js` pour que les applications installées 
 
 Unités en centimètres. Repère monde : +x = gauche du patient, +y = haut, +z = avant.
 En vue antérieure, le côté gauche du patient est donc à droite de l'écran, comme sur
-une planche d'atlas. La masse ventriculaire est décrite dans un repère local incliné
-(axe base → apex), les grands vaisseaux dans le repère monde.
+une planche d'atlas. Les coordonnées BodyParts3D (mm ; y vers l'arrière, z vers le haut) sont
+converties à la lecture (`tools/lib/bp3d-heart.mjs`).
+
+## Source des données et licence
+
+Géométrie : **BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0
+International** ([licence](https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html)).
+Les fichiers OBJ de 2011 portent encore l'ancienne mention CC BY-SA 2.1 Japon ; la page de licence
+actuelle de la base indique CC BY 4.0. Le modèle de ce dépôt est une œuvre dérivée (pièces lissées
+et ré-extraites, myocarde ventriculaire, graisse, tronc brachio-céphalique et ligament artériel
+reconstruits) ; l'attribution figure aussi dans l'application, au pied du panneau.
 
 ## Processus de relecture
 
@@ -86,4 +89,4 @@ relecteur indépendant expert en anatomie ; toute modification visuelle par un r
 
 ## Avertissement
 
-Modèle schématique à visée pédagogique ; il ne remplace pas l'avis d'un médecin.
+Modèle à visée pédagogique ; il ne remplace pas l'avis d'un médecin.

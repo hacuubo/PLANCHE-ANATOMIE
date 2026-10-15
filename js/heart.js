@@ -1,17 +1,19 @@
 // Modèle 3D du cœur — unités en centimètres.
 // Repère monde : +x = gauche du patient, +y = haut, +z = avant (vers l'observateur en vue antérieure).
 //
-// L'extérieur du cœur est une enveloppe continue (masse ventriculaire, oreillettes, auricules, graisse des sillons,
-// gros vaisseaux raccordés en douceur), générée hors ligne à partir de js/heart-shape.js (assets/heart.bin).
-// Les coronaires, les structures internes (cavités, valves, piliers, système de conduction) et les trajets du sang
-// sont construits ici. Rendu « tissu vivant » : fibres musculaires, graisse lobulée, film humide (vernis),
-// diffusion sous la surface (translucidité) et occlusion ambiante cuite dans le maillage.
+// Géométrie issue de BodyParts3D (Database Center for Life Science, licence CC BY 4.0), préparée hors ligne par
+// tools/build-heart-bp3d.mjs dans assets/heart.bin :
+//   - enveloppe continue : myocarde ventriculaire (reconstruit autour des cavités réelles, épaisseur calée sur le trajet
+//     réel des coronaires), oreillettes et auricules, graisse des sillons, gros vaisseaux ;
+//   - cavités, lumière des vaisseaux et graisse en solides fermés (surfaces de coupe) ;
+//   - pièces réelles : coronaires et veines du cœur, feuillets valvulaires avec leurs cordages, muscles papillaires ;
+//   - repères : axe du cœur, système de conduction placé dans le septum réel, trajets du sang, ancres d'étiquettes.
+// Rendu « tissu vivant » : fibres musculaires, graisse lobulée, film humide, translucidité, occlusion ambiante cuite.
 import * as THREE from 'three';
-import * as S from './heart-shape.js';
 
 // Couleurs des surfaces de coupe et des structures internes (sRGB)
 export const COL = {
-  myocarde: 0xdc9184,
+  myocarde: 0xe2a09e,
   myocardeCoupe: 0xe9a29c,   // tranche de muscle, rose clair
   graisseCoupe: 0xeed8a8,
   oreilletteCoupe: 0xe3a09a,
@@ -21,14 +23,12 @@ export const COL = {
   valve: 0xf1e4c6,           // feuillets crème nacrés
   cordage: 0xfbf6ec,
   conduction: 0xf3c23b,
-  coronaire: 0xc25e60,       // fines artères en surface : lignes rose-rouge
-  veineCard: 0xa194b6,       // veines du cœur : lignes mauves
+  coronaire: 0xc25e60,       // artères coronaires : rose-rouge
+  veineCard: 0xa194b6,       // veines du cœur : mauves
   lumenArtere: 0xb0585b, lumenVeine: 0x857a9c,
 };
 
 const v3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
-const M = new THREE.Matrix4().makeBasis(v3(S.V), v3(S.AXIS).negate(), v3(S.U)).setPosition(v3(S.BASE));
-export function L2W(p) { return p.clone().applyMatrix4(M); }
 
 /* ─────────── matériau « tissu » ─────────── */
 // MeshPhysicalMaterial + relief procédural (dérivées écran), translucidité enveloppante, liseré lumineux,
@@ -145,20 +145,6 @@ function ellipsoid(rx, ry, rz, seg = 48) {
   g.scale(rx, ry, rz);
   return g;
 }
-// Ellipsoïde plié en arc de rayon R autour de l'axe Y local, centré sur l'angle phiC (0 = +z, positif vers +x).
-function bentEllipsoid(ax, ay, az, R, phiC, seg = 56) {
-  const g = new THREE.SphereGeometry(1, seg, seg);
-  g.scale(ax, ay, az);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const phi = phiC + x / R;
-    p.setXYZ(i, (R + z) * Math.sin(phi), y, (R + z) * Math.cos(phi));
-  }
-  p.needsUpdate = true;
-  g.computeVertexNormals();
-  return g;
-}
 // Tube fermé à rayon variable le long d'une courbe Catmull-Rom (disques terminaux : surface close pour le stencil).
 export function tubeGeometry(points, radiusFn, segs = 64, radial = 20) {
   const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5);
@@ -199,28 +185,6 @@ export function tubeGeometry(points, radiusFn, segs = 64, radial = 20) {
   g.setIndex(idx);
   g.userData.curve = curve;
   return g;
-}
-// Cône d'axe base → pointe (muscles papillaires).
-function coneBetween(base, tip, rBase, mat, rTip = 0.08) {
-  const dir = tip.clone().sub(base), h = dir.length();
-  const g = new THREE.CylinderGeometry(rTip, rBase, h, 16, 4, false);
-  g.translate(0, h / 2, 0);
-  const m = new THREE.Mesh(g, mat);
-  m.position.copy(base);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  return m;
-}
-// Trabécules charnues : relief irrégulier de la paroi interne (déplacement le long des normales).
-function trabeculate(geo, amp = 0.1, freq = 2.2) {
-  const p = geo.attributes.position, n = geo.attributes.normal;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const d = amp * (0.6 * Math.sin(freq * 2.3 * x + 1.7 * y) * Math.cos(freq * 1.9 * z - 0.8 * y) + 0.4 * Math.sin(freq * 3.1 * y + 2.2 * z) * Math.cos(freq * 2.6 * x));
-    p.setXYZ(i, x + n.getX(i) * d, y + n.getY(i) * d, z + n.getZ(i) * d);
-  }
-  p.needsUpdate = true;
-  geo.computeVertexNormals();
-  return geo;
 }
 
 // Fusionne des géométries indexées (position, normale) en une seule.
@@ -333,57 +297,55 @@ function gridRaycast(raycaster, intersects) {
   }
 }
 
-/* ─────────── enveloppe (assets/heart.bin) ─────────── */
-async function loadEnvelope() {
+
+/* ─────────── chargement (assets/heart.bin, format HRT2) ─────────── */
+async function loadHeartData() {
   const res = await fetch(new URL('../assets/heart.bin', import.meta.url));
   if (!res.ok) throw new Error(`assets/heart.bin : ${res.status}`);
   const buf = await res.arrayBuffer();
   const dv = new DataView(buf);
+  const magic = String.fromCharCode(...new Uint8Array(buf, 0, 4));
+  if (magic !== 'HRT2') throw new Error(`assets/heart.bin : format ${magic} inattendu`);
   const hl = dv.getUint32(4, true);
   const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
   const base = 8 + hl;
   const view = (Type, [off, len]) => new Type(buf, base + off, len);
   const { min, size } = header.bounds;
-  const positions = (lod) => {
-    const q = view(Uint16Array, lod.pos), f = new Float32Array(q.length);
-    for (let i = 0; i < q.length; i++) { const k = i % 3; f[i] = min[k] + (q[i] / 65535) * size[k]; }
-    return f;
-  };
-  const [vis, prx] = header.lods;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(positions(vis), 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(view(Int16Array, vis.nor), 3, true));
-  g.setAttribute('col', new THREE.BufferAttribute(view(Uint8Array, vis.col), 4, true));
-  g.setAttribute('tis', new THREE.BufferAttribute(view(Uint8Array, vis.tis), 4, true));
-  g.setIndex(new THREE.BufferAttribute(view(Uint32Array, vis.idx), 1));
-  g.computeBoundingSphere();
-  const pg = new THREE.BufferGeometry();
-  pg.setAttribute('position', new THREE.BufferAttribute(positions(prx), 3));
-  pg.setIndex(new THREE.BufferAttribute(view(Uint32Array, prx.idx), 1));
-  pg.computeBoundingSphere(); pg.computeBoundingBox();
-  return { ids: header.ids, visual: g, proxy: pg, proxySid: view(Uint8Array, prx.sid), coronaires: header.coronaires };
+  const geos = {};
+  for (const m of header.meshes) {
+    const q = view(Uint16Array, m.pos), p = new Float32Array(q.length);
+    for (let i = 0; i < q.length; i++) { const k = i % 3; p[i] = min[k] + (q[i] / 65535) * size[k]; }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(view(Int16Array, m.nor), 3, true));
+    g.setIndex(new THREE.BufferAttribute(m.idx32 ? view(Uint32Array, m.idx) : view(Uint16Array, m.idx), 1));
+    if (m.col) g.setAttribute('col', new THREE.BufferAttribute(view(Uint8Array, m.col), 4, true));
+    if (m.tis) g.setAttribute('tis', new THREE.BufferAttribute(view(Uint8Array, m.tis), 4, true));
+    g.computeBoundingSphere();
+    geos[m.name] = { geometry: g, sid: m.sid ? view(Uint8Array, m.sid) : null, meta: m };
+  }
+  return { header, geos };
 }
 
 /* ─────────── construction ─────────── */
 export async function buildHeart() {
-  const env = await loadEnvelope();
+  const { header, geos } = await loadHeartData();
+  const ids = header.ids;
+  const F = header.frame;
+  // repère local du cœur : x = gauche locale, y = vers la base (−axe), z = avant local, origine au centre de la base
+  const M = new THREE.Matrix4().makeBasis(v3(F.v), v3(F.axis).negate(), v3(F.u)).setPosition(v3(F.base));
   const root = new THREE.Group();
   root.name = 'coeur';
-  const local = new THREE.Group();
-  local.matrixAutoUpdate = false;
-  local.matrix.copy(M);
-  root.add(local);
 
   const registry = {};        // id → { meshes: [], anchor: Vector3 (monde) }
   const materials = [];       // matériaux visibles (clipping, mode translucide)
-  const tissueMats = [];      // matériaux « tissu » (surbrillance)
+  const tissueMats = [];      // matériaux « tissu » (surbrillance, mode focus)
   const solids = [];          // { mesh, hole, cap } pour les surfaces de coupe (stencil)
   const cutOnly = [];         // objets visibles seulement en coupe
-  const flowPaths = [];       // { points:[Vector3], color, speed }
   const selUniform = { value: -1 };
-  const focusUniform = { value: 0 }; // partagé par tous les tissus : estompe ce qui n'est pas sélectionné
+  const focusUniform = { value: 0 };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, bump = 0.35, sss = 0.42, rim = 0.32, flowOpacity, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, bump = 0.22, sss = 0.32, rim = 0.12, flowOpacity, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -401,13 +363,9 @@ export async function buildHeart() {
     materials.push(m); tissueMats.push(m);
     return m;
   };
-  // un matériau par structure (la surbrillance agit par matériau)
   const matCache = new Map();
   const PRESETS = {
-    endo: () => tissue(COL.endocarde, { side: THREE.BackSide, roughness: 0.5, bump: 0.35 }),
-    endoAtr: () => tissue(COL.endoOreillette, { side: THREE.BackSide, roughness: 0.5, tis: [0, 0, 1, 1], bump: 0.3 }),
-    valve: () => tissue(COL.valve, { tis: [0, 1, 0, 1], transparent: true, opacity: 0.93, sss: 0.55, rim: 0.2, roughness: 0.35, bump: 0.1 }),
-    cordage: () => { const m = tissue(COL.cordage, { tis: [0, 1, 0, 1], roughness: 0.4, bump: 0.05 }); m.userData.noTranslucent = true; return m; },
+    valve: () => tissue(COL.valve, { tis: [0, 1, 0, 1], transparent: true, opacity: 0.95, sss: 0.55, rim: 0.2, roughness: 0.35, bump: 0.1 }),
     papillaire: () => tissue(COL.papillaire, { roughness: 0.5, bump: 0.3 }),
     conduction: () => tissue(COL.conduction, { tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
     coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.1, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
@@ -419,225 +377,95 @@ export async function buildHeart() {
     return matCache.get(key);
   };
   const reg = (id) => (registry[id] ??= { meshes: [], anchor: null });
-  const register = (id, mesh, anchorWorld, group = root) => {
-    mesh.userData.id = id;
-    group.add(mesh);
-    reg(id).meshes.push(mesh);
-    if (anchorWorld && !registry[id].anchor) registry[id].anchor = anchorWorld.clone();
-    return mesh;
-  };
+  const register = (id, mesh) => { mesh.userData.id = id; root.add(mesh); reg(id).meshes.push(mesh); return mesh; };
 
   /* ── Enveloppe continue ── */
   const envMat = tissue(0xffffff, { envelope: true, flowOpacity: 0.28, rim: 0.45 });
-  const envelope = new THREE.Mesh(env.visual, envMat);
+  const envelope = new THREE.Mesh(geos.enveloppe.geometry, envMat);
   envelope.userData.envelope = true;
   envelope.castShadow = true; envelope.receiveShadow = true;
   root.add(envelope);
   solids.push({ mesh: envelope, hole: false, cap: 'myo' });
   // maillage simplifié invisible : clic et masquage des étiquettes
-  const proxy = new THREE.Mesh(env.proxy, new THREE.MeshBasicMaterial({ visible: false }));
+  const proxySid = geos.proxy.sid;
+  const proxy = new THREE.Mesh(geos.proxy.geometry, new THREE.MeshBasicMaterial({ visible: false }));
   proxy.userData.proxy = true;
   proxy.userData.id = 'enveloppe';
-  proxy.userData.grid = buildRayGrid(env.proxy);
+  proxy.userData.grid = buildRayGrid(geos.proxy.geometry);
   proxy.raycast = gridRaycast;
   root.add(proxy);
-  // ancres des étiquettes : point de l'enveloppe le plus proche, appartenant à la bonne structure
-  {
-    const pos = env.visual.attributes.position, nor = env.visual.attributes.normal, tis = env.visual.attributes.tis;
-    for (const [id, a] of Object.entries(S.ANCRES)) {
-      const sid = env.ids.indexOf(id);
-      let best = Infinity, bi = -1;
-      for (let i = 0; i < pos.count; i += 2) {
-        if (Math.round(tis.getW(i) * 255) !== sid) continue;
-        const d = (pos.getX(i) - a[0]) ** 2 + (pos.getY(i) - a[1]) ** 2 + (pos.getZ(i) - a[2]) ** 2;
-        if (d < best) { best = d; bi = i; }
-      }
-      const anchor = bi < 0 ? v3(a) : new THREE.Vector3(pos.getX(bi), pos.getY(bi), pos.getZ(bi)).addScaledVector(new THREE.Vector3(nor.getX(bi), nor.getY(bi), nor.getZ(bi)), 0.03);
-      reg(id).anchor = anchor;
-    }
-  }
-  reg('septum-interventriculaire').anchor = L2W(new THREE.Vector3(-1.1, -2.6, 0.94));
+  for (const [id, a] of Object.entries(header.anchors)) reg(id).anchor = v3(a);
 
-  // Lumière des vaisseaux : solides invisibles qui colorent la coupe du sang (groupe stencil « artere » / « veine »)
-  const lumenMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-  S.LUMIERES.forEach(({ pts, r, type }) => {
-    const g = tubeGeometry(pts.map(v3), (t) => r(t) * 0.82, 64, 18);
-    const m = new THREE.Mesh(g, lumenMat);
+  // Solides invisibles des coupes : lumière des vaisseaux (sang) et graisse des sillons
+  const hidden = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  for (const [name, cap] of [['lumiere-artere', 'artere'], ['lumiere-veine', 'veine'], ['graisse', 'fat']]) {
+    const m = new THREE.Mesh(geos[name].geometry, hidden);
     m.renderOrder = -2;
     root.add(m);
-    solids.push({ mesh: m, hole: false, cap: type });
-  });
+    solids.push({ mesh: m, hole: false, cap });
+  }
 
-  // Graisse des sillons : solides invisibles qui colorent la coupe en crème (groupe stencil « fat »)
-  S.GRAISSE.forEach(({ pts, r }) => {
-    const m = new THREE.Mesh(tubeGeometry(pts.map(v3), r, 64, 16), lumenMat);
-    m.renderOrder = -2;
-    local.add(m);
-    solids.push({ mesh: m, hole: false, cap: 'fat' });
-  });
-
-  /* ── Cavités (paroi interne, visibles en coupe ; « trous » pour les surfaces de coupe) ── */
-  const { VG, VD, OD, OG } = S.CAVITES;
-  const lvCav = new THREE.Mesh(trabeculate(ellipsoid(...VG.rayons, 64), 0.07, 2.0), matFor('ventricule-gauche', 'endo'));
-  lvCav.position.copy(v3(VG.centre));
-  lvCav.userData.id = 'ventricule-gauche';
-  local.add(lvCav);
-  solids.push({ mesh: lvCav, hole: true, cap: 'myo' });
-  cutOnly.push(lvCav);
-  const rvCav = new THREE.Mesh(trabeculate(bentEllipsoid(VD.ax, VD.ay, VD.az, VD.R, VD.phiC, 64), 0.09, 2.4), matFor('ventricule-droit', 'endo'));
-  rvCav.position.copy(v3(VD.pos));
-  rvCav.userData.id = 'ventricule-droit';
-  local.add(rvCav);
-  solids.push({ mesh: rvCav, hole: true, cap: 'myo' });
-  cutOnly.push(rvCav);
-  // Chambres de chasse : le VG s'ouvre sur la valve aortique, le VD (infundibulum) sur la valve pulmonaire
-  const outflow = (id, pts, r) => {
-    const m = new THREE.Mesh(tubeGeometry(pts, r, 24, 24), matFor(id, 'endo'));
-    m.userData.id = id;
-    local.add(m);
-    solids.push({ mesh: m, hole: true, cap: 'myo' });
-    cutOnly.push(m);
-  };
-  outflow('ventricule-gauche', S.CAVITES.chasseVG.pts.map(v3), S.CAVITES.chasseVG.r);
-  outflow('ventricule-droit', S.CAVITES.infundibulum.pts.map(v3), S.CAVITES.infundibulum.r);
-  const raCav = new THREE.Mesh(ellipsoid(...OD.rayons), matFor('oreillette-droite', 'endoAtr'));
-  raCav.position.copy(v3(S.RA_C));
-  raCav.userData.id = 'oreillette-droite';
-  local.add(raCav);
-  solids.push({ mesh: raCav, hole: true, cap: 'myo' });
-  cutOnly.push(raCav);
-  const laCav = new THREE.Mesh(ellipsoid(...OG.rayons), matFor('oreillette-gauche', 'endoAtr'));
-  laCav.position.copy(v3(S.LA_C));
-  laCav.userData.id = 'oreillette-gauche';
-  local.add(laCav);
-  solids.push({ mesh: laCav, hole: true, cap: 'myo' });
-  cutOnly.push(laCav);
-
-  /* ── Coronaires et veines du cœur (tubes posés dans les sillons, à fleur de muscle) ── */
-  const coroGroups = new Map();
-  env.coronaires.forEach((c) => {
-    const rr = S.radiusAlong(c.r);
-    const small = rr(0) < 0.1;
-    const g = tubeGeometry(c.pts.map(v3), rr, small ? 20 : 48, small ? 8 : 14);
-    const key = `${c.id}|${c.kind}`;
-    if (!coroGroups.has(key)) coroGroups.set(key, { id: c.id, kind: c.kind, geos: [], anchor: null });
-    const G = coroGroups.get(key);
-    G.geos.push(g);
-    if (c.anchorT !== undefined && !G.anchor) G.anchor = L2W(g.userData.curve.getPointAt(c.anchorT));
-  });
-  coroGroups.forEach((G) => {
-    const geo = mergeIndexed(G.geos);
-    const mesh = new THREE.Mesh(geo, matFor(G.id, G.kind === 'veine' ? 'coroV' : 'coroA'));
-    mesh.castShadow = true; mesh.receiveShadow = true;
-    mesh.userData.grid = buildRayGrid(geo, 0.4);
-    mesh.raycast = gridRaycast;
-    register(G.id, mesh, G.anchor, local);
-  });
-
-  /* ── Valves et appareil sous-valvulaire (visibles en coupe) ── */
-  const addCut = (obj, id, leaf = true) => {
-    obj.traverse((o) => { if (o.isMesh) { o.userData.id = id; if (leaf) o.userData.leaf = true; } });
-    local.add(obj);
-    cutOnly.push(obj);
-    obj.traverse((o) => { if (o.isMesh) reg(id).meshes.push(o); });
-    return obj;
-  };
-  const avValve = (id, c, r, depth) => {
-    const grp = new THREE.Group();
-    grp.position.copy(c);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.09, 10, 48), matFor(id, 'valve'));
-    ring.rotation.x = Math.PI / 2;
-    const leaf = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r * 0.5, depth, 40, 1, true), matFor(id, 'valve'));
-    leaf.position.y = -depth / 2;
-    grp.add(ring, leaf);
-    addCut(grp, id);
-    reg(id).anchor = L2W(c);
-  };
-  const slValve = (id, c, r, rot) => {
-    const grp = new THREE.Group();
-    grp.position.copy(c);
-    grp.rotation.set(rot[0], rot[1], rot[2]);
-    grp.add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.09, 10, 48), matFor(id, 'valve')));
-    for (let k = 0; k < 3; k++) {
-      const g = new THREE.SphereGeometry(r * 0.92, 20, 10, (k / 3) * Math.PI * 2, (Math.PI * 2) / 3, Math.PI / 2, Math.PI / 2);
-      g.rotateX(-Math.PI / 2);
-      grp.add(new THREE.Mesh(g, matFor(id, 'valve')));
+  /* ── Cavités (paroi interne, visibles en coupe ; « trou » unique pour les surfaces de coupe) ── */
+  {
+    const g = geos.cavites.geometry, sid = geos.cavites.sid, n = sid.length;
+    const col = new Uint8Array(n * 4), tis = new Uint8Array(n * 4);
+    const ventr = new THREE.Color(COL.endocarde), atr = new THREE.Color(COL.endoOreillette);
+    for (let i = 0; i < n; i++) {
+      const isAtr = ids[sid[i]].startsWith('oreillette');
+      const c = isAtr ? atr : ventr;
+      col[i * 4] = Math.round(Math.pow(c.r, 1 / 2.2) * 255); col[i * 4 + 1] = Math.round(Math.pow(c.g, 1 / 2.2) * 255); col[i * 4 + 2] = Math.round(Math.pow(c.b, 1 / 2.2) * 255); col[i * 4 + 3] = 255;
+      tis[i * 4 + 2] = isAtr ? 255 : 0; tis[i * 4 + 3] = sid[i];
     }
-    addCut(grp, id);
-    reg(id).anchor = L2W(c);
-  };
-  const chordae = (id, tip, c, rEdge, yEdge, baseAngle, n = 5) => {
-    const grp = new THREE.Group();
-    for (let k = 0; k < n; k++) {
-      const a = baseAngle + ((k / (n - 1)) - 0.5) * 1.3;
-      const target = new THREE.Vector3(c.x + rEdge * Math.sin(a), yEdge, c.z + rEdge * Math.cos(a));
-      grp.add(new THREE.Mesh(tubeGeometry([tip, target], 0.028, 4, 6), matFor(id, 'cordage')));
-    }
-    addCut(grp, id);
-  };
-  const ML = new THREE.Vector3(1.05, 0.25, -1.05), TL = new THREE.Vector3(-2.0, 0.25, 0.95);
-  avValve('valve-tricuspide', TL, 1.65, 1.1);
-  avValve('valve-mitrale', ML, 1.4, 1.2);
-  slValve('valve-aortique', new THREE.Vector3(-0.25, 1.1, 0.55), 1.05, [Math.PI / 2 + 0.3, 0, 0]);
-  slValve('valve-pulmonaire', new THREE.Vector3(1.45, 1.5, 2.15), 1.05, [Math.PI / 2 + 0.6, 0.2, 0]);
-  const papLV = [
-    { base: new THREE.Vector3(2.4, -3.77, 0.35), tip: new THREE.Vector3(1.5, -1.3, -0.7), ang: 0.9 },
-    { base: new THREE.Vector3(0.83, -3.6, -1.97), tip: new THREE.Vector3(0.7, -1.3, -1.3), ang: 3.3 },
-  ];
-  papLV.forEach((p) => { addCut(coneBetween(p.base, p.tip, 0.42, matFor('ventricule-gauche', 'papillaire')), 'ventricule-gauche', false); chordae('valve-mitrale', p.tip, ML, 0.7, -0.95, p.ang); });
-  const papRV = [
-    { base: new THREE.Vector3(-1.78, -3.16, 2.4), tip: new THREE.Vector3(-1.7, -1.2, 1.45), ang: 0.6, r: 0.36 },
-    { base: new THREE.Vector3(-3.26, -3.42, -0.54), tip: new THREE.Vector3(-2.6, -1.2, 0.75), ang: -1.9, r: 0.34 },
-    { base: new THREE.Vector3(-1.37, -2.6, 1.26), tip: new THREE.Vector3(-1.8, -1.1, 0.95), ang: 2.6, r: 0.22 },
-  ];
-  papRV.forEach((p) => { addCut(coneBetween(p.base, p.tip, p.r, matFor('ventricule-droit', 'papillaire')), 'ventricule-droit', false); chordae('valve-tricuspide', p.tip, TL, 0.8, -0.85, p.ang, 4); });
-  addCut(new THREE.Mesh(tubeGeometry([new THREE.Vector3(-1.44, -3.2, 1.34), new THREE.Vector3(-1.6, -3.35, 1.9), papRV[0].base], 0.17, 8, 10), matFor('ventricule-droit', 'papillaire')), 'ventricule-droit', false); // bande modératrice
+    g.setAttribute('col', new THREE.BufferAttribute(col, 4, true));
+    g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true));
+    const cavMat = tissue(0xffffff, { envelope: true, side: THREE.BackSide, roughness: 0.5, bump: 0.35, rim: 0.05 });
+    const cav = new THREE.Mesh(g, cavMat);
+    cav.userData.id = 'cavites';
+    cav.userData.leaf = true;
+    root.add(cav);
+    solids.push({ mesh: cav, hole: true, cap: 'myo' });
+    cutOnly.push(cav);
+  }
 
-  /* ── Système de conduction (visible en coupe) ── */
-  const node = (id, posL, r) => {
-    const m = new THREE.Mesh(ellipsoid(r, r * 0.7, r * 0.5), matFor(id, 'conduction'));
-    m.position.copy(posL);
-    register(id, m, L2W(posL), local);
+  /* ── Pièces BodyParts3D : coronaires, veines du cœur, valves, piliers ── */
+  for (const [name, { geometry, meta }] of Object.entries(geos)) {
+    if (!meta.role) continue;
+    if (meta.role === 'coronaire' || meta.role === 'veine') {
+      const mesh = register(meta.id, new THREE.Mesh(geometry, matFor(meta.id, meta.role === 'veine' ? 'coroV' : 'coroA')));
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.userData.grid = buildRayGrid(geometry, 0.4);
+      mesh.raycast = gridRaycast;
+    } else {
+      const mesh = new THREE.Mesh(geometry, matFor(meta.id, meta.role === 'valve' ? 'valve' : 'papillaire'));
+      register(meta.id, mesh);
+      mesh.userData.leaf = meta.role === 'valve';
+      cutOnly.push(mesh);
+    }
+  }
+
+  /* ── Système de conduction (positions calculées dans le septum réel) ── */
+  const C = header.conduction;
+  const node = (id, p, r) => {
+    const m = register(id, new THREE.Mesh(ellipsoid(r, r * 0.75, r * 0.55), matFor(id, 'conduction')));
+    m.position.copy(v3(p));
     cutOnly.push(m);
     solids.push({ mesh: m, hole: false, cap: 'conduction' });
   };
-  node('noeud-sinusal', new THREE.Vector3(-2.7, 3.75, 0.5), 0.5);
-  node('noeud-av', new THREE.Vector3(-0.9, 0.45, -0.25), 0.4);
-  const hisTube = (pts, r, anchorT) => {
-    const g = tubeGeometry(pts, r, 24, 10);
-    const m = new THREE.Mesh(g, matFor('faisceau-his', 'conduction'));
-    register('faisceau-his', m, anchorT !== undefined ? L2W(g.userData.curve.getPointAt(anchorT)) : null, local);
+  node('noeud-sinusal', C['noeud-sinusal'][0], 0.45);
+  node('noeud-av', C['noeud-av'][0], 0.35);
+  for (const [key, r] of [['his', (t) => 0.14 - 0.03 * t], ['brancheG', 0.09], ['brancheD', 0.09]]) {
+    const m = register('faisceau-his', new THREE.Mesh(tubeGeometry(C[key].map(v3), r, 32, 10), matFor('faisceau-his', 'conduction')));
     cutOnly.push(m);
     solids.push({ mesh: m, hole: false, cap: 'conduction' });
-  };
-  hisTube([new THREE.Vector3(-0.9, 0.45, -0.25), new THREE.Vector3(-1.0, -0.4, 0.3), new THREE.Vector3(-1.05, -1.4, 0.87), new THREE.Vector3(-1.1, -2.6, 0.94), new THREE.Vector3(-1.15, -3.8, 1.0)], (t) => 0.14 - 0.04 * t, 0.4);
-  hisTube([new THREE.Vector3(-1.05, -1.4, 0.87), new THREE.Vector3(-0.75, -1.6, 0.5), new THREE.Vector3(-0.84, -2.6, 0.62), new THREE.Vector3(-0.69, -3.8, 0.45)], 0.09); // branche gauche
-  hisTube([new THREE.Vector3(-1.05, -1.4, 0.87), new THREE.Vector3(-1.37, -2.6, 1.26), new THREE.Vector3(-1.44, -3.2, 1.34), new THREE.Vector3(-1.6, -3.35, 1.9)], 0.09); // branche droite (par la bande modératrice)
+  }
 
-  /* ── Trajets du sang (mode circulation) ── */
-  const W = (pts) => pts.map((p) => (p.isVector3 ? p : L2W(new THREE.Vector3(...p))));
-  const RA_W = v3(S.RA_W), LA_W = v3(S.LA_W), PT_ROOT = v3(S.PT_ROOT), AO_ROOT = v3(S.AO_ROOT), BIF = v3(S.BIF), PT_MID = v3(S.PT_MID);
-  flowPaths.push({ color: 0x43589f, speed: 0.11, points: [new THREE.Vector3(-3.8, 11.5, -1.6), new THREE.Vector3(-3.8, 8.0, -1.6), RA_W.clone().add(new THREE.Vector3(0.1, 0.8, 0.0)), ...W([[-2.4, 1.4, 0.3], [-2.0, 0.2, 0.95], [-2.2, -1.6, 1.6], [-1.5, -3.2, 1.9], [-0.1, -1.4, 2.4], [0.9, 0.2, 2.4]]), PT_ROOT, PT_MID, BIF, new THREE.Vector3(-2.6, 7.1, -3.2), new THREE.Vector3(-5.2, 6.8, -3.6)] });
-  flowPaths.push({ color: 0x43589f, speed: 0.11, points: [new THREE.Vector3(-2.7, -6.5, -2.9), new THREE.Vector3(-3.0, -2.0, -2.4), RA_W.clone().add(new THREE.Vector3(0.1, -0.9, -0.3)), ...W([[-2.4, 1.0, 0.2], [-2.0, 0.2, 0.95], [-2.3, -1.8, 1.7], [-1.3, -3.4, 2.0], [0.0, -1.2, 2.4], [1.0, 0.3, 2.4]]), PT_ROOT, PT_MID, BIF, new THREE.Vector3(2.4, 7.4, -2.0), new THREE.Vector3(5.6, 7.0, -3.4)] });
-  const leftCore = [...W([[0.9, 2.3, -2.6], [1.05, 0.25, -1.05], [1.3, -2.0, -0.8], [1.6, -4.2, -0.3], [1.0, -2.5, -0.1], [0.2, -0.5, 0.3], [-0.25, 1.1, 0.55]]), AO_ROOT, new THREE.Vector3(-1.7, 5.0, -0.45), new THREE.Vector3(0.0, 9.8, -1.2), new THREE.Vector3(2.5, 9.7, -3.8), new THREE.Vector3(3.5, 4.0, -5.2), new THREE.Vector3(3.0, -4.0, -5.9), new THREE.Vector3(2.8, -8.0, -6.1)];
-  flowPaths.push({ color: 0xc43a33, speed: 0.12, points: [LA_W.clone().add(new THREE.Vector3(-4.6, 1.3, -1.2)), LA_W.clone().add(new THREE.Vector3(-1.4, 0.9, -0.9)), ...leftCore] });
-  flowPaths.push({ color: 0xc43a33, speed: 0.12, points: [LA_W.clone().add(new THREE.Vector3(4.4, -0.9, -1.4)), LA_W.clone().add(new THREE.Vector3(1.6, -0.6, -1.0)), ...leftCore] });
-  flowPaths.push({ color: 0xc43a33, speed: 0.12, points: [AO_ROOT, new THREE.Vector3(-1.7, 5.0, -0.45), new THREE.Vector3(-1.3, 7.3, -0.8), new THREE.Vector3(0.15, 9.8, -1.25), new THREE.Vector3(-1.2, 12.4, -0.85), new THREE.Vector3(-1.7, 14.7, -0.6)] });
+  const flowPaths = header.flowPaths.map((f) => ({ color: f.color, speed: f.speed, points: f.points.map(v3) }));
 
-  // Résolution du clic : structure portée par l'enveloppe (attribut du maillage simplifié) ou par le maillage touché.
-  const tmp = new THREE.Vector3();
-  const pickId = (mesh, worldPoint, face) => {
-    if (!mesh.userData.proxy) return mesh.userData.id;
-    let id = env.ids[env.proxySid[face.a]];
-    if (id === 'ventricule-droit' || id === 'ventricule-gauche' || id === 'apex') {
-      root.worldToLocal(tmp.copy(worldPoint));
-      id = S.ventricleRegion(S.w2l([tmp.x, tmp.y, tmp.z]));
-    }
-    return id;
-  };
-  // Surbrillance : par indice de structure pour l'enveloppe, par matériau pour les autres maillages.
+  // Résolution du clic : structure portée par l'enveloppe (attribut du maillage simplifié) ou par la pièce touchée.
+  const pickId = (mesh, worldPoint, face) => (mesh.userData.proxy ? ids[proxySid[face.a]] : mesh.userData.id);
+  // Surbrillance : par indice de structure pour l'enveloppe et les cavités, par matériau pour les autres pièces.
   const setHighlight = (id) => {
-    selUniform.value = id ? env.ids.indexOf(id) : -1;
+    selUniform.value = id ? ids.indexOf(id) : -1;
     tissueMats.forEach((m) => { m.userData.uniforms.uHi.value = 0; });
     let any = selUniform.value >= 0;
     (id && registry[id] ? registry[id].meshes : []).forEach((mesh) => { const u = mesh.material?.userData?.uniforms; if (u) { u.uHi.value = 1; any = true; } });
@@ -646,5 +474,5 @@ export async function buildHeart() {
 
   cutOnly.forEach((m) => { m.visible = false; });
 
-  return { root, local, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M };
+  return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source };
 }
