@@ -101,7 +101,8 @@ const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
 const CUT_MODES = {
   frontale: { normal: new THREE.Vector3(0, 0, -1), min: -6, max: 6, def: 0.2 },
   horizontale: { normal: new THREE.Vector3(0, -1, 0), min: -5, max: 9, def: 0.0 },
-  'grand-axe': { normal: null, min: -5, max: 5, def: 0.4 }, // normale = « avant » local du cœur
+  // plan « quatre cavités » : contient l'axe du cœur et passe par les valves mitrale et tricuspide (calculé à la génération)
+  'grand-axe': (() => { const c = heart.cut4.normal.dot(heart.cut4.point); return { normal: heart.cut4.normal.clone().negate(), min: c - 4, max: c + 4, def: c }; })(),
 };
 const stencilGroup = new THREE.Group();
 stencilGroup.name = 'stencil';
@@ -391,7 +392,13 @@ const VUES = {
 };
 let camAnim = null;
 // Distance de cadrage : le modèle fait ≈ 22 cm de haut (de l'aorte descendante aux branches de la crosse).
-function viewDistance() { const a = camera.aspect > 0 && Number.isFinite(camera.aspect) ? camera.aspect : 1.3; return 38 * Math.max(1, 1.2 / a) * (state.etiquettes ? 1.2 : 1); } // recul en mode planche : place pour les colonnes
+function viewDistance() { const a = camera.aspect > 0 && Number.isFinite(camera.aspect) ? camera.aspect : 1.3; return 44 * Math.max(1, 1.2 / a) * (state.etiquettes ? 1.2 : 1); } // recul en mode planche : place pour les colonnes
+// Regarde le cœur depuis une direction quelconque (coupe quatre cavités : on regarde le plan de face)
+function goDir(dir, instant = false) {
+  const to = CENTER.clone().add(dir.clone().normalize().multiplyScalar(viewDistance()));
+  if (instant) { camera.position.copy(to); camAnim = null; } else camAnim = { from: camera.position.clone(), to, t: 0 };
+  document.querySelectorAll('.view-btn').forEach((b) => b.classList.remove('active'));
+}
 function goView(name, instant = false) {
   const v = VUES[name];
   state.vue = name;
@@ -405,9 +412,9 @@ function toggle(name, value) {
   state[name] = value ?? !state[name];
   const btn = document.querySelector(`[data-toggle="${name}"]`);
   if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
-  if (name === 'coupe') { applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
+  if (name === 'coupe') { if (state.coupe && state.modeCoupe === 'grand-axe') goDir(heart.cut4.normal); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
   if (name === 'circulation') { setTranslucent(state.circulation); flowMesh.visible = state.circulation; }
-  if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires; })); }
+  if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires; })); }
   if (name === 'etiquettes') { refreshLabels(); goView(state.vue); }
 }
 
@@ -461,6 +468,8 @@ function buildPanel() {
     document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x === b));
     setCutMode(b.dataset.cut);
     if (b.dataset.cut === 'horizontale') goView('superieure');
+    else if (b.dataset.cut === 'grand-axe') goDir(heart.cut4.normal);
+    else goView('anterieure');
   }));
   document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); syncGhost(); updateCapPlanes(); });
   document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));

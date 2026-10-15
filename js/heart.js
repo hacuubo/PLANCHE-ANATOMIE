@@ -474,5 +474,6 @@ export async function buildHeart() {
 
   cutOnly.forEach((m) => { m.visible = false; });
 
-  return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source };
+  return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
+    cut4: { normal: v3(F.cut4), point: v3(F.base) } };
 }

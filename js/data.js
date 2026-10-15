@@ -244,6 +244,15 @@ export const STRUCTURES = {
       "Elle accompagne l'artère interventriculaire postérieure, le plus souvent une branche de la coronaire droite.",
     ],
   },
+  'petites-veines-cardiaques': {
+    nom: 'Autres veines du cœur', latin: 'Venae cordis', groupe: 'coronaires', couleur: '#a194b6',
+    resume: "Petites veines qui ramènent le sang de la face arrière du ventricule gauche et des bords droit et gauche du cœur. Elles se jettent dans le sinus coronaire ou dans la grande veine du cœur.",
+    details: [
+      "La veine postérieure du ventricule gauche draine la face arrière du ventricule gauche.",
+      "La petite veine du cœur suit la coronaire droite dans le sillon entre l'oreillette et le ventricule droits ; les veines marginales longent les bords du cœur.",
+      "Les sondes de resynchronisation (stimulateur « triple chambre ») sont souvent placées dans l'une de ces veines, par le sinus coronaire.",
+    ],
+  },
   'sinus-coronaire': {
     nom: 'Sinus coronaire', latin: 'Sinus coronarius', groupe: 'coronaires', couleur: '#3e519e',
     resume: "Grosse veine de la face arrière du cœur qui collecte le sang veineux du muscle cardiaque et le déverse dans l'oreillette droite.",
@@ -289,7 +298,7 @@ export const ORDRE = [
   'aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche',
   'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'ligament-arteriel',
   'veine-cave-superieure', 'veine-cave-inferieure', 'veines-pulmonaires',
-  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'sinus-coronaire', 'sillons',
+  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques', 'sinus-coronaire', 'sillons',
   'noeud-sinusal', 'noeud-av', 'faisceau-his',
 ];
 

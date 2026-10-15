@@ -58,16 +58,29 @@ const S = { VG: sdf(cav['ventricule-gauche']), VD: sdf(cav['ventricule-droit']),
 for (const id of Object.keys(ves)) S[id] = sdf(ves[id]);
 const AORTE = ['Ascending aorta', 'Arch of aorta', 'Descending thoracic aorta'].map((n) => sdf(meshOf(pieces.filter((p) => p.name === n))));
 const verts = (m) => { const o = []; for (let i = 0; i < m.pos.length / 3; i++) o.push([m.pos[i * 3], m.pos[i * 3 + 1], m.pos[i * 3 + 2]]); return o; };
-const meanOf = (pts) => v3.mul(pts.reduce((a, p) => v3.add(a, p), [0, 0, 0]), 1 / pts.length);
+const meanOf = (pts) => { if (!pts.length) throw new Error('moyenne d\'une liste vide (repère introuvable)'); return v3.mul(pts.reduce((a, p) => v3.add(a, p), [0, 0, 0]), 1 / pts.length); };
 const extreme = (pts, f) => pts.reduce((b, p) => (f(p) > f(b) ? p : b));
 log('champs de distance des pièces prêts');
+const cen0 = (m) => meanOf(verts(m));
+const VC = { mitral: cen0(raw.valve['valve-mitrale']), tricus: cen0(raw.valve['valve-tricuspide']), aortic: cen0(raw.valve['valve-aortique']), pulmo: cen0(raw.valve['valve-pulmonaire']) };
+// Base du cœur : pas de muscle ventriculaire au-dessus des valves (cylindres le long de la racine aortique, du tronc
+// pulmonaire et vers les oreillettes) ; seules les parois artérielles et auriculaires y restent.
+const BASE_CUTS = [
+  [VC.aortic, v3.norm(v3.sub(cen0(named(/^Ascending aorta$/)), VC.aortic)), 0.15, 1.9],
+  [VC.pulmo, v3.norm(v3.sub(cen0(ves['tronc-pulmonaire']), VC.pulmo)), 0.15, 1.9],
+  [VC.mitral, v3.norm(v3.sub(cen0(cav['oreillette-gauche']), VC.mitral)), 0.35, 2.6],
+  [VC.tricus, v3.norm(v3.sub(cen0(cav['oreillette-droite']), VC.tricus)), 0.35, 2.8],
+];
+const baseCut = (x, y, z) => {
+  let m = 1e9;
+  for (const [c, a, off, R] of BASE_CUTS) { const q = [x - c[0], y - c[1], z - c[2]]; const al = v3.dot(q, a); m = Math.min(m, Math.max(v3.len(v3.sub(q, v3.mul(a, al))) - R, off - al)); }
+  return m; // < 0 : région où le myocarde ventriculaire est retiré
+};
 
 /* ─────────── 2. pièces absentes de BodyParts3D ─────────── */
 // Tronc brachio-céphalique : de la crosse à la bifurcation carotide commune / subclavière droites
 const J = (() => { const a = extreme(verts(named(/^Right common carotid artery$/)), (p) => -p[1]); const b = extreme(verts(named(/^Right subclavian artery$/)), (p) => p[0]); return meanOf([a, b]); })();
 const O = verts(ves.aorte).reduce((b, p) => (v3.dist(p, J) < v3.dist(b, J) ? p : b));
-const BCT = [v3.add(O, [0.15, -0.6, 0]), O, J];
-const bctSDF = tubeSDF(BCT, (t) => 0.62 - 0.12 * t);
 // Ligament artériel : de l'artère pulmonaire gauche vers la face inférieure de la crosse (≈ 0,8 cm de long)
 const LIG = (() => {
   const lpa = verts(ves['artere-pulmonaire-gauche']).filter((p) => p[0] > 0.5 && p[0] < 3.5);
@@ -154,24 +167,64 @@ const fatPts = [];
 for (const p of cluster(pieces.filter((q) => trunkRe.test(q.name)).map((q) => loadMesh(DIR, q.file)), 0.35)) {
   if (dV(...p) > 2.4) continue;
   const g = gradOf(dV, p);
-  fatPts.push(v3.sub(p, v3.mul(g, 0.28)));
+  fatPts.push(v3.sub(p, v3.mul(g, 0.2)));
 }
 const fatCloud = new PointCloud(fatPts, 0.6);
-const fatSDF = (x, y, z) => { const { d } = fatCloud.nearest(x, y, z, 2); if (d > 1.2) return d; return d - 0.25 - 0.035 * (0.55 - Math.abs(2 * fbm(x * 2.4, y * 2.4, z * 2.4) - 1)); };
+const fatSDF = (x, y, z) => { const { d } = fatCloud.nearest(x, y, z, 2); if (d > 1.2) return d; return d - 0.24 - 0.035 * (0.55 - Math.abs(2 * fbm(x * 2.4, y * 2.4, z * 2.4) - 1)); };
 log(fatPts.length, 'points de graisse');
+
+/* ─────────── 4 bis. veine interventriculaire antérieure (absente de BodyParts3D) ─────────── */
+// Portion antérieure de la grande veine du cœur : longe l'IVA du côté du VG, de la pointe jusqu'au sillon AV gauche
+// où elle rejoint la grande veine de BodyParts3D. Construite comme un tube posé à côté du tronc de l'IVA.
+function tubeMesh(pts, rFn, radial = 10) {
+  const pos = [], idx = [], n = pts.length;
+  let prevN = null;
+  for (let i = 0; i < n; i++) {
+    const t = v3.norm(v3.sub(pts[Math.min(n - 1, i + 1)], pts[Math.max(0, i - 1)]));
+    let nn = prevN ? v3.norm(v3.sub(prevN, v3.mul(t, v3.dot(prevN, t)))) : v3.norm(v3.cross(t, Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+    prevN = nn;
+    const bb = v3.cross(t, nn), r = rFn(i / (n - 1));
+    for (let j = 0; j < radial; j++) { const a = (j / radial) * Math.PI * 2; pos.push(...v3.add(pts[i], v3.add(v3.mul(nn, r * Math.cos(a)), v3.mul(bb, r * Math.sin(a))))); }
+  }
+  for (let i = 0; i < n - 1; i++) for (let j = 0; j < radial; j++) { const a = i * radial + j, b = i * radial + (j + 1) % radial, c = a + radial, d = b + radial; idx.push(a, c, b, b, c, d); }
+  // extrémités fermées
+  for (const [ring, flip] of [[0, true], [n - 1, false]]) { const c = pos.length / 3; pos.push(...pts[ring]); for (let j = 0; j < radial; j++) { const a = ring * radial + j, b = ring * radial + (j + 1) % radial; if (flip) idx.push(c, b, a); else idx.push(c, a, b); } }
+  return { pos: new Float64Array(pos), idx: new Uint32Array(idx) };
+}
+{
+  const lad = cluster([named(/^Trunk of anterior interventricular branch of left coronary artery$/)], 0.45);
+  // ordre le long du vaisseau : chaîne du plus proche voisin depuis le point le plus haut
+  const chain = [extreme(lad, (p) => p[1])], rest = lad.filter((p) => p !== chain[0]);
+  while (rest.length) { const last = chain[chain.length - 1]; let bi = 0; rest.forEach((p, i) => { if (v3.dist(p, last) < v3.dist(rest[bi], last)) bi = i; }); if (v3.dist(rest[bi], last) > 1.2) break; chain.push(rest.splice(bi, 1)[0]); }
+  const side = chain.map((p, i) => {
+    const t = v3.norm(v3.sub(chain[Math.min(chain.length - 1, i + 1)], chain[Math.max(0, i - 1)]));
+    const nn = gradOf(dV, p);
+    let s = v3.norm(v3.cross(t, nn));
+    if (wLV(...v3.add(p, v3.mul(s, 0.4))) < wLV(...v3.sub(p, v3.mul(s, 0.4)))) s = v3.mul(s, -1);
+    return v3.sub(v3.add(p, v3.mul(s, 0.34)), v3.mul(nn, 0.04));
+  });
+  // lissage du trajet, puis raccord à la grande veine (point le plus proche du haut de l'IVA)
+  const smooth = side.map((p, i) => meanOf(side.slice(Math.max(0, i - 2), i + 3)));
+  const gcv = verts(named(/^Great cardiac vein$/));
+  const join = gcv.reduce((b, p) => (v3.dist(p, smooth[0]) < v3.dist(b, smooth[0]) ? p : b));
+  const path = [...smooth.slice(2).reverse(), smooth[0], join];
+  const aiv = tubeMesh(path, (t) => 0.08 + 0.1 * t);
+  raw.veine['grande-veine-cardiaque'] = mergeMeshes([raw.veine['grande-veine-cardiaque'], aiv]);
+  log('veine interventriculaire antérieure :', path.length, 'points, raccordée à la grande veine à', v3.dist(smooth[0], join).toFixed(1), 'cm');
+}
 
 /* ─────────── 5. enveloppe ─────────── */
 const TRIM = {
   aorte: (x, y) => -(y + 8), 'veine-cave-inferieure': (x, y) => -(y + 6.5), 'veine-cave-superieure': (x, y) => y - 12.5,
-  'carotide-commune-gauche': (x, y) => y - 14.5, 'subclaviere-gauche': (x) => x - 5.2, 'tronc-brachio-cephalique': (x, y) => Math.max(y - 14.5, -x - 5.2),
-  'artere-pulmonaire-droite': (x) => -x - 5.4, 'artere-pulmonaire-gauche': (x) => x - 5.8, 'veines-pulmonaires': (x) => Math.abs(x - 0.6) - 4.8,
+  'carotide-commune-gauche': (x, y) => y - 13.6, 'subclaviere-gauche': (x) => x - 4.8, 'tronc-brachio-cephalique': (x, y) => Math.max(y - 13.6, -x - 4.8),
+  'artere-pulmonaire-droite': (x) => -x - 4.9, 'artere-pulmonaire-gauche': (x) => x - 5.0, 'veines-pulmonaires': (x) => Math.abs(x - 0.6) - 4.1,
 };
 const vessel = (id) => (x, y, z) => { let d = S[id].query(x, y, z, 1.5); if (TRIM[id]) d = Math.max(d, TRIM[id](x, y, z)); return d; };
 const PARTS = {
   // les trois segments de l'aorte sont des pièces distinctes : raccord lisse entre eux (pas de couture)
   aorte: (x, y, z) => Math.max(smin(smin(AORTE[0].query(x, y, z, 1.5), AORTE[1].query(x, y, z, 1.5), 0.5), AORTE[2].query(x, y, z, 1.5), 0.5), TRIM.aorte(x, y, z)),
   'carotide-commune-gauche': vessel('carotide-commune-gauche'), 'subclaviere-gauche': vessel('subclaviere-gauche'),
-  'tronc-brachio-cephalique': (x, y, z) => Math.max(Math.min(bctSDF(x, y, z), S['tronc-brachio-cephalique'].query(x, y, z, 1.5)), TRIM['tronc-brachio-cephalique'](x, y, z)),
+  'tronc-brachio-cephalique': vessel('tronc-brachio-cephalique'),
   'ligament-arteriel': ligSDF, 'tronc-pulmonaire': vessel('tronc-pulmonaire'), 'artere-pulmonaire-droite': vessel('artere-pulmonaire-droite'),
   'artere-pulmonaire-gauche': vessel('artere-pulmonaire-gauche'), 'veine-cave-superieure': vessel('veine-cave-superieure'),
   'veine-cave-inferieure': vessel('veine-cave-inferieure'), 'veines-pulmonaires': vessel('veines-pulmonaires'),
@@ -182,8 +235,8 @@ const ASSEMBLIES = [
   { k: 0.4, parts: [['veine-cave-superieure', 0]] }, { k: 0.4, parts: [['veine-cave-inferieure', 0]] }, { k: 0.35, parts: [['veines-pulmonaires', 0]] },
 ];
 const core = (x, y, z) => {
-  // épaisseur : celle des coronaires, au moins ≈ 0,8 cm pour le VG et 0,35 cm pour le VD
-  const myo = dV(x, y, z) - Math.max(thick(x, y, z), 0.35 + 0.45 * wLV(x, y, z));
+  // épaisseur : celle des coronaires, au moins ≈ 1 cm pour le VG et 0,35 cm pour le VD (fiche : 8–12 mm et 3–5 mm)
+  const myo = -smin(-(dV(x, y, z) - Math.max(thick(x, y, z), 0.35 + 0.65 * wLV(x, y, z))), baseCut(x, y, z), 0.3);
   const od = smin(S.ODw.query(x, y, z, 1.5), S.ODc.query(x, y, z, 1.5), 0.25);
   const og = smin(S.OGw.query(x, y, z, 1.5), S.OGc.query(x, y, z, 1.5), 0.25);
   const fat = fatSDF(x, y, z);
@@ -226,7 +279,7 @@ const extract = (fn, B, h, smooth = 6) => { const m = surfaceNets(fn, B, h, { pr
 
 const ENV_B = { min: [-7.5, -8.6, -8.5], max: [7.5, 15, 7.5] };
 log(`enveloppe : extraction au pas de ${H} cm…`);
-const env = extract(field, ENV_B, H);
+const env = extract(field, ENV_B, H, 10);
 log('enveloppe :', env.verts.length, 'sommets,', env.tris.length / 3, 'triangles');
 const proxy = extract(field, ENV_B, 0.3, 2);
 log('maillage de clic :', proxy.verts.length, 'sommets');
@@ -238,7 +291,7 @@ log('cavités :', cavities.verts.length, 'sommets');
 const lumen = (ids) => (x, y, z) => Math.min(...ids.map((id) => PARTS[id](x, y, z))) + 0.15; // paroi ≈ 1,5 mm
 const lumA = extract(lumen(['aorte', 'carotide-commune-gauche', 'subclaviere-gauche', 'tronc-brachio-cephalique', 'veines-pulmonaires']), ENV_B, 0.22, 2);
 const lumV = extract(lumen(['tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'veine-cave-superieure', 'veine-cave-inferieure']), ENV_B, 0.22, 2);
-const fatSolid = extract((x, y, z) => Math.max(fatSDF(x, y, z), field(x, y, z)), { min: [-6, -7, -6], max: [6.5, 4, 5.5] }, 0.18, 2);
+const fatSolid = extract((x, y, z) => Math.max(fatSDF(x, y, z), field(x, y, z), -core(x, y, z).myo), { min: [-6, -7, -6], max: [6.5, 4, 5.5] }, 0.18, 2);
 log('lumières et graisse :', lumA.verts.length + lumV.verts.length, '+', fatSolid.verts.length, 'sommets');
 
 /* ─────────── 7. repères anatomiques ─────────── */
@@ -249,6 +302,10 @@ const BASE = meanOf([mitral, tricus]);
 const lvApexIn = extreme(verts(cav['ventricule-gauche']), (p) => v3.dist(p, BASE));
 const AXIS = v3.norm(v3.sub(lvApexIn, BASE));
 const APEX = v3.add(lvApexIn, v3.mul(AXIS, thick(...lvApexIn)));
+// plan « quatre cavités » : contient l'axe du cœur et passe par les valves mitrale et tricuspide ; normale vers
+// l'avant-haut (c'est de ce côté que l'on regarde la coupe)
+let N4 = v3.norm(v3.cross(AXIS, v3.sub(mitral, tricus)));
+if (v3.dot(N4, [0, 1, 0.4]) < 0) N4 = v3.mul(N4, -1);
 const Uf = v3.norm(v3.sub([0, 0, 1], v3.mul(AXIS, AXIS[2])));
 const Vf = v3.norm(v3.cross(Uf, AXIS));
 // région de l'apex : sommets de l'enveloppe à moins de 1,4 cm de la pointe
@@ -294,7 +351,7 @@ log('attributs et occlusion ambiante calculés');
 /* ─────────── 9. conduction, trajets du sang, ancres ─────────── */
 // Septum interventriculaire : surface médiane entre les deux cavités (|dVG − dVD| ≈ 0), à plusieurs niveaux de l'axe
 const septum = [];
-for (const f of [0.12, 0.25, 0.4, 0.55, 0.7]) {
+for (const f of [0.05, 0.14, 0.27, 0.42, 0.56, 0.7]) {
   const c = v3.add(BASE, v3.mul(AXIS, f * v3.dist(BASE, lvApexIn)));
   let best = null, bs = 1e9;
   for (let a = -4; a <= 4; a += 0.15) for (let b = -4; b <= 4; b += 0.15) {
@@ -306,6 +363,7 @@ for (const f of [0.12, 0.25, 0.4, 0.55, 0.7]) {
   }
   if (best) septum.push(best);
 }
+const septumS = septum.map((p, i) => meanOf([septum[Math.max(0, i - 1)], p, p, septum[Math.min(septum.length - 1, i + 1)]]));
 const toward = (p, S1, off) => { const g = gradOf((x, y, z) => S1.query(x, y, z, 2), p); const d = S1.query(...p, 2); return v3.sub(p, v3.mul(g, d - off)); };
 const cs = verts(named(/^Coronary sinus$/)); const odC = cen(cav['oreillette-droite']);
 const csOstium = cs.reduce((b, p) => (v3.dist(p, odC) < v3.dist(b, odC) ? p : b));
@@ -316,9 +374,9 @@ const SA_NODE = v3.add(meanOf(svcLow), [-0.6, -0.3, 0.5]);
 const papAnt = cen(named(/^Anterior papillary muscle of right ventricle$/));
 const conduction = {
   'noeud-sinusal': [SA_NODE], 'noeud-av': [AV_NODE],
-  his: [AV_NODE, ...septum.slice(0, 4)],
-  brancheG: septum.slice(0, 5).map((p) => toward(p, S.VG, 0.08)),
-  brancheD: [septum[0], toward(septum[1], S.VD, 0.08), toward(septum[2], S.VD, 0.08), papAnt],
+  his: [AV_NODE, v3.add(v3.mul(AV_NODE, 0.5), v3.mul(septumS[0], 0.5)), septumS[0]],
+  brancheG: septumS.map((p) => toward(p, S.VG, 0.08)),
+  brancheD: [septumS[0], toward(septumS[1], S.VD, 0.08), toward(septumS[2], S.VD, 0.08), toward(septumS[3], S.VD, 0.08), papAnt],
 };
 // trajets du sang : centres des cavités, des valves et des vaisseaux
 const top = (m, n = 0.6) => { const p = verts(m); const t = Math.max(...p.map((q) => q[1])); return meanOf(p.filter((q) => q[1] > t - n)); };
@@ -330,8 +388,8 @@ const ptTop = top(ves['tronc-pulmonaire'], 0.8);
 const rpaEnd = end(ves['artere-pulmonaire-droite'], (p) => -p[0]), lpaEnd = end(ves['artere-pulmonaire-gauche'], (p) => p[0]);
 const asc = cen(named(/^Ascending aorta$/)), arch = top(ves.aorte, 0.8);
 const descLow = [O[0] + 2.2, -7.6, verts(ves.aorte).filter((p) => p[1] < -6).reduce((a, p) => a + p[2], 0) / Math.max(1, verts(ves.aorte).filter((p) => p[1] < -6).length)];
-const descMid = meanOf(verts(ves.aorte).filter((p) => p[1] > 1 && p[1] < 3));
-const svcTop = meanOf(svc.filter((p) => p[1] > 11.5)), svcLowC = meanOf(svcLow);
+const descMid = meanOf(verts(ves.aorte).filter((p) => p[1] > 1 && p[1] < 3 && p[2] < -2.5));
+const svcTop = meanOf(svc.filter((p) => p[1] > Math.max(...svc.map((q) => q[1])) - 0.8)), svcLowC = meanOf(svcLow);
 const ivc = verts(ves['veine-cave-inferieure']); const ivcLow = meanOf(ivc.filter((p) => p[1] < -5.5 && p[1] > -6.5)), ivcTop = meanOf(ivc.filter((p) => p[1] > Math.max(...ivc.map((q) => q[1])) - 0.8));
 const pv = verts(ves['veines-pulmonaires']); const pvR = meanOf(pv.filter((p) => p[0] < -2.5)), pvL = meanOf(pv.filter((p) => p[0] > 3.8));
 const descTop = meanOf(verts(ves.aorte).filter((p) => p[1] > 6 && p[1] < 7 && p[2] < -2.5));
@@ -346,7 +404,7 @@ const flowPaths = [
   { color: 0x43589f, speed: 0.11, points: [ivcLow, ivcTop, odC, lerp(odC, tricus, 0.6), tricus, rvIn, vd, rvot, pulmo, ptTop, lpaMid, lpaEnd] },
   { color: 0xc43a33, speed: 0.12, points: [pvR, pvRin, ogC, mitral, lvLow, lvot, aortic, asc, arch, descTop, descMid, descLow] },
   { color: 0xc43a33, speed: 0.12, points: [pvL, pvLin, ogC, mitral, lvLow, lvot, aortic, asc, arch, descTop, descMid, descLow] },
-  { color: 0xc43a33, speed: 0.12, points: [aortic, asc, O, J, top(named(/^Right common carotid artery$/), 0.6)] },
+  { color: 0xc43a33, speed: 0.12, points: [aortic, asc, O, J, (() => { const t = top(named(/^Right common carotid artery$/), 0.6); return [t[0], Math.min(t[1], 13.3), t[2]]; })()] },
 ];
 // ancres des étiquettes : point de la structure le mieux exposé vers l'extérieur (et un peu vers l'avant)
 const HEART_C = meanOf([vg, vd, odC, ogC]);
@@ -371,7 +429,8 @@ ENV_IDS.forEach((id, s) => {
   if (idx.length) anchors[id] = anchorFrom(idx.map((i) => env.verts[i]), idx.map((i) => env.normals[i]));
 });
 anchors['septum-interventriculaire'] = septum[2];
-for (const role of ['coronaire', 'veine']) for (const [id, m] of Object.entries(raw[role])) { const mm = meshNormals(m); anchors[id] = anchorFrom(mm.verts, mm.normals); }
+const TRONCS = { 'coronaire-droite': /^Trunk of right coronary artery$/, iva: /^Trunk of anterior interventricular branch of left coronary artery$/, 'sinus-coronaire': /^Coronary sinus$/ };
+for (const role of ['coronaire', 'veine']) for (const [id, m] of Object.entries(raw[role])) { const mm = meshNormals(TRONCS[id] ? named(TRONCS[id]) : m); anchors[id] = anchorFrom(mm.verts, mm.normals); }
 for (const [id, m] of Object.entries(raw.valve)) anchors[id] = cen(m);
 anchors['noeud-sinusal'] = SA_NODE; anchors['noeud-av'] = AV_NODE; anchors['faisceau-his'] = septum[1];
 log('repères : septum', septum.length, 'niveaux ; nœud AV', AV_NODE.map((v) => v.toFixed(1)).join(','));
@@ -407,7 +466,7 @@ for (const [role, o] of Object.entries(raw)) for (const [id, m] of Object.entrie
 const header = {
   version: 2, source: 'BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International',
   ids: ENV_IDS, bounds: { min: BB.min, size }, meshes,
-  frame: { base: R3(BASE), axis: R3(AXIS), u: R3(Uf), v: R3(Vf), apex: R3(APEX) },
+  frame: { base: R3(BASE), axis: R3(AXIS), u: R3(Uf), v: R3(Vf), apex: R3(APEX), cut4: R3(N4) },
   anchors: Object.fromEntries(Object.entries(anchors).map(([k, p]) => [k, R3(p)])),
   conduction: Object.fromEntries(Object.entries(conduction).map(([k, l]) => [k, l.map(R3)])),
   flowPaths: flowPaths.map((f) => ({ ...f, points: f.points.map(R3) })),
@@ -417,6 +476,12 @@ const pre = Buffer.alloc(8); pre.write('HRT2', 0, 'ascii'); pre.writeUInt32LE(hb
 const file = Buffer.concat([pre, hb, Buffer.alloc(hpad, 0x20), ...chunks]);
 fs.writeFileSync(path.join(ROOT, 'assets', 'heart.bin'), file);
 log(`assets/heart.bin : ${(file.length / 1048576).toFixed(2)} Mo, ${meshes.length} maillages`);
+// Contrôle des épaisseurs : distance de chaque point des cavités ventriculaires à la surface externe (hors base)
+for (const [nom, id, cible] of [['VG', 'ventricule-gauche', '8–12 mm'], ['VD', 'ventricule-droit', '3–5 mm']]) {
+  const w = verts(cav[id]).filter((p) => v3.dot(v3.sub(p, BASE), AXIS) > 0.8).map((p) => -field(...p)).sort((a, b) => a - b);
+  const q = (f) => w[Math.floor(f * (w.length - 1))].toFixed(2);
+  log(`paroi ${nom} : 10 % ${q(0.1)}, médiane ${q(0.5)}, 90 % ${q(0.9)} cm (fiche patient : ${cible})`);
+}
 const tq = samples.map((s) => s[3]).sort((a, b) => a - b);
 log(`épaisseur du myocarde aux coronaires : 10 % ${tq[Math.floor(tq.length * 0.1)].toFixed(2)}, médiane ${tMed.toFixed(2)}, 90 % ${tq[Math.floor(tq.length * 0.9)].toFixed(2)} cm`);
 if (APERCU) fs.writeFileSync(APERCU, JSON.stringify({ env: { v: env.verts.flat().map((v) => +v.toFixed(3)), n: env.normals.flat().map((v) => +v.toFixed(3)), c: env.attrs.flatMap((a) => a.col.map((v) => +v.toFixed(3))), i: env.tris } }));

@@ -247,6 +247,15 @@ export const STRUCTURES = {
       "It accompanies the posterior interventricular artery, most often a branch of the right coronary artery.",
     ],
   },
+  'petites-veines-cardiaques': {
+    nom: 'Other cardiac veins', latin: 'Venae cordis', groupe: 'coronaires', couleur: '#a194b6',
+    resume: "Small veins that return blood from the back of the left ventricle and from the right and left borders of the heart. They drain into the coronary sinus or into the great cardiac vein.",
+    details: [
+      "The posterior vein of the left ventricle drains the back of the left ventricle.",
+      "The small cardiac vein follows the right coronary artery in the groove between the right atrium and right ventricle; the marginal veins run along the borders of the heart.",
+      "Cardiac resynchronization leads (biventricular, or “triple-chamber”, pacemakers) are often placed in one of these veins, through the coronary sinus.",
+    ],
+  },
   'sinus-coronaire': {
     nom: 'Coronary sinus', latin: 'Sinus coronarius', groupe: 'coronaires', couleur: '#3e519e',
     resume: "A large vein on the posterior surface of the heart that collects venous blood from the heart muscle and empties it into the right atrium.",
@@ -292,7 +301,7 @@ export const ORDRE = [
   'aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche',
   'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'ligament-arteriel',
   'veine-cave-superieure', 'veine-cave-inferieure', 'veines-pulmonaires',
-  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'sinus-coronaire', 'sillons',
+  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques', 'sinus-coronaire', 'sillons',
   'noeud-sinusal', 'noeud-av', 'faisceau-his',
 ];
 
