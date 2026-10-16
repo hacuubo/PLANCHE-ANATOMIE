@@ -27,6 +27,9 @@ renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// ombres recalculées à la demande (lumières fixes) : au changement de mode, et une image sur trois pendant le battement
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 canvasWrap.appendChild(renderer.domElement);
 
 const labelRenderer = new CSS2DRenderer();
@@ -89,6 +92,7 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   toWrap.forEach((o) => {
     // les recouvrements s'additionnent, d'où une opacité basse
     const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.05, depthWrite: false, clippingPlanes: [ghostPlane] });
+    heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07);
     const gh = new THREE.Mesh(o.geometry, gm);
     gh.visible = false; gh.userData.ghost = true;
     o.add(gh); ghostMats.push(gm); ghosts.push(gh);
@@ -121,6 +125,7 @@ function makeStencilMeshes(solid, order) {
   const front = base.clone(); front.side = THREE.FrontSide; front.clippingPlanes = [cutPlane];
   front.stencilFail = front.stencilZFail = front.stencilZPass = solid.hole ? inc : dec;
   const g = new THREE.Group();
+  heart.addDeform(back, solid.k ?? 0.07); heart.addDeform(front, solid.k ?? 0.07); // le stencil suit le battement
   const m0 = new THREE.Mesh(solid.mesh.geometry, back); m0.renderOrder = order;
   const m1 = new THREE.Mesh(solid.mesh.geometry, front); m1.renderOrder = order;
   g.add(m0, m1);
@@ -192,6 +197,7 @@ function applyClipping() {
   capGroups.forEach((cap) => { cap.visible = state.coupe; });
   heart.cutOnly.forEach((m) => { m.visible = state.coupe; });
   canvasWrap.classList.toggle('is-cut', state.coupe);
+  renderer.shadowMap.needsUpdate = true;
   syncGhost();
   updateCapPlanes();
 }
@@ -433,6 +439,7 @@ function goView(name, instant = false) {
 
 function toggle(name, value) {
   state[name] = value ?? !state[name];
+  renderer.shadowMap.needsUpdate = true;
   const btn = document.querySelector(`[data-toggle="${name}"]`);
   if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
   if (name === 'coupe') { if (state.coupe && state.modeCoupe === 'grand-axe') goDir(heart.cut4.normal); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
@@ -567,16 +574,9 @@ function updateOrientation() {
 }
 
 const clock = new THREE.Clock();
-const BPM = 68;
+const BPM = 64;
+let beatIdle = true;
 let frame = 0;
-function beatScale(t) {
-  const period = 60 / BPM;
-  const ph = (t % period) / period;
-  // systole ventriculaire ≈ 35 % du cycle : contraction rapide puis relâchement
-  const sys = ph < 0.08 ? ph / 0.08 : ph < 0.3 ? 1 : ph < 0.42 ? 1 - (ph - 0.3) / 0.12 : 0;
-  const e = sys * sys * (3 - 2 * sys);
-  return 1 - 0.035 * e;
-}
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -587,8 +587,9 @@ function animate() {
     camera.position.lerpVectors(camAnim.from, camAnim.to, e);
     if (camAnim.t >= 1) camAnim = null;
   }
-  const s = state.battement ? beatScale(t) : 1;
-  pivot.scale.setScalar(s);
+  // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
+  if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
+  else if (!beatIdle) { heart.setBeat(null); beatIdle = true; renderer.shadowMap.needsUpdate = true; }
   if (state.circulation) updateFlow(t);
   controls.update();
   if ((frame & 7) === 0) updateOrientation();

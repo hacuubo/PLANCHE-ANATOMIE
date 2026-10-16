@@ -166,12 +166,14 @@ function avValve(id, d, leafletMat, cordMat) {
   const nSeg = G.reduce((s, g) => s + g.ins.length + 1, 0);
   const cords = new Cords(nSeg, cordMat);
   const pts = new Map();
-  const update = (open, headOffset = null) => {
-    for (const lf of leaflets) lf.sheet.update((u, v, out) => lf.point(u, v, open, out));
+  // xf(point, raideur) : déformation du cycle cardiaque (heart.js) ; feuillets portés par l'anneau, têtes des piliers
+  // entraînées par la paroi ventriculaire
+  const update = (open, xf = null) => {
+    for (const lf of leaflets) lf.sheet.update((u, v, out) => { lf.point(u, v, open, out); if (xf) xf(out, 0.1); });
     const segs = [];
     for (const g of G) {
-      const H = g.head.H.clone(); if (headOffset) H.add(headOffset(g.head.name));
-      const ins = g.ins.map(([u, v]) => g.lf.point(u, v, open, new THREE.Vector3()));
+      const H = g.head.H.clone(); if (xf) xf(H, 0.15);
+      const ins = g.ins.map(([u, v]) => { const q = g.lf.point(u, v, open, new THREE.Vector3()); if (xf) xf(q, 0.1); return q; });
       const m = ins.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / ins.length);
       const B = H.clone().lerp(m, 0.42);
       segs.push([H, B, 0.05, 0.035]);
@@ -210,7 +212,7 @@ function slValve(id, d, cuspMat) {
     };
     return { sheet, point };
   });
-  const update = (open) => { for (const c of cusps) c.sheet.update((u, v, out) => c.point(u, v, open, out)); };
+  const update = (open, xf = null) => { for (const c of cusps) c.sheet.update((u, v, out) => { c.point(u, v, open, out); if (xf) xf(out, 0.04); }); };
   update(0);
   return { meshes: cusps.map((c) => c.sheet.mesh), update };
 }

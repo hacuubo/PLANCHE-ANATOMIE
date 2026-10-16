@@ -17,6 +17,13 @@ des étiquettes numérotées avec lignes de rappel, et une fiche explicative par
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
 - **Coupe** (grand axe, frontale, horizontale, profondeur réglable) : cavités, septum, valves et
   cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
+- **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
+  tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires, cuspides aortiques et
+  pulmonaires en poche fermées en Y — avec un degré d'ouverture animable.
+- **Battement** : cycle cardiaque physiologique (≈ 64/min) — systole auriculaire, contraction isovolumique
+  (fermeture mitrale et tricuspide), éjection (ouverture aortique et pulmonaire), relaxation, remplissage.
+  Raccourcissement base → pointe, épaississement des parois, réduction des cavités et torsion, calculés dans le
+  shader de sommets (tous les tissus et les surfaces de coupe suivent le même mouvement).
 - **Circulation** : parois translucides et particules suivant le trajet du sang à travers les
   cavités et les valves (bleu = pauvre en oxygène, rouge = riche en oxygène).
 - **Étiquettes** : planche numérotée en deux colonnes avec lignes de rappel ; les étiquettes
@@ -57,11 +64,12 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | `index.html` | Page, barre d'outils, panneau |
 | `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, panneau mobile en tiroir) |
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
-| `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), conduction, trajets du sang, clic et surbrillance |
+| `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, trajets du sang, clic et surbrillance |
+| `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/app.js` | Scène, coupe (clipping + capuchons stencil), circulation, étiquettes, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
-| `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D |
+| `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |
 
