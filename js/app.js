@@ -98,6 +98,10 @@ function syncGhost() { ghostPlane.normal.copy(cutPlane.normal).negate(); ghostPl
 
 /* ─────────── coupe (plan de clipping + capuchons stencil) ─────────── */
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
+// Les structures intérieures (valves, cordages, piliers) sont coupées 1,6 cm plus loin : on les voit entières devant
+// la tranche, comme sur les planches et en animation médicale, au lieu d'une section plate.
+const interiorPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 2.0);
+function syncInterior() { interiorPlane.normal.copy(cutPlane.normal); interiorPlane.constant = cutPlane.constant + 1.6; }
 const CUT_MODES = {
   frontale: { normal: new THREE.Vector3(0, 0, -1), min: -6, max: 6, def: 0.2 },
   horizontale: { normal: new THREE.Vector3(0, -1, 0), min: -5, max: 9, def: 0.0 },
@@ -141,6 +145,23 @@ heart.solids.forEach((s) => {
     const rank = orderByCap.size; // les groupes suivants passent devant en cas de chevauchement (décalage de polygone)
     // surface de coupe : même grain aquarelle que les parois (plan de 60 cm → répétition 14 ≈ 4 cm par plage), mate
     const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, envMapIntensity: 0.5, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank });
+    // tranche de coupe : grain fibreux et marbrure (muscle sectionné), plus satinée qu'un aplat
+    if (capKey === 'myo' || capKey === 'fat') {
+      mat.onBeforeCompile = (sh) => {
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vW;
+float h13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float vn(vec3 p) { vec3 i = floor(p), f = fract(p); vec3 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(h13(i), h13(i + vec3(1,0,0)), u.x), mix(h13(i + vec3(0,1,0)), h13(i + vec3(1,1,0)), u.x), u.y),
+             mix(mix(h13(i + vec3(0,0,1)), h13(i + vec3(1,0,1)), u.x), mix(h13(i + vec3(0,1,1)), h13(i + vec3(1,1,1)), u.x), u.y), u.z); }`)
+          .replace('#include <color_fragment>', `#include <color_fragment>
+  { float fib = vn(vec3(vW.x * 9.0, vW.y * 2.2, vW.z * 9.0)) * 0.6 + vn(vW * 22.0) * 0.4;
+    float mot = vn(vW * 1.3 + 7.0);
+    diffuseColor.rgb *= ${capKey === 'fat' ? '0.95 + 0.1 * vn(vW * 6.0)' : '0.84 + 0.2 * fib + 0.1 * (mot - 0.5)'}; }`);
+      };
+      mat.customProgramCacheKey = () => `tranche-${capKey}`;
+    }
     const cap = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat);
     cap.renderOrder = order + 1;
     cap.onAfterRender = (r) => r.clearStencil();
@@ -152,6 +173,7 @@ heart.solids.forEach((s) => {
 });
 
 function updateCapPlanes() {
+  syncInterior();
   const n = cutPlane.normal;
   capGroups.forEach((cap) => {
     cutPlane.coplanarPoint(cap.position);
@@ -163,7 +185,8 @@ const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battem
 
 function applyClipping() {
   const planes = state.coupe ? [cutPlane] : [];
-  heart.materials.forEach((m) => { m.clippingPlanes = planes; m.needsUpdate = true; });
+  syncInterior();
+  heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (state.coupe ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
   ghosts.forEach((g) => { g.visible = state.coupe; });
   heart.solids.forEach((s) => { s.stencil.visible = state.coupe; });
   capGroups.forEach((cap) => { cap.visible = state.coupe; });

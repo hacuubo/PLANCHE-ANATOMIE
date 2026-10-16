@@ -10,6 +10,7 @@
 //   - repères : axe du cœur, système de conduction placé dans le septum réel, trajets du sang, ancres d'étiquettes.
 // Rendu « tissu vivant » : fibres musculaires, graisse lobulée, film humide, translucidité, occlusion ambiante cuite.
 import * as THREE from 'three';
+import { buildValves } from './valves.js';
 
 // Couleurs des surfaces de coupe et des structures internes (sRGB)
 export const COL = {
@@ -20,8 +21,8 @@ export const COL = {
   endocarde: 0xc7646b,       // paroi interne des cavités (trabéculée), rose soutenu
   endoOreillette: 0xc8737a,
   papillaire: 0xc35e67,
-  valve: 0xf1e4c6,           // feuillets crème nacrés
-  cordage: 0xfbf6ec,
+  valve: 0xeed7a6,           // feuillets et cuspides : crème jaune translucide (animation médicale)
+  cordage: 0xf8f2e6,         // cordages tendineux : blanc nacré
   conduction: 0xf3c23b,
   coronaire: 0xc25e60,       // artères coronaires : rose-rouge
   veineCard: 0xa194b6,       // veines du cœur : mauves
@@ -363,10 +364,13 @@ export async function buildHeart() {
     materials.push(m); tissueMats.push(m);
     return m;
   };
+  const interior = (m) => { m.userData.interior = true; return m; };
   const matCache = new Map();
   const PRESETS = {
-    valve: () => tissue(COL.valve, { tis: [0, 1, 0, 1], transparent: true, opacity: 0.95, sss: 0.55, rim: 0.2, roughness: 0.35, bump: 0.1 }),
-    papillaire: () => tissue(COL.papillaire, { roughness: 0.5, bump: 0.3 }),
+    // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
+    valve: () => interior(tissue(0xffffff, { envelope: true, sss: 0.4, rim: 0.12, roughness: 0.34, clearcoat: 0.55, clearcoatRoughness: 0.2, bump: 0.05, sheen: 0 })),
+    cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], sss: 0.5, rim: 0.25, roughness: 0.3, clearcoat: 0.5, bump: 0.02 })),
+    papillaire: () => interior(tissue(COL.papillaire, { roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.2, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
     conduction: () => tissue(COL.conduction, { tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
     coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.1, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
     coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.35, bump: 0.08, sss: 0.3, flowOpacity: 0.14 }),
@@ -408,6 +412,7 @@ export async function buildHeart() {
   /* ── Cavités (paroi interne, visibles en coupe ; « trou » unique pour les surfaces de coupe) ── */
   {
     const g = geos.cavites.geometry, sid = geos.cavites.sid, n = sid.length;
+    const fromFile = !!g.attributes.col;
     const col = new Uint8Array(n * 4), tis = new Uint8Array(n * 4);
     const ventr = new THREE.Color(COL.endocarde), atr = new THREE.Color(COL.endoOreillette);
     for (let i = 0; i < n; i++) {
@@ -416,9 +421,9 @@ export async function buildHeart() {
       col[i * 4] = Math.round(Math.pow(c.r, 1 / 2.2) * 255); col[i * 4 + 1] = Math.round(Math.pow(c.g, 1 / 2.2) * 255); col[i * 4 + 2] = Math.round(Math.pow(c.b, 1 / 2.2) * 255); col[i * 4 + 3] = 255;
       tis[i * 4 + 2] = isAtr ? 255 : 0; tis[i * 4 + 3] = sid[i];
     }
-    g.setAttribute('col', new THREE.BufferAttribute(col, 4, true));
-    g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true));
-    const cavMat = tissue(0xffffff, { envelope: true, side: THREE.BackSide, roughness: 0.5, bump: 0.35, rim: 0.05 });
+    if (!fromFile) { g.setAttribute('col', new THREE.BufferAttribute(col, 4, true)); g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true)); }
+    // endocarde : film humide brillant sur le relief des trabécules
+    const cavMat = tissue(0xffffff, { envelope: true, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
     const cav = new THREE.Mesh(g, cavMat);
     cav.userData.id = 'cavites';
     cav.userData.leaf = true;
@@ -436,12 +441,28 @@ export async function buildHeart() {
       mesh.userData.grid = buildRayGrid(geometry, 0.4);
       mesh.raycast = gridRaycast;
     } else {
-      const mesh = new THREE.Mesh(geometry, matFor(meta.id, meta.role === 'valve' ? 'valve' : 'papillaire'));
+      // muscle papillaire : sa surface coïncide avec la paroi de la cavité (creusée autour de lui) ; on le gonfle
+      // légèrement le long des normales pour qu'il se détache, colonne charnue, devant l'endocarde trabéculé
+      { const pz = geometry.attributes.position, nz = geometry.attributes.normal;
+        for (let i = 0; i < pz.count; i++) pz.setXYZ(i, pz.getX(i) + nz.getX(i) * 0.07, pz.getY(i) + nz.getY(i) * 0.07, pz.getZ(i) + nz.getZ(i) * 0.07);
+        geometry.computeBoundingSphere(); }
+      const mesh = new THREE.Mesh(geometry, matFor(meta.id, 'papillaire'));
+      mesh.castShadow = true;
       register(meta.id, mesh);
-      mesh.userData.leaf = meta.role === 'valve';
       cutOnly.push(mesh);
     }
   }
+
+  /* ── Valves et appareil sous-valvulaire (modèle paramétrique, js/valves.js) ── */
+  const valves = header.valves ? buildValves(header.valves, matFor) : {};
+  for (const [id, v] of Object.entries(valves)) {
+    for (const mesh of v.meshes) { register(id, mesh); mesh.userData.leaf = true; cutOnly.push(mesh); }
+  }
+  // planche anatomique : valves auriculo-ventriculaires ouvertes (diastole), sigmoïdes fermées
+  const setValves = ({ av = 0.9, sl = 0 } = {}) => {
+    for (const [id, v] of Object.entries(valves)) v.update(header.valves[id].type === 'av' ? av : sl);
+  };
+  setValves();
 
   /* ── Système de conduction (positions calculées dans le septum réel) ── */
   const C = header.conduction;
@@ -475,5 +496,5 @@ export async function buildHeart() {
   cutOnly.forEach((m) => { m.visible = false; });
 
   return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
-    cut4: { normal: v3(F.cut4), point: v3(F.base) } };
+    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setValves };
 }

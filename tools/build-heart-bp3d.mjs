@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { surfaceNets } from './lib/surface-nets.mjs';
 import { readPieces, loadMesh, mergeMeshes, classify, MeshSDF, PointCloud, smin, fbm, tubeSDF } from './lib/bp3d-heart.mjs';
+import { avModel, slModel, mainComponent } from './lib/valve-landmarks.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -265,6 +266,12 @@ function taubin(mesh, iters = 6, lambda = 0.5, mu = -0.53) {
   for (let i = 0; i < iters; i++) { step(lambda); step(mu); }
   return mesh;
 }
+function subdivide(mesh) {
+  const verts = mesh.verts.map((p) => p.slice()), mid = new Map(), tris = [];
+  const m = (a, b) => { const k = a < b ? a * 1e7 + b : b * 1e7 + a; let i = mid.get(k); if (i === undefined) { i = verts.length; verts.push(v3.mul(v3.add(mesh.verts[a], mesh.verts[b]), 0.5)); mid.set(k, i); } return i; };
+  for (let t = 0; t < mesh.tris.length; t += 3) { const [a, b, c] = [mesh.tris[t], mesh.tris[t + 1], mesh.tris[t + 2]]; const ab = m(a, b), bc = m(b, c), ca = m(c, a); tris.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca); }
+  return { verts, tris };
+}
 function vertexNormals(mesh) {
   const n = mesh.verts.map(() => [0, 0, 0]);
   for (let t = 0; t < mesh.tris.length; t += 3) {
@@ -286,7 +293,7 @@ log('maillage de clic :', proxy.verts.length, 'sommets');
 
 /* ─────────── 6. cavités, lumières et graisse (solides de coupe) ─────────── */
 const cavField = (x, y, z) => Math.min(S.VG.query(x, y, z, 2), S.VD.query(x, y, z, 2), S.OGc.query(x, y, z, 2), S.ODc.query(x, y, z, 2));
-const cavities = extract(cavField, { min: [-6, -6.5, -6.5], max: [6.5, 5.5, 5] }, 0.15, 4);
+const cavities = extract(cavField, { min: [-6, -6.5, -6.5], max: [6.5, 5.5, 5] }, 0.1, 4);
 log('cavités :', cavities.verts.length, 'sommets');
 const lumen = (ids) => (x, y, z) => Math.min(...ids.map((id) => PARTS[id](x, y, z))) + 0.15; // paroi ≈ 1,5 mm
 const lumA = extract(lumen(['aorte', 'carotide-commune-gauche', 'subclaviere-gauche', 'tronc-brachio-cephalique', 'veines-pulmonaires']), ENV_B, 0.22, 2);
@@ -347,6 +354,51 @@ proxy.sid = proxy.verts.map((p) => attributes(p).sid);
 const CAV_IDS = { VG: 'ventricule-gauche', VD: 'ventricule-droit', OGc: 'oreillette-gauche', ODc: 'oreillette-droite' };
 cavities.sid = cavities.verts.map((p) => { let b = 'VG', bd = 1e9; for (const k of Object.keys(CAV_IDS)) { const d = Math.abs(S[k].query(...p, 2)); if (d < bd) { bd = d; b = k; } } return ENV_IDS.indexOf(CAV_IDS[b]); });
 log('attributs et occlusion ambiante calculés');
+
+/* ─────────── 8 bis. endocarde : trabécules charnues ─────────── */
+// Les ventricules sont tapissés de colonnes musculaires (trabécules) orientées surtout de la base vers la pointe, plus
+// denses vers l'apex ; les chambres de chasse (sous les valves aortique et pulmonaire) et les oreillettes sont lisses.
+// Relief réel du maillage (le muscle avance dans la cavité), crêtes plus claires, creux plus sombres.
+{
+  const L = v3.dist(BASE, lvApexIn);
+  const hgt = [];
+  cavities.verts = cavities.verts.map((p, i) => {
+    const id = ENV_IDS[cavities.sid[i]], n = cavities.normals[i];
+    const ventr = id === 'ventricule-gauche' || id === 'ventricule-droit';
+    if (!ventr) { hgt.push(0); return p; }
+    const t = v3.dot(v3.sub(p, BASE), AXIS) / L;
+    let w = Math.min(1, Math.max(0, (t - 0.12) / 0.4));
+    for (const [c, r] of [[aortic, 2.6], [pulmo, 2.8]]) { const d = v3.dist(p, c); if (d < r) w *= (d / r) ** 2; }
+    const q = [v3.dot(p, Vf), v3.dot(p, Uf), v3.dot(p, AXIS)];
+    const r1 = 1 - Math.abs(2 * fbm(q[0] * 2.1, q[1] * 2.1, q[2] * 0.5) - 1);
+    const r2 = 1 - Math.abs(2 * fbm(q[0] * 3.6 + 5, q[1] * 3.6 + 2, q[2] * 1.3) - 1);
+    const ridge = Math.pow(Math.max(r1, 0.75 * r2), 3);
+    const amp = (id === 'ventricule-droit' ? 0.32 : 0.26) * w;
+    hgt.push(ridge * w);
+    return v3.sub(p, v3.mul(n, amp * ridge)); // vers l'intérieur de la cavité
+  });
+  taubin(cavities, 1, 0.4, -0.42); vertexNormals(cavities);
+  const VEN = hex(0xc9636d), ATR = hex(0xc8737a);
+  cavities.col = cavities.verts.map((p, i) => {
+    const id = ENV_IDS[cavities.sid[i]], h = hgt[i], base = id.startsWith('oreillette') ? ATR : VEN;
+    const m = (0.86 + 0.3 * h) * (0.95 + 0.1 * fbm(p[0] * 1.3, p[1] * 1.3, p[2] * 1.3));
+    return [...base.map((c) => Math.min(1, c * m)), 0.72 + 0.28 * Math.min(1, h * 1.6 + 0.3)];
+  });
+  log('endocarde : trabécules appliquées');
+}
+
+/* ─────────── 8 ter. repères des valves (modèle paramétrique de js/valves.js) ─────────── */
+const leafPts = (re) => pieces.filter((p) => re.test(p.name)).map((p) => ({ name: p.name, pts: mainComponent(loadMesh(DIR, p.file)) }));
+const junction = (Vc, Ac, Sa, Sv) => [...verts(Vc).filter((p) => Math.abs(Sa.query(...p, 1)) < 0.4), ...verts(Ac).filter((p) => Math.abs(Sv.query(...p, 1)) < 0.4)];
+const VALVES = {
+  'valve-mitrale': avModel({ leaflets: leafPts(/leaflet of mitral/), papillaries: leafPts(/papillary muscle of left ventricle/), mitral: true,
+    ring: junction(cav['ventricule-gauche'], cav['oreillette-gauche'], S.OGc, S.VG), axis: v3.sub(cen(cav['ventricule-gauche']), cen(cav['oreillette-gauche'])) }),
+  'valve-tricuspide': avModel({ leaflets: leafPts(/leaflet of tricuspid/), papillaries: leafPts(/papillary muscle of right ventricle/),
+    ring: junction(cav['ventricule-droit'], cav['oreillette-droite'], S.ODc, S.VD), axis: v3.sub(cen(cav['ventricule-droit']), cen(cav['oreillette-droite'])) }),
+  'valve-aortique': slModel({ cusps: leafPts(/cusp of aortic/), axis: v3.sub(cen(named(/^Ascending aorta$/)), aortic) }),
+  'valve-pulmonaire': slModel({ cusps: leafPts(/cusp of pulmonary/), axis: v3.sub(cen(ves['tronc-pulmonaire']), pulmo) }),
+};
+for (const [id, v] of Object.entries(VALVES)) log('valve', id, 'rayon', (v.radii ? v.radii.map((r) => r.toFixed(2)).join(' × ') : v.radius.toFixed(2)), v.leaflets ? `${v.leaflets.length} feuillets, ${v.papillaries.length} piliers` : `${v.cusps.length} cuspides`);
 
 /* ─────────── 9. conduction, trajets du sang, ancres ─────────── */
 // Septum interventriculaire : surface médiane entre les deux cavités (|dVG − dVD| ≈ 0), à plusieurs niveaux de l'axe
@@ -431,7 +483,7 @@ ENV_IDS.forEach((id, s) => {
 anchors['septum-interventriculaire'] = septum[2];
 const TRONCS = { 'coronaire-droite': /^Trunk of right coronary artery$/, iva: /^Trunk of anterior interventricular branch of left coronary artery$/, 'sinus-coronaire': /^Coronary sinus$/ };
 for (const role of ['coronaire', 'veine']) for (const [id, m] of Object.entries(raw[role])) { const mm = meshNormals(TRONCS[id] ? named(TRONCS[id]) : m); anchors[id] = anchorFrom(mm.verts, mm.normals); }
-for (const [id, m] of Object.entries(raw.valve)) anchors[id] = cen(m);
+for (const [id, v] of Object.entries(VALVES)) anchors[id] = v3.add(v.center, v3.mul(v.axis, v.type === 'av' ? 0.6 : 0.5));
 anchors['noeud-sinusal'] = SA_NODE; anchors['noeud-av'] = AV_NODE; anchors['faisceau-his'] = septum[1];
 log('repères : septum', septum.length, 'niveaux ; nœud AV', AV_NODE.map((v) => v.toFixed(1)).join(','));
 
@@ -455,12 +507,18 @@ const addMesh = (name, m, extra = {}) => {
   addMesh('enveloppe', env, { col: push(col), tis: push(tis) });
 }
 addMesh('proxy', proxy, { sid: push(new Uint8Array(proxy.sid)) });
-addMesh('cavites', cavities, { sid: push(new Uint8Array(cavities.sid)) });
+{
+  const col = new Uint8Array(cavities.verts.length * 4), tis = new Uint8Array(cavities.verts.length * 4);
+  cavities.col.forEach((c, i) => { for (let k = 0; k < 4; k++) col[i * 4 + k] = Math.round(c[k] * 255); tis[i * 4 + 2] = ENV_IDS[cavities.sid[i]].startsWith('oreillette') ? 255 : 0; tis[i * 4 + 3] = cavities.sid[i]; });
+  addMesh('cavites', cavities, { sid: push(new Uint8Array(cavities.sid)), col: push(col), tis: push(tis) });
+}
 addMesh('lumiere-artere', lumA); addMesh('lumiere-veine', lumV); addMesh('graisse', fatSolid);
 // pièces BodyParts3D affichées telles quelles (lissage léger, normales recalculées)
 for (const [role, o] of Object.entries(raw)) for (const [id, m] of Object.entries(o)) {
-  const mesh = { verts: verts(m), tris: [...m.idx] };
-  taubin(mesh, role === 'valve' ? 2 : 3); vertexNormals(mesh);
+  if (role === 'valve') continue;
+  let mesh = { verts: verts(m), tris: [...m.idx] };
+  if (role === 'pilier') mesh = subdivide(mesh);
+  taubin(mesh, role === 'pilier' ? 6 : 3); vertexNormals(mesh);
   addMesh(`${role}:${id}`, mesh, { role, id });
 }
 const header = {
@@ -470,6 +528,7 @@ const header = {
   anchors: Object.fromEntries(Object.entries(anchors).map(([k, p]) => [k, R3(p)])),
   conduction: Object.fromEntries(Object.entries(conduction).map(([k, l]) => [k, l.map(R3)])),
   flowPaths: flowPaths.map((f) => ({ ...f, points: f.points.map(R3) })),
+  valves: JSON.parse(JSON.stringify(VALVES, (k, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v))),
 };
 const hb = Buffer.from(JSON.stringify(header), 'utf8'); const hpad = (4 - (hb.length % 4)) % 4;
 const pre = Buffer.alloc(8); pre.write('HRT2', 0, 'ascii'); pre.writeUInt32LE(hb.length + hpad, 4);
