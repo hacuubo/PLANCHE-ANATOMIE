@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildHeart, COL } from './heart.js';
+import { ContactShadows } from './contact-shadows.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -298,6 +299,7 @@ const stepDur = (st) => Math.max(9, st.texte.split(/\s+/).length / 2.5 + (st ===
 const flowGroup = new THREE.Group();
 flowGroup.visible = false;
 heart.root.add(flowGroup);
+const FLOW_LAYER = 1; // calque d'interface : dessiné après les ombres de contact, sans ombrage
 const overlayMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false });
 // Chaque portion : couloir translucide (le trajet) et flèches qui avancent dessus
 const flowSteps = FLOW_STEPS.map((st) => ({
@@ -308,6 +310,7 @@ const flowSteps = FLOW_STEPS.map((st) => ({
     const len = curve.getLength();
     const lane = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(12, Math.round(len * 6)), 0.2, 10, false), overlayMat(path.color, 0.3));
     lane.renderOrder = 899;
+    lane.layers.set(FLOW_LAYER);
     lane.visible = false;
     flowGroup.add(lane);
     return { curve, len, color: new THREE.Color(path.color), lane };
@@ -321,7 +324,7 @@ const arrowGeo = new THREE.ShapeGeometry(arrowShape);
 const arrowEdge = new THREE.InstancedMesh(arrowGeo, overlayMat(0xfffdf9, 0.95), MAX_ARROWS);
 const arrows = new THREE.InstancedMesh(arrowGeo, overlayMat(0xffffff, 1), MAX_ARROWS);
 arrowEdge.renderOrder = 901; arrows.renderOrder = 902;
-for (const m of [arrowEdge, arrows]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; flowGroup.add(m); }
+for (const m of [arrowEdge, arrows]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.layers.set(FLOW_LAYER); flowGroup.add(m); }
 const flow = { step: 0, time: 0, playing: true, pose: { atr: 0, ven: 0, av: 0.9, sl: 0 }, prev: null };
 const fM = new THREE.Matrix4(), fP = new THREE.Vector3(), fT = new THREE.Vector3(), fQ = new THREE.Quaternion(), fS = new THREE.Vector3(), fA = new THREE.Vector3(), fB = new THREE.Vector3(), fR = new THREE.Quaternion(), Z_AXIS = new THREE.Vector3(0, 0, 1);
 function updateFlow(dt) {
@@ -641,8 +644,10 @@ function resize() {
   camera.aspect = w / h;
   controls.maxDistance = Math.max(60, viewDistance() * 1.1); // téléphone en portrait : le cadrage peut dépasser 60 cm
   flowOffset(); camera.updateProjectionMatrix();
-  renderer.setSize(w, h); labelRenderer.setSize(w, h);
+  renderer.setSize(w, h); labelRenderer.setSize(w, h); contact.setSize(w, h);
 }
+// Ombres de contact (occlusion ambiante en espace écran, js/contact-shadows.js)
+const contact = new ContactShadows(renderer, scene, camera, { overlayLayer: FLOW_LAYER });
 window.addEventListener('resize', resize);
 if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvasWrap);
 resize();
@@ -705,10 +710,10 @@ function animate() {
   controls.update();
   if ((frame & 7) === 0) updateOrientation();
   if ((frame++ & 3) === 0) occludeLabels();
-  renderer.render(scene, camera);
+  contact.render(); // scène + ombres de contact + calque d'interface
   labelRenderer.render(scene, camera);
 }
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer };
+window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact };

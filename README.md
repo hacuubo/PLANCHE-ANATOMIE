@@ -43,6 +43,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
   de chaque étape, texte simple, lecture automatique ou pas à pas.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
+- **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
+  l'endocarde) et ombres de contact en espace écran (creux, sillons, jonctions valves–anneau, cordages–feuillets,
+  piliers–paroi), calculées sur la profondeur de l'image réellement affichée : coupes et battement compris.
 - **Hors ligne** : service worker mettant en cache l'application, le modèle et three.js.
 
 ## Lancer en local
@@ -80,6 +83,7 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, trajets du sang, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
+| `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), circulation guidée, étiquettes, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |

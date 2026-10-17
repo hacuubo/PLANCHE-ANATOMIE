@@ -526,6 +526,7 @@ export async function buildHeart() {
     cav.userData.id = 'cavites';
     cav.userData.sid = sid; // clic : cavité touchée (oreillette ou ventricule)
     cav.userData.leaf = true;
+    cav.receiveShadow = true; // endocarde : ombres portées des valves, cordages et piliers
     root.add(cav);
     solids.push({ mesh: cav, hole: true, cap: 'myo', k: 0.26 });
     cutOnly.push(cav);
