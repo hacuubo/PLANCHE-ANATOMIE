@@ -43,6 +43,10 @@ une liste numérotée des structures, et une fiche explicative par structure.
   puis plonge vers elle jusqu'à la vue chirurgicale ; d'une valve à l'autre, elle ressort et tourne autour du cœur.
   - **Aortique** (depuis l'aorte, chirurgien à droite du patient) : normale, bicuspidie type 1 L-R (Sievers), RAo
     serré dégénératif.
+  - Mitrale et tricuspide : oreillette ouverte comme après atriotomie (paroi qui remonte de l'anneau, bord coupé
+    épais) ; l'anneau n'est qu'une fine ligne de charnière. Oreillette gauche : endocarde lisse, veines pulmonaires,
+    auricule gauche et sa crête, fosse ovale. Oreillette droite : veines caves et valvule d'Eustachi, sinus coronaire,
+    fosse ovale et limbe, muscles pectinés et crête terminale, auricule droite.
   - **Mitrale** (depuis l'oreillette gauche, aorte à 12 h, auricule gauche à gauche) : normale (A1-A3, P1-P3),
     insuffisance par prolapsus de P2 avec rupture de cordage (segment flottant, cordages rompus, brèche de coaptation).
   - **Tricuspide** (depuis l'oreillette droite, feuillet septal en bas, sinus coronaire) : normale, insuffisance
