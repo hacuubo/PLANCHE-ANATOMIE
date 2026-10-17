@@ -11,15 +11,25 @@ une liste numérotée des structures, et une fiche explicative par structure.
   arbre coronaire et veines du cœur, gros vaisseaux (aorte et crosse, tronc pulmonaire et artères
   pulmonaires, veines caves, veines pulmonaires). Le myocarde ventriculaire, absent de
   BodyParts3D, est reconstruit autour des cavités réelles, son épaisseur étant calée sur le
-  trajet réel des coronaires ; la graisse des sillons suit les troncs coronaires.
-- **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques et
-  lobules de graisse en relief procédural, film humide satiné, translucidité, liseré lumineux,
+  trajet réel des coronaires.
+- **Coronaires** comme sur les planches de référence : sillons dégagés de leur graisse, artères en rouge et veines en
+  bleu, troncs remis au calibre des atlas (tronc commun ≈ 4,5 mm, IVA proximale et coronaire droite ≈ 3,5 mm, branches
+  ≈ 2,4 mm, sinus coronaire ≈ 6 mm). Visibles : coronaire droite, branche du conus, branches ventriculaires et
+  marginales, IVP (interventriculaire postérieure) ; tronc commun, IVA et diagonales, circonflexe ; grande veine du
+  cœur, veine interventriculaire antérieure, veine moyenne, petites veines, sinus coronaire.
+- **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques en relief procédural, film humide satiné, translucidité, liseré lumineux,
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
-- **Coupe** (profondeur réglable) : coupes échographiques **4 cavités** et **5 cavités** (la 4 cavités basculée
-  vers l'avant autour de la pointe, jusqu'à la valve aortique : chambre de chasse du VG et racine aortique), **vue
+- **Coupe** (profondeur réglable) : **5 cavités** (coupe courbe : plan 5 cavités par la pointe et la valve aortique,
+  creusé en pente douce autour des valves mitrale et tricuspide jusqu'au plan 4 cavités, si bien que les trois valves
+  sont coupées en leur milieu, à 2 mm près), **4 valves** (base du cœur coupée à plat au plus près des centres des
+  quatre valves, oreillettes et gros vaisseaux retirés : pulmonaire, aortique, mitrale et tricuspide vues d'en
+  haut), **vue
   chirurgien** (petit axe de la mitrale comme en ETO 3D : oreillettes retirées au-dessus de l'anneau, valve vue
   depuis l'oreillette gauche, aorte à 12 h, mitrale fermée au repos pour montrer la coaptation), frontale et
-  horizontale. On y voit cavités, septum, valves et
+  horizontale. **Tranches** (js/cut-surface.js) : muscle rouge sectionné, fibres en hélice dont l'angle tourne dans
+  l'épaisseur (stries ou points selon leur orientation dans la tranche), cloisons entre faisceaux, endocarde nacré,
+  épicarde et couche sous-épicardique, paroi des oreillettes, paroi crème des gros vaisseaux ; profondeur lue dans
+  une carte 3D de la paroi (voxels de 2 mm) qui suit le battement. On y voit cavités, septum, valves et
   cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
   tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
@@ -56,7 +66,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
     fonctionnelle par dilatation de l'anneau (paroi libre dilatée, feuillets attirés vers le ventricule, défaut de
     coaptation central).
 - **Circulation** : parcours guidé du sang en 8 étapes (veines caves → oreillette droite → ventricule droit →
-  poumons → veines pulmonaires → oreillette gauche → ventricule gauche → aorte), en coupe 4 cavités vue de face et
+  poumons → veines pulmonaires → oreillette gauche → ventricule gauche → aorte), en coupe 5 cavités vue de face et
   d'en haut. Flèches animées dans le sens du sang (bleu = pauvre en oxygène, rouge = riche), valves dans la position
   de chaque étape, texte simple, lecture automatique ou pas à pas.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
@@ -124,7 +134,7 @@ Géométrie : **BodyParts3D, © The Database Center for Life Science licensed un
 International** ([licence](https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html)).
 Les fichiers OBJ de 2011 portent encore l'ancienne mention CC BY-SA 2.1 Japon ; la page de licence
 actuelle de la base indique CC BY 4.0. Le modèle de ce dépôt est une œuvre dérivée (pièces lissées
-et ré-extraites, myocarde ventriculaire, graisse, tronc brachio-céphalique et ligament artériel
+et ré-extraites, coronaires remises au calibre des atlas, myocarde ventriculaire, tronc brachio-céphalique et ligament artériel
 reconstruits) ; l'attribution figure aussi dans l'application, au pied du panneau.
 
 ## Processus de relecture

@@ -301,7 +301,7 @@ export const ORDRE = [
   'aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche',
   'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'ligament-arteriel',
   'veine-cave-superieure', 'veine-cave-inferieure', 'veines-pulmonaires',
-  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques', 'sinus-coronaire', 'sillons',
+  'coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques', 'sinus-coronaire',
   'noeud-sinusal', 'noeud-av', 'faisceau-his',
 ];
 

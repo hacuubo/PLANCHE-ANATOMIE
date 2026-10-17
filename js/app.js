@@ -4,6 +4,7 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildHeart, COL } from './heart.js';
 import { ContactShadows } from './contact-shadows.js';
+import { sectionMaterial, setSectionPlane, setSectionFrame } from './cut-surface.js';
 import { buildAorticView } from './aortic-view.js';
 import { buildAVView } from './av-views.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO, VALVE_AORTIQUE, VALVE_MITRALE, VALVE_TRICUSPIDE } from './data.js';
@@ -105,7 +106,7 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   toWrap.forEach((o) => {
     // les recouvrements s'additionnent, d'où une opacité basse
     const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.09, depthWrite: false, clippingPlanes: [ghostPlane] });
-    heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07);
+    heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07, 'ghost');
     const gh = new THREE.Mesh(o.geometry, gm);
     gh.visible = false; gh.userData.ghost = true;
     o.add(gh); ghostMats.push(gm); ghosts.push(gh);
@@ -113,41 +114,102 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
 }
 function syncGhost() { ghostPlane.normal.copy(cutPlane.normal).negate(); ghostPlane.constant = -cutPlane.constant; }
 
-/* ─────────── coupe (plan de clipping + capuchons stencil) ─────────── */
+/* ─────────── coupe (plan de clipping ou surface courbe + capuchons stencil) ─────────── */
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
-// Dans la coupe quatre cavités, valves et cordages sont coupés 0,6 cm plus loin : on les voit entiers devant la tranche,
+// Dans les coupes du grand axe, valves et cordages sont coupés 0,6 cm plus loin : on les voit entiers devant la tranche,
 // comme sur les planches et en animation médicale, au lieu d'une section plate. Les piliers sont coupés avec le muscle.
 const interiorPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 2.0);
 function syncInterior() {
   // vue chirurgien (décalage 1,5 cm) : si l'on enfonce la coupe sous l'anneau, valves et cordages sont coupés avec le muscle
-  const off = interiorOff > 1 && cutPlane.constant < CUT_MODES.chirurgien.def - 0.05 ? 0.15 : interiorOff;
+  const off = state.modeCoupe === 'chirurgien' && cutPlane.constant < CUT_MODES.chirurgien.def - 0.05 ? 0.15 : interiorOff;
   interiorPlane.normal.copy(cutPlane.normal); interiorPlane.constant = cutPlane.constant + off;
+  heart.cutUniforms.uCutOffI.value = interiorOff;
 }
-let interiorOff = 0.6; // 0,6 cm en coupe quatre cavités, 0 dans les autres coupes (réglé par setCutMode)
-// partie retirée par la coupe (en tenant compte du plan décalé des structures intérieures)
-const isCutAway = (h) => state.coupe && (h.object.material?.userData?.interior ? interiorPlane : cutPlane).distanceToPoint(h.point) < 0;
+let interiorOff = 0.6; // 0,6 cm en coupe 5 cavités, 1,5 cm en vue chirurgien, 0 dans les autres coupes (setCutMode)
+let curved = false;    // coupe courbe active (5 cavités)
+// partie retirée par la coupe (en tenant compte du décalage des structures intérieures)
+const isCutAway = (h) => {
+  if (!state.coupe) return false;
+  const inner = h.object.material?.userData?.interior;
+  if (curved) return CURVE.field(h.point, inner ? interiorOff : 0) < 0;
+  return (inner ? interiorPlane : cutPlane).distanceToPoint(h.point) < 0;
+};
 const CUT_MODES = {
   frontale: { normal: new THREE.Vector3(0, 0, -1), min: -6, max: 6, def: 0.2 },
   horizontale: { normal: new THREE.Vector3(0, -1, 0), min: -5, max: 9, def: 0.0 },
-  // plan « quatre cavités » : contient l'axe du cœur et passe par les valves mitrale et tricuspide (calculé à la génération)
-  'grand-axe': (() => { const c = heart.cut4.normal.dot(heart.cut4.point); return { normal: heart.cut4.normal.clone().negate(), min: c - 4, max: c + 4, def: c }; })(),
 };
 // Repères échographiques (heart.landmarks) : pointe, centres et axes des valves
-const LM = heart.landmarks, VMI = LM.valves['valve-mitrale'], VTR = LM.valves['valve-tricuspide'], VAO = LM.valves['valve-aortique'];
-// « 5 cavités » : la coupe 4 cavités basculée vers l'avant autour de la pointe jusqu'à la valve aortique (chambre de
-// chasse du VG et racine aortique au centre). Plan contenant la pointe, la direction tricuspide → mitrale et l'aorte.
-const N5 = (() => {
-  const n = new THREE.Vector3().crossVectors(VMI.center.clone().sub(VTR.center), VAO.center.clone().sub(LM.apex)).normalize();
-  return n.dot(heart.cut4.normal) < 0 ? n.negate() : n;
+const LM = heart.landmarks, VMI = LM.valves['valve-mitrale'], VTR = LM.valves['valve-tricuspide'], VAO = LM.valves['valve-aortique'], VPU = LM.valves['valve-pulmonaire'];
+// « 5 cavités » : coupe échographique 5 cavités (pointe, chambre de chasse et valve aortique) rendue exacte pour les
+// valves mitrale et tricuspide. Le plan 5 cavités passe par le centre de la valve aortique mais 2 cm en avant de la
+// mitrale et de la tricuspide (leurs feuillets antérieurs seulement). La tranche suit donc ce plan et se creuse en
+// pente douce autour des deux valves auriculo-ventriculaires jusqu'au plan 4 cavités (pointe, mitrale, tricuspide) :
+// les trois valves sont coupées en leur milieu, feuillets de profil, avec les cinq cavités ouvertes.
+// Surface : z = h(x, y) dans le repère de l'écran de la coupe (x à droite, y vers la base, z vers l'observateur) ;
+// h mêle le plan de fond et des plans locaux autour de chaque valve (poids exp(−(d/σ)^e)) : voir cutU dans heart.js.
+function buildCurve({ V, fond, locaux, S }) {
+  const Y = LM.base.clone().sub(LM.apex).projectOnPlane(V).normalize(); // base du cœur en haut de l'écran
+  const XS = new THREE.Vector3().crossVectors(Y, V);
+  const O = fond[0].clone();
+  const loc = (p) => { const q = p.clone().sub(O); return [q.dot(XS), q.dot(Y), q.dot(V)]; };
+  const lv = (n) => [n.dot(XS), n.dot(Y), n.dot(V)];
+  // plan passant par c (repère de l'écran) de normale n (monde) : z = a + b x + c y
+  const planeAt = (c, n) => { const [nx, ny, nz] = lv(n); return [c[2] + (nx * c[0] + ny * c[1]) / nz, -nx / nz, -ny / nz]; };
+  const bg = planeAt(loc(fond[0]), new THREE.Vector3().crossVectors(fond[1].clone().sub(fond[0]), fond[2].clone().sub(fond[0])));
+  const C = locaux.map(([p]) => loc(p)), PL = locaux.map(([, n], i) => planeAt(C[i], n));
+  while (C.length < 4) { C.push([1e4, 1e4, 0]); PL.push(bg); } // plans locaux inutilisés : hors d'atteinte
+  const height = (x, y) => {
+    let h = bg[0] + bg[1] * x + bg[2] * y, ws = 1;
+    C.forEach((p, i) => { const w = S[2] * Math.exp(-((Math.hypot(x - p[0], y - p[1]) / S[0]) ** S[1])); h += w * (PL[i][0] + PL[i][1] * x + PL[i][2] * y); ws += w; });
+    return h / ws;
+  };
+  const cv = { V, Y, X: XS, O, loc, height, off: 0 };
+  cv.field = (p, extra = 0) => { const [x, y, z] = loc(p); return height(x, y) + cv.off + extra - z; };
+  // uniformes des shaders (heart.cutUniforms)
+  const u = heart.cutUniforms;
+  u.uCutO.value.copy(O); u.uCutX.value.copy(XS); u.uCutY.value.copy(Y); u.uCutV.value.copy(V); u.uCutAB.value.set(...bg);
+  C.forEach((p, i) => { u.uCutC.value[i].set(p[0], p[1]); u.uCutP.value[i].set(...PL[i]); }); u.uCutS.value.set(...S);
+  return cv;
+}
+const CURVE_5C = (() => {
+  const T = VTR.center, M = VMI.center, Ao = VAO.center, X = LM.apex;
+  const n4 = new THREE.Vector3().crossVectors(M.clone().sub(T), X.clone().sub(T)).normalize();
+  const n5 = new THREE.Vector3().crossVectors(M.clone().sub(T), Ao.clone().sub(X)).normalize();
+  if (n5.dot(heart.cut4.normal) < 0) n5.negate();
+  return { V: n5, fond: [X, Ao, Ao.clone().add(M).sub(T)], locaux: [[M, n4], [T, n4], [Ao, n5]], S: [1.4, 4, 100] }; // centres à ≤ 2 mm près
 })();
-CUT_MODES['cinq-cavites'] = (() => { const c = N5.dot(VAO.center); return { normal: N5.clone().negate(), min: c - 4, max: c + 4, def: c }; })();
+let CURVE = buildCurve(CURVE_5C);
+CUT_MODES['cinq-cavites'] = { curved: true, min: -3, max: 3, def: 0 };
+// « 4 valves » : coupe à plat de la base du cœur (plan au plus près des centres des quatre valves, à moins de 4 mm de
+// chacun), oreillettes et gros vaisseaux retirés : les quatre valves vues d'en haut, comme sur les planches classiques
+// de la base du cœur — pulmonaire en avant, aortique au centre, mitrale et tricuspide de part et d'autre.
+const VALVE_PLANE = (() => {
+  const pts = [VTR.center, VMI.center, VAO.center, VPU.center];
+  const c = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+  // normale : plus petite direction de dispersion (itération de puissance inverse sur la covariance)
+  const m = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (const p of pts) { const d = p.clone().sub(c).toArray(); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m[i][j] += d[i] * d[j]; }
+  let n = new THREE.Vector3(...[0, 1, 2].map((i) => m[i][0] + m[i][1] + m[i][2])).cross(new THREE.Vector3(m[0][0], m[1][0], m[2][0])).normalize();
+  for (let k = 0; k < 40; k++) { // normale = vecteur propre de plus petite valeur propre : n ← (M − λmax·I)·n répété
+    const tr = m[0][0] + m[1][1] + m[2][2];
+    const v = n.toArray(), r = [0, 1, 2].map((i) => m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2] - tr * v[i]);
+    n.set(...r).normalize();
+  }
+  if (n.dot(LM.base.clone().sub(LM.apex)) < 0) n.negate(); // vers les oreillettes (côté retiré)
+  return { normal: n, center: c };
+})();
+CUT_MODES.valves = (() => { const n = VALVE_PLANE.normal, c = n.dot(VALVE_PLANE.center); return { normal: n.clone().negate(), min: c - 2.5, max: c + 3, def: c + 0.15 }; })();
 // « Vue chirurgien » (ETO 3D, petit axe de la mitrale) : oreillettes retirées au-dessus de l'anneau mitral, valve vue
 // de face depuis l'oreillette gauche, aorte à 12 h. On garde le côté ventriculaire : axe · (p − centre) ≥ −profondeur.
 const SURG_UP = VAO.center.clone().sub(VMI.center).projectOnPlane(VMI.axis).normalize();
 CUT_MODES.chirurgien = (() => { const c = -VMI.axis.dot(VMI.center); return { normal: VMI.axis.clone(), min: c - 2.5, max: c + 3, def: c + 0.4 }; })();
 // valves et cordages coupés plus loin que le muscle : entiers devant la tranche (vue chirurgien : feuillets fermés
 // bombés vers l'oreillette, jamais percés par le plan)
-const INTERIOR_OFF = { 'grand-axe': 0.6, 'cinq-cavites': 0.6, chirurgien: 1.5 };
+const INTERIOR_OFF = { 'cinq-cavites': 0.6, valves: 1.5, chirurgien: 1.5 };
+// coupes vues de dessus (valves) : pas de voile de la partie retirée entre l'œil et les valves
+const NO_GHOST = new Set(['chirurgien', 'valves']);
+// direction de l'observateur pour une coupe (côté retiré)
+const cutViewDir = (mode = state.modeCoupe) => (CUT_MODES[mode].curved ? CURVE.V.clone() : cutPlane.normal.clone().negate());
 // Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; en vue chirurgien, mitrale fermée (systole) pour
 // montrer la ligne de coaptation et les festons, comme le chirurgien l'examine
 function restPose() {
@@ -157,8 +219,11 @@ function restPose() {
 }
 // Cadrage de chaque coupe (onlyOriented : à l'ouverture de la coupe, seules les coupes « échographiques » déplacent la caméra)
 function viewForCut(mode, onlyOriented = false) {
-  if (mode === 'grand-axe') goDir(heart.cut4.normal);
-  else if (mode === 'cinq-cavites') goDir(N5);
+  if (mode === 'cinq-cavites') goDir(CURVE.V, { up: CURVE.Y });
+  else if (mode === 'valves') { // vue d'en haut, légèrement de face, l'avant (valve pulmonaire) en haut de l'écran
+    const d = VALVE_PLANE.normal.clone().add(new THREE.Vector3(0, 0, 0.35)).normalize();
+    goDir(d, { target: VALVE_PLANE.center, dist: 21, up: new THREE.Vector3(0, 0, 1).projectOnPlane(d).normalize() });
+  }
   else if (mode === 'chirurgien') goDir(VMI.axis.clone().negate(), { target: VMI.center, dist: 17, up: SURG_UP });
   else if (onlyOriented) { if (camera.up.y < 0.99) goView('anterieure'); }
   else if (mode === 'horizontale') goView('superieure');
@@ -173,7 +238,8 @@ function chooseCut(mode) {
 const stencilGroup = new THREE.Group();
 stencilGroup.name = 'stencil';
 heart.root.add(stencilGroup);
-const capGroups = new Map(); // capColor → plane mesh
+const capGroups = new Map(); // clé de capuchon → [tranche plane, tranche courbe]
+const stencilMats = [];
 
 function makeStencilMeshes(solid, order) {
   const base = new THREE.MeshBasicMaterial({ depthWrite: false, depthTest: false, colorWrite: false, stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc });
@@ -187,14 +253,29 @@ function makeStencilMeshes(solid, order) {
   const m0 = new THREE.Mesh(solid.mesh.geometry, back); m0.renderOrder = order;
   const m1 = new THREE.Mesh(solid.mesh.geometry, front); m1.renderOrder = order;
   g.add(m0, m1);
+  stencilMats.push(back, front);
   solid.mesh.add(g); // hérite de la transformation ; invisible quand le parent l'est
   return g;
 }
 
-// Regroupement par clé de capuchon (s.cap) : chaque groupe a sa passe de stencil et son capuchon coloré.
-// 'fat' = enveloppe de graisse épicardique (masse − copie réduite), 'myo' = muscle (copie réduite − cavités),
-// 'atr' = oreillettes − leurs cavités, 'artere' / 'veine' = lumière des vaisseaux (sang), 'conduction'.
-const CAP_COLORS = { fat: COL.graisseCoupe, myo: COL.myocardeCoupe, atr: COL.oreilletteCoupe, artere: COL.lumenArtere, veine: COL.lumenVeine, conduction: COL.conduction };
+// Tranche courbe : grille de 26 cm posée sur la surface de coupe (recalculée quand la profondeur change)
+const curveGeo = new THREE.PlaneGeometry(26, 26, 130, 130);
+const curveGrid = Float32Array.from(curveGeo.attributes.position.array);
+function updateCurveGeo() {
+  const pos = curveGeo.attributes.position, c = CURVE.loc(CENTER), p = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    const x = c[0] + curveGrid[i * 3], y = c[1] + curveGrid[i * 3 + 1];
+    p.copy(CURVE.O).addScaledVector(CURVE.X, x).addScaledVector(CURVE.Y, y).addScaledVector(CURVE.V, CURVE.height(x, y) + CURVE.off);
+    pos.setXYZ(i, p.x, p.y, p.z);
+  }
+  pos.needsUpdate = true;
+  curveGeo.computeVertexNormals(); curveGeo.computeBoundingSphere();
+}
+
+// Regroupement par clé de capuchon (s.cap) : chaque groupe a sa passe de stencil et sa tranche (plane ou courbe).
+// 'myo' = muscle et parois (copie réduite − cavités), 'artere' / 'veine' = lumière des vaisseaux (sang), 'conduction'.
+const CAP_COLORS = { artere: COL.lumenArtere, veine: COL.lumenVeine, conduction: COL.conduction };
+const STENCIL_CAP = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp };
 const orderByCap = new Map();
 let orderCursor = 100;
 heart.solids.forEach((s) => {
@@ -206,54 +287,44 @@ heart.solids.forEach((s) => {
   if (!capGroups.has(capKey)) {
     const color = CAP_COLORS[capKey] ?? parseInt(capKey, 10);
     const rank = orderByCap.size; // les groupes suivants passent devant en cas de chevauchement (décalage de polygone)
-    // surface de coupe : même grain aquarelle que les parois (plan de 60 cm → répétition 14 ≈ 4 cm par plage), mate
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, envMapIntensity: 0.5, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank });
-    // tranche de coupe : grain fibreux et marbrure (muscle sectionné), plus satinée qu'un aplat
-    if (capKey === 'myo' || capKey === 'fat') {
-      mat.onBeforeCompile = (sh) => {
-        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-varying vec3 vW;
-float h13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
-float vn(vec3 p) { vec3 i = floor(p), f = fract(p); vec3 u = f * f * (3.0 - 2.0 * f);
-  return mix(mix(mix(h13(i), h13(i + vec3(1,0,0)), u.x), mix(h13(i + vec3(0,1,0)), h13(i + vec3(1,1,0)), u.x), u.y),
-             mix(mix(h13(i + vec3(0,0,1)), h13(i + vec3(1,0,1)), u.x), mix(h13(i + vec3(0,1,1)), h13(i + vec3(1,1,1)), u.x), u.y), u.z); }`)
-          .replace('#include <color_fragment>', `#include <color_fragment>
-  { float fib = vn(vec3(vW.x * 9.0, vW.y * 2.2, vW.z * 9.0)) * 0.6 + vn(vW * 22.0) * 0.4;
-    float mot = vn(vW * 1.3 + 7.0);
-    diffuseColor.rgb *= ${capKey === 'fat' ? '0.95 + 0.1 * vn(vW * 6.0)' : '0.84 + 0.2 * fib + 0.1 * (mot - 0.5)'}; }`);
-      };
-      mat.customProgramCacheKey = () => `tranche-${capKey}`;
+    // muscle : tranche réaliste (fibres, endocarde, épicarde, js/cut-surface.js) ; sang et conduction : teinte unie
+    const mat = () => (capKey === 'myo' ? sectionMaterial(heart, { stencil: STENCIL_CAP, rank })
+      : new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, envMapIntensity: 0.5, ...STENCIL_CAP, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank }));
+    const caps = [new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat()), new THREE.Mesh(curveGeo, mat())];
+    for (const cap of caps) {
+      cap.renderOrder = order + 1; cap.visible = false; cap.userData.capKey = capKey;
+      cap.onAfterRender = (r) => r.clearStencil();
+      scene.add(cap);
     }
-    const cap = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat);
-    cap.renderOrder = order + 1;
-    cap.onAfterRender = (r) => r.clearStencil();
-    cap.visible = false;
-    cap.userData.capKey = capKey;
-    scene.add(cap);
-    capGroups.set(capKey, cap);
+    caps[1].frustumCulled = false;
+    capGroups.set(capKey, caps);
   }
 });
 
 function updateCapPlanes() {
   syncInterior();
   const n = cutPlane.normal;
-  capGroups.forEach((cap) => {
-    cutPlane.coplanarPoint(cap.position);
-    cap.lookAt(cap.position.clone().sub(n)); // face avant tournée vers la partie retirée (donc vers l'observateur)
+  capGroups.forEach(([flat, curve]) => {
+    cutPlane.coplanarPoint(flat.position);
+    flat.lookAt(flat.position.clone().sub(n)); // face avant tournée vers la partie retirée (donc vers l'observateur)
+    setSectionPlane(flat.material, n.clone().negate());
+    setSectionFrame(curve.material, CURVE.X, CURVE.Y);
   });
 }
 
-const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: true, coronaires: true, selected: null, hovered: null, vue: 'anterieure', valve: null };
+const state = { coupe: false, modeCoupe: 'cinq-cavites', circulation: false, battement: true, coronaires: true, selected: null, hovered: null, vue: 'anterieure', valve: null };
 
 function applyClipping() {
-  const cut = state.coupe;
-  const planes = cut ? [cutPlane] : [];
+  const cut = state.coupe, flat = cut && !curved;
+  const planes = flat ? [cutPlane] : [];
   syncInterior();
-  heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (cut ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
-  ghosts.forEach((g) => { g.visible = cut && state.modeCoupe !== 'chirurgien'; }); // vue chirurgien : rien entre l'œil et la valve
+  heart.cutUniforms.uCutOn.value = cut && curved ? 1 : 0;
+  heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (flat ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
+  stencilMats.forEach((m) => { m.clippingPlanes = planes; m.needsUpdate = true; });
+  ghostMats.forEach((m) => { m.clippingPlanes = flat ? [ghostPlane] : []; m.needsUpdate = true; });
+  ghosts.forEach((g) => { g.visible = cut && !NO_GHOST.has(state.modeCoupe); }); // vue de dessus : rien entre l'œil et les valves
   heart.solids.forEach((s) => { s.stencil.visible = cut; });
-  capGroups.forEach((cap) => { cap.visible = cut; });
+  capGroups.forEach(([f, c]) => { f.visible = flat; c.visible = cut && curved; });
   heart.cutOnly.forEach((m) => { m.visible = cut; });
   canvasWrap.classList.toggle('is-cut', state.coupe);
   renderer.shadowMap.needsUpdate = true;
@@ -264,14 +335,20 @@ function applyClipping() {
 function setCutMode(mode, value) {
   state.modeCoupe = mode;
   interiorOff = INTERIOR_OFF[mode] ?? 0;
-  ghosts.forEach((g) => { g.visible = state.coupe && mode !== 'chirurgien'; });
-  const cfg = CUT_MODES[mode];
-  const n = cfg.normal ? cfg.normal.clone() : localAnterior().negate();
-  cutPlane.normal.copy(n);
+  ghosts.forEach((g) => { g.visible = state.coupe && !NO_GHOST.has(mode); });
+  const cfg = CUT_MODES[mode], was = curved;
+  curved = !!cfg.curved;
+  if (!curved) cutPlane.normal.copy(cfg.normal ? cfg.normal : localAnterior().negate());
   const slider = document.getElementById('cut-depth');
   slider.min = cfg.min; slider.max = cfg.max; slider.step = 0.1;
   slider.value = value ?? cfg.def;
-  cutPlane.constant = parseFloat(slider.value) - cutPlaneOffset();
+  setCutDepth(parseFloat(slider.value));
+  if (was !== curved) applyClipping(); // plan ↔ surface courbe : matériaux à recompiler (nombre de plans)
+}
+// Profondeur : déplace le plan, ou la surface courbe vers l'observateur
+function setCutDepth(v) {
+  if (curved) { CURVE.off = v; heart.cutUniforms.uCutOff.value = v; updateCurveGeo(); }
+  else cutPlane.constant = v - cutPlaneOffset();
   renderer.shadowMap.needsUpdate = true;
   syncGhost();
   updateCapPlanes();
@@ -284,9 +361,9 @@ function cutPlaneOffset() { return 0; }
 // Trajets du générateur (heart.flowPaths) : 0 VCS → OD → VD → tronc pulmonaire → APD, 1 VCI → … → APG,
 // 2 et 3 veines pulmonaires droites / gauches → OG → VG → aorte descendante, 4 aorte → tronc brachio-céphalique.
 // Chaque étape en reprend une portion [trajet, premier point, dernier point], avec des flèches qui avancent dans le sens
-// du sang ; les valves prennent la position de l'étape. Coupe par étape (par défaut 4 cavités) : les voies d'éjection
-// sont en avant du plan 4 cavités, on les montre en coupe frontale (cœur droit) et 5 cavités (cœur gauche), pour que
-// les flèches restent dans la bonne cavité à l'écran.
+// du sang ; les valves prennent la position de l'étape. Coupe par étape (par défaut 5 cavités) : la voie d'éjection
+// du ventricule droit est en avant de cette coupe, on la montre en coupe frontale, pour que les flèches restent dans la
+// bonne cavité à l'écran.
 const FLOW_STEPS = [
   { titre: 'Le sang revient du corps', texte: "Le sang pauvre en oxygène revient de tout le corps par les veines caves supérieure et inférieure. Il remplit l'oreillette droite.",
     seg: [[0, 0, 2], [1, 0, 2]], focus: 'oreillette-droite', pose: { atr: 0, ven: 0, av: 0, sl: 0 } },
@@ -381,7 +458,7 @@ function showStep(i) {
     s.lane.material.opacity = j === i ? 0.32 : 0.12; // déjà parcouru : trace pâle
   }));
   const st = flowSteps[i];
-  const [mode, depth] = st.coupe ?? ['grand-axe'];
+  const [mode, depth] = st.coupe ?? ['cinq-cavites'];
   if (mode !== state.modeCoupe || (depth !== undefined && Math.abs(cutPlane.constant - depth) > 1e-3)) {
     document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === mode));
     setCutMode(mode, depth);
@@ -411,10 +488,10 @@ const setPlaying = (on) => { flow.playing = on; const b = flowUI.querySelector('
 flowUI.querySelector('.fg-prev').addEventListener('click', () => { setPlaying(false); showStep((flow.step + flowSteps.length - 1) % flowSteps.length); });
 flowUI.querySelector('.fg-next').addEventListener('click', () => { setPlaying(false); showStep((flow.step + 1) % flowSteps.length); });
 flowUI.querySelector('.fg-play').addEventListener('click', () => setPlaying(!flow.playing));
-// cadrage : coupe vue de face et d'en haut (le plan 4 cavités est presque horizontal ; vu de face, les veines caves et
+// cadrage : coupe vue de face et d'en haut (la coupe 5 cavités est presque horizontale ; vu de face, les veines caves et
 // l'aorte gardent leur longueur à l'écran) ; coupe frontale vue de face
-const flowView = (mode = 'grand-axe') => {
-  const n = mode === 'frontale' ? new THREE.Vector3(0, 0, 1) : (mode === 'cinq-cavites' ? N5.clone() : heart.cut4.normal.clone()).add(new THREE.Vector3(0, 0, 0.9));
+const flowView = (mode = 'cinq-cavites') => {
+  const n = mode === 'frontale' ? new THREE.Vector3(0, 0, 1) : cutViewDir(mode).add(new THREE.Vector3(0, 0, 0.9));
   goDir(n, { dist: viewDistance() * 0.92 });
 };
 // le cœur est remonté au-dessus du panneau des étapes en décalant la projection (la cible reste au centre du cœur)
@@ -435,7 +512,7 @@ function setCirculation(on) {
     if (state.battement) toggle('battement', false);
     flow.prev = { coupe: state.coupe, mode: state.modeCoupe };
     flow.pose = { atr: 0, ven: 0, av: 0.9, sl: 0 };
-    if (state.modeCoupe !== 'grand-axe') chooseCut('grand-axe');
+    if (state.modeCoupe !== 'cinq-cavites') chooseCut('cinq-cavites');
     if (!state.coupe) toggle('coupe', true);
     flowView();
     setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -669,10 +746,10 @@ function select(id) {
     b.classList.toggle('active', on);
     if (on) b.closest('details').open = true; // pas de défilement : la fiche doit rester lisible en haut du panneau
   });
-  // vue chirurgien : seules les valves y sont visibles ; pour une autre structure de coupe, retour à la coupe 4 cavités
+  // vue chirurgien : seules les valves y sont visibles ; pour une autre structure de coupe, retour à la coupe 5 cavités
   if (trans) { pendingAction = () => select(id); return; }
   if (id && state.valve) { goValve(null, () => select(id)); return; } // retour au cœur, puis sélection
-  if (id && STRUCTURES[id].coupe && state.modeCoupe === 'chirurgien' && !/^valve-(mitrale|tricuspide|aortique)$/.test(id)) chooseCut('grand-axe');
+  if (id && STRUCTURES[id].coupe && state.modeCoupe === 'chirurgien' && !/^valve-(mitrale|tricuspide|aortique)$/.test(id)) chooseCut('cinq-cavites');
   if (id && STRUCTURES[id].coupe && !state.coupe) toggle('coupe', true);
 }
 
@@ -823,7 +900,7 @@ function buildPanel() {
     document.querySelectorAll('[data-vphase]').forEach((x) => x.classList.toggle('active', x === b));
     valveOpen = b.dataset.vphase === 'ouvert';
   }));
-  document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); renderer.shadowMap.needsUpdate = true; syncGhost(); updateCapPlanes(); });
+  document.getElementById('cut-depth').addEventListener('input', (e) => setCutDepth(parseFloat(e.target.value)));
   document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   renderFiche(null);
@@ -832,7 +909,7 @@ function buildPanel() {
   { const b = document.querySelector('[data-toggle="battement"]'); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
 }
 buildPanel();
-setCutMode('grand-axe'); // coupe par défaut : plan du grand axe, montre VD en croissant, VG, septum et oreillettes
+setCutMode('cinq-cavites'); // coupe par défaut : coupe pliée qui traverse les quatre valves
 applyClipping();
 
 /* ─────────── PWA ─────────── */
@@ -935,4 +1012,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut };
+window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };

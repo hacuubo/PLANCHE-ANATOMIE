@@ -4,28 +4,26 @@
 // Géométrie issue de BodyParts3D (Database Center for Life Science, licence CC BY 4.0), préparée hors ligne par
 // tools/build-heart-bp3d.mjs dans assets/heart.bin :
 //   - enveloppe continue : myocarde ventriculaire (reconstruit autour des cavités réelles, épaisseur calée sur le trajet
-//     réel des coronaires), oreillettes et auricules, graisse des sillons, gros vaisseaux ;
-//   - cavités, lumière des vaisseaux et graisse en solides fermés (surfaces de coupe) ;
+//     réel des coronaires), oreillettes et auricules, gros vaisseaux ; sillons sans graisse : les coronaires restent
+//     visibles comme sur les planches de référence ;
+//   - cavités et lumière des vaisseaux en solides fermés (surfaces de coupe), carte 3D de la paroi (tranches) ;
 //   - pièces réelles : coronaires et veines du cœur, feuillets valvulaires avec leurs cordages, muscles papillaires ;
 //   - repères : axe du cœur, système de conduction placé dans le septum réel, trajets du sang, ancres d'étiquettes.
 // Rendu « tissu vivant » : fibres musculaires, graisse lobulée, film humide, translucidité, occlusion ambiante cuite.
 import * as THREE from 'three';
 import { buildValves } from './valves.js';
 
-// Couleurs des surfaces de coupe et des structures internes (sRGB)
+// Couleurs des structures internes et du sang dans les coupes (sRGB) ; tranche du muscle : js/cut-surface.js
 export const COL = {
   myocarde: 0xe2a09e,
-  myocardeCoupe: 0xe9a29c,   // tranche de muscle, rose clair
-  graisseCoupe: 0xeed8a8,
-  oreilletteCoupe: 0xe3a09a,
   endocarde: 0xc7646b,       // paroi interne des cavités (trabéculée), rose soutenu
   endoOreillette: 0xc8737a,
   papillaire: 0xd06f76,
   valve: 0xeed7a6,           // feuillets et cuspides : crème jaune translucide (animation médicale)
   cordage: 0xf8f2e6,         // cordages tendineux : blanc nacré
   conduction: 0xf3c23b,
-  coronaire: 0xc25e60,       // artères coronaires : rose-rouge
-  veineCard: 0xa194b6,       // veines du cœur : mauves
+  coronaire: 0xc8352c,       // artères coronaires : rouge vif (convention des atlas)
+  veineCard: 0x3f5fae,       // veines du cœur : bleu
   lumenArtere: 0xb0585b, lumenVeine: 0x857a9c,
 };
 
@@ -116,17 +114,46 @@ vec3 heartDeform(vec3 p) {
 }
 `;
 const DEFORM_VERTEX = 'if (uDOn > 0.5) { vec4 wpD = modelMatrix * vec4(transformed, 1.0); transformed += heartDeform(wpD.xyz) - wpD.xyz; }';
+// Coupe courbe (coupe 5 cavités, js/app.js) : surface z = h(x, y) dans un repère (uCutX, uCutY, uCutV) d'origine uCutO,
+// vue depuis +uCutV. h mêle un plan de fond (uCutAB) et quatre plans locaux (uCutP, centrés en uCutC) :
+// h = (fond + Σ k·wᵢ·planᵢ) / (1 + Σ k·wᵢ), wᵢ = exp(−(d/σ)^e), σ = uCutS.x, e = uCutS.y, k = uCutS.z.
+// Décalée de uCutOff (profondeur). On garde ce qui est derrière la surface (cutField ≥ 0). Testée dans tous les
+// matériaux coupés : tissus, passes de stencil, voile de la partie retirée, ombres. uCutOn = 0 : pas de coupe courbe.
+export const cutU = {
+  uCutOn: { value: 0 }, uCutO: { value: new THREE.Vector3() }, uCutX: { value: new THREE.Vector3(1, 0, 0) },
+  uCutY: { value: new THREE.Vector3(0, 1, 0) }, uCutV: { value: new THREE.Vector3(0, 0, 1) }, uCutAB: { value: new THREE.Vector3() },
+  uCutC: { value: [0, 1, 2, 3].map(() => new THREE.Vector2()) }, uCutP: { value: [0, 1, 2, 3].map(() => new THREE.Vector3()) }, uCutS: { value: new THREE.Vector3(1.3, 4, 80) },
+  uCutOff: { value: 0 }, uCutOffI: { value: 0.6 },
+};
+const GLSL_CUT = /* glsl */`
+uniform float uCutOn; uniform vec3 uCutO; uniform vec3 uCutX; uniform vec3 uCutY; uniform vec3 uCutV; uniform vec3 uCutAB;
+uniform vec2 uCutC[4]; uniform vec3 uCutP[4]; uniform vec3 uCutS; uniform float uCutOff;
+varying vec3 vCutW;
+float cutField(vec3 p, float extra) {
+  vec3 q = p - uCutO; vec2 xy = vec2(dot(q, uCutX), dot(q, uCutY));
+  float h = uCutAB.x + uCutAB.y * xy.x + uCutAB.z * xy.y, ws = 1.0;
+  for (int i = 0; i < 4; i++) {
+    float w = uCutS.z * exp(-pow(length(xy - uCutC[i]) / uCutS.x, uCutS.y));
+    h += w * (uCutP[i].x + uCutP[i].y * xy.x + uCutP[i].z * xy.y); ws += w;
+  }
+  return h / ws + uCutOff + extra - dot(q, uCutV);
+}
+`;
+const CUT_VERTEX = 'vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;';
+const cutDiscard = (test) => `#include <clipping_planes_fragment>\n  if (uCutOn > 0.5 && ${test}) discard;`;
 // Ajoute la déformation à un matériau quelconque (stencil des coupes, fantôme) : uniformes partagés + raideur k.
-export function addDeformTo(mat, shared, k) {
-  const uniforms = { ...shared, uDK: { value: k }, uDOn: { value: 1 } };
+export function addDeformTo(mat, shared, k, cut = 'keep') {
+  const uniforms = { ...shared, uDK: { value: k }, uDOn: { value: 1 }, ...cutU };
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     if (prev) prev(sh, r);
     Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_DEFORM}`).replace('#include <begin_vertex>', `#include <begin_vertex>\n${DEFORM_VERTEX}`);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_DEFORM}\nvarying vec3 vCutW;`).replace('#include <begin_vertex>', `#include <begin_vertex>\n${DEFORM_VERTEX}\n${CUT_VERTEX}`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${GLSL_CUT}`)
+      .replace('#include <clipping_planes_fragment>', cutDiscard(cut === 'ghost' ? 'cutField(vCutW, 0.0) >= 0.0' : 'cutField(vCutW, 0.0) < 0.0'));
   };
   const key = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : () => '';
-  mat.customProgramCacheKey = () => key() + '|deform';
+  mat.customProgramCacheKey = () => key() + '|deform-' + cut;
   return mat;
 }
 
@@ -140,6 +167,7 @@ function patchShader(sh) {
   sh.vertexShader = sh.vertexShader
     .replace('#include <common>', `#include <common>
       ${GLSL_DEFORM}
+      varying vec3 vCutW;
       varying vec3 vObj; varying vec4 vTis; varying vec3 vCol; varying float vSid;
       uniform vec4 uTis;
       #ifdef ENVELOPPE
@@ -158,9 +186,11 @@ function patchShader(sh) {
       #else
       vCol = vec3(1.0); vTis = uTis; vSid = -10.0;
       #endif
-      ${DEFORM_VERTEX}`);
+      ${DEFORM_VERTEX}
+      ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}`)
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0'))
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -413,12 +443,21 @@ async function loadHeartData() {
     g.computeBoundingSphere();
     geos[m.name] = { geometry: g, sid: m.sid ? view(Uint8Array, m.sid) : null, meta: m };
   }
-  return { header, geos };
+  // carte 3D de la paroi (voxels de 2 mm) : profondeur sous l'épicarde, distance à l'endocarde, paroi vasculaire, oreillette
+  let wall = null;
+  const W = header.volumes?.paroi;
+  if (W) {
+    const tex = new THREE.Data3DTexture(new Uint8Array(view(Uint8Array, W.data)), W.n[0], W.n[1], W.n[2]);
+    tex.format = THREE.RGBAFormat; tex.type = THREE.UnsignedByteType;
+    tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.unpackAlignment = 1; tex.needsUpdate = true;
+    wall = { texture: tex, min: v3(W.min), n: v3(W.n), step: W.step };
+  }
+  return { header, geos, wall };
 }
 
 /* ─────────── construction ─────────── */
 export async function buildHeart() {
-  const { header, geos } = await loadHeartData();
+  const { header, geos, wall } = await loadHeartData();
   const ids = header.ids;
   const F = header.frame;
   // repère local du cœur : x = gauche locale, y = vers la base (−axe), z = avant local, origine au centre de la base
@@ -437,7 +476,7 @@ export async function buildHeart() {
   const focusUniform = { value: 0 };
   const depthCache = new Map();
   const deformedDepth = (k) => {
-    if (!depthCache.has(k)) depthCache.set(k, addDeformTo(new DeformDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), deformU, k));
+    if (!depthCache.has(k)) depthCache.set(k, addDeformTo(new DeformDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), deformU, k, 'keep'));
     return depthCache.get(k);
   };
 
@@ -452,6 +491,7 @@ export async function buildHeart() {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
       uBump: { value: bump }, uSSS: { value: sss }, uRim: { value: rim }, uFocus: focusUniform,
       ...deformU, uDK: { value: deformK }, uDOn: { value: deformOn ? 1 : 0 }, uTrans: { value: trans },
+      ...cutU, uCutExtra: { value: 0 },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
     m.customProgramCacheKey = () => (valve ? 'tissu-valve' : envelope ? 'tissu-enveloppe' : 'tissu');
@@ -461,7 +501,7 @@ export async function buildHeart() {
     materials.push(m); tissueMats.push(m);
     return m;
   };
-  const interior = (m) => { m.userData.interior = true; return m; };
+  const interior = (m) => { m.userData.interior = true; m.userData.uniforms.uCutExtra = cutU.uCutOffI; return m; };
   const matCache = new Map();
   const PRESETS = {
     // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
@@ -472,8 +512,8 @@ export async function buildHeart() {
     intima: () => tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.45, rim: 0.1, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.12, sheen: 0.1 }),
     papillaire: () => tissue(COL.papillaire, { deformK: 0.24, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
-    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.1, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
-    coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.35, bump: 0.08, sss: 0.3, flowOpacity: 0.14 }),
+    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.34, clearcoat: 0.45, clearcoatRoughness: 0.2, bump: 0.06, sss: 0.3, rim: 0.2, sheen: 0.2, sheenColor: 0xffb4a6, flowOpacity: 0.14 }),
+    coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.3, clearcoat: 0.45, clearcoatRoughness: 0.2, bump: 0.05, sss: 0.25, rim: 0.2, sheen: 0.2, sheenColor: 0xb8c8ff, flowOpacity: 0.14 }),
   };
   const matFor = (id, preset) => {
     const key = `${id}|${preset}`;
@@ -500,13 +540,13 @@ export async function buildHeart() {
   root.add(proxy);
   for (const [id, a] of Object.entries(header.anchors)) reg(id).anchor = v3(a);
 
-  // Solides invisibles des coupes : lumière des vaisseaux (sang) et graisse des sillons
+  // Solides invisibles des coupes : lumière des vaisseaux (sang)
   const hidden = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-  for (const [name, cap] of [['lumiere-artere', 'artere'], ['lumiere-veine', 'veine'], ['graisse', 'fat']]) {
+  for (const [name, cap] of [['lumiere-artere', 'artere'], ['lumiere-veine', 'veine']]) {
     const m = new THREE.Mesh(geos[name].geometry, hidden);
     m.renderOrder = -2;
     root.add(m);
-    solids.push({ mesh: m, hole: false, cap, k: cap === 'fat' ? 0.05 : 0.03 });
+    solids.push({ mesh: m, hole: false, cap, k: 0.03 });
   }
 
   /* ── Cavités (paroi interne, visibles en coupe ; « trou » unique pour les surfaces de coupe) ── */
@@ -674,5 +714,6 @@ export async function buildHeart() {
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves,
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
-    landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k) => addDeformTo(mat, deformU, k) };
+    landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k, cut) => addDeformTo(mat, deformU, k, cut),
+    deformUniforms: deformU, cutUniforms: cutU, wall }; // tranches de coupe : déformation du battement et carte 3D de la paroi
 }
