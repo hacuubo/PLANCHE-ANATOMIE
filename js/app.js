@@ -116,6 +116,44 @@ const CUT_MODES = {
   // plan « quatre cavités » : contient l'axe du cœur et passe par les valves mitrale et tricuspide (calculé à la génération)
   'grand-axe': (() => { const c = heart.cut4.normal.dot(heart.cut4.point); return { normal: heart.cut4.normal.clone().negate(), min: c - 4, max: c + 4, def: c }; })(),
 };
+// Repères échographiques (heart.landmarks) : pointe, centres et axes des valves
+const LM = heart.landmarks, VMI = LM.valves['valve-mitrale'], VTR = LM.valves['valve-tricuspide'], VAO = LM.valves['valve-aortique'];
+// « 5 cavités » : la coupe 4 cavités basculée vers l'avant autour de la pointe jusqu'à la valve aortique (chambre de
+// chasse du VG et racine aortique au centre). Plan contenant la pointe, la direction tricuspide → mitrale et l'aorte.
+const N5 = (() => {
+  const n = new THREE.Vector3().crossVectors(VMI.center.clone().sub(VTR.center), VAO.center.clone().sub(LM.apex)).normalize();
+  return n.dot(heart.cut4.normal) < 0 ? n.negate() : n;
+})();
+CUT_MODES['cinq-cavites'] = (() => { const c = N5.dot(VAO.center); return { normal: N5.clone().negate(), min: c - 4, max: c + 4, def: c }; })();
+// « Vue chirurgien » (ETO 3D, petit axe de la mitrale) : oreillettes retirées au-dessus de l'anneau mitral, valve vue
+// de face depuis l'oreillette gauche, aorte à 12 h. On garde le côté ventriculaire : axe · (p − centre) ≥ −profondeur.
+const SURG_UP = VAO.center.clone().sub(VMI.center).projectOnPlane(VMI.axis).normalize();
+CUT_MODES.chirurgien = (() => { const c = -VMI.axis.dot(VMI.center); return { normal: VMI.axis.clone(), min: c - 2.5, max: c + 3, def: c + 0.4 }; })();
+// valves et cordages coupés plus loin que le muscle : entiers devant la tranche (vue chirurgien : feuillets fermés
+// bombés vers l'oreillette, jamais percés par le plan)
+const INTERIOR_OFF = { 'grand-axe': 0.6, 'cinq-cavites': 0.6, chirurgien: 1.5 };
+// Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; en vue chirurgien, mitrale fermée (systole) pour
+// montrer la ligne de coaptation et les festons, comme le chirurgien l'examine
+function restPose() {
+  if (state.circulation || state.battement) return;
+  if (state.coupe && state.modeCoupe === 'chirurgien') heart.setPose({ atr: 0, ven: 0, av: 0, sl: 0 }); else heart.setBeat(null);
+  renderer.shadowMap.needsUpdate = true;
+}
+// Cadrage de chaque coupe (onlyOriented : à l'ouverture de la coupe, seules les coupes « échographiques » déplacent la caméra)
+function viewForCut(mode, onlyOriented = false) {
+  if (mode === 'grand-axe') goDir(heart.cut4.normal);
+  else if (mode === 'cinq-cavites') goDir(N5);
+  else if (mode === 'chirurgien') goDir(VMI.axis.clone().negate(), { target: VMI.center, dist: 17, up: SURG_UP });
+  else if (onlyOriented) { if (camera.up.y < 0.99) goView('anterieure'); }
+  else if (mode === 'horizontale') goView('superieure');
+  else goView('anterieure');
+}
+function chooseCut(mode) {
+  document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === mode));
+  setCutMode(mode);
+  if (state.coupe) viewForCut(mode);
+  restPose();
+}
 const stencilGroup = new THREE.Group();
 stencilGroup.name = 'stencil';
 heart.root.add(stencilGroup);
@@ -190,13 +228,13 @@ function updateCapPlanes() {
   });
 }
 
-const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: false, etiquettes: false, coronaires: true, selected: null, hovered: null, vue: 'anterieure' };
+const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: false, coronaires: true, selected: null, hovered: null, vue: 'anterieure' };
 
 function applyClipping() {
   const planes = state.coupe ? [cutPlane] : [];
   syncInterior();
   heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (state.coupe ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
-  ghosts.forEach((g) => { g.visible = state.coupe; });
+  ghosts.forEach((g) => { g.visible = state.coupe && state.modeCoupe !== 'chirurgien'; }); // vue chirurgien : rien entre l'œil et la valve
   heart.solids.forEach((s) => { s.stencil.visible = state.coupe; });
   capGroups.forEach((cap) => { cap.visible = state.coupe; });
   heart.cutOnly.forEach((m) => { m.visible = state.coupe; });
@@ -208,7 +246,8 @@ function applyClipping() {
 
 function setCutMode(mode, value) {
   state.modeCoupe = mode;
-  interiorOff = mode === 'grand-axe' ? 0.6 : 0;
+  interiorOff = INTERIOR_OFF[mode] ?? 0;
+  ghosts.forEach((g) => { g.visible = state.coupe && mode !== 'chirurgien'; });
   const cfg = CUT_MODES[mode];
   const n = cfg.normal ? cfg.normal.clone() : localAnterior().negate();
   cutPlane.normal.copy(n);
@@ -224,57 +263,137 @@ function localAnterior() { const v = new THREE.Vector3(); heart.matrixLocal.extr
 // Le plan est exprimé dans le repère monde ; le cœur est translaté de -CENTER dans le pivot puis de +CENTER : net nul.
 function cutPlaneOffset() { return 0; }
 
-/* ─────────── circulation (particules) ─────────── */
+/* ─────────── circulation guidée : le trajet du sang, étape par étape ─────────── */
+// Trajets du générateur (heart.flowPaths) : 0 VCS → OD → VD → tronc pulmonaire → APD, 1 VCI → … → APG,
+// 2 et 3 veines pulmonaires droites / gauches → OG → VG → aorte descendante, 4 aorte → tronc brachio-céphalique.
+// Chaque étape en reprend une portion [trajet, premier point, dernier point], montrée en coupe quatre cavités avec des
+// flèches qui avancent dans le sens du sang ; les valves prennent la position de l'étape.
+const FLOW_STEPS = [
+  { titre: 'Le sang revient du corps', texte: "Le sang pauvre en oxygène revient de tout le corps par les veines caves supérieure et inférieure. Il remplit l'oreillette droite.",
+    seg: [[0, 0, 2], [1, 0, 2]], focus: 'oreillette-droite', pose: { atr: 0, ven: 0, av: 0, sl: 0 } },
+  { titre: "De l'oreillette au ventricule droit", texte: "L'oreillette droite se contracte : la valve tricuspide s'ouvre et le sang passe dans le ventricule droit.",
+    seg: [[0, 2, 6]], focus: 'valve-tricuspide', pose: { atr: 0.8, ven: 0, av: 1, sl: 0 } },
+  { titre: 'Le ventricule droit éjecte le sang', texte: "Le ventricule droit se contracte : la valve tricuspide se ferme, la valve pulmonaire s'ouvre et le sang part dans le tronc pulmonaire.",
+    seg: [[0, 6, 9]], focus: 'ventricule-droit', pose: { atr: 0, ven: 1, av: 0, sl: 1 } },
+  { titre: 'Vers les poumons', texte: "Les artères pulmonaires droite et gauche conduisent le sang aux poumons. Il y rejette le gaz carbonique et se charge en oxygène.",
+    seg: [[0, 9, 12], [1, 9, 11]], focus: 'tronc-pulmonaire', pose: { atr: 0, ven: 0.2, av: 0.9, sl: 0 } },
+  { titre: 'Le sang revient des poumons', texte: "Le sang, maintenant riche en oxygène, revient des poumons par les quatre veines pulmonaires. Il remplit l'oreillette gauche.",
+    seg: [[2, 0, 2], [3, 0, 2]], focus: 'oreillette-gauche', pose: { atr: 0, ven: 0, av: 0, sl: 0 } },
+  { titre: "De l'oreillette au ventricule gauche", texte: "L'oreillette gauche se contracte : la valve mitrale s'ouvre et le sang passe dans le ventricule gauche.",
+    seg: [[2, 2, 4]], focus: 'valve-mitrale', pose: { atr: 0.8, ven: 0, av: 1, sl: 0 } },
+  { titre: 'Le ventricule gauche éjecte le sang', texte: "Le ventricule gauche, le plus puissant, se contracte : la valve mitrale se ferme, la valve aortique s'ouvre et le sang est propulsé dans l'aorte.",
+    seg: [[2, 4, 7]], focus: 'ventricule-gauche', pose: { atr: 0, ven: 1, av: 0, sl: 1 } },
+  { titre: 'Vers tout le corps', texte: "L'aorte distribue le sang riche en oxygène à tout le corps : la tête et les bras par les branches de la crosse, le reste du corps par l'aorte descendante.",
+    seg: [[2, 7, 9], [4, 2, 4]], focus: 'aorte', pose: { atr: 0, ven: 0.2, av: 0.9, sl: 0 } },
+];
+const FLOW_NOTE = 'En réalité, les deux moitiés du cœur se contractent en même temps ; on les suit ici l’une après l’autre.';
+const STEP_DUR = 7; // secondes par étape en lecture automatique
 const flowGroup = new THREE.Group();
+flowGroup.visible = false;
 heart.root.add(flowGroup);
-const PER_PATH = 90;
-const flowCurves = heart.flowPaths.map((p) => ({ curve: new THREE.CatmullRomCurve3(p.points, false, 'centripetal', 0.5), color: new THREE.Color(p.color), speed: p.speed }));
-const flowCount = flowCurves.length * PER_PATH;
-// Capsules orientées le long du trajet, matériau non éclairé (couleurs saturées qui dominent les parois translucides)
-const capsuleGeo = new THREE.CapsuleGeometry(0.11, 0.35, 3, 8);
-capsuleGeo.rotateX(Math.PI / 2); // axe de la capsule sur +z → orientée par lookAt
-const flowMesh = new THREE.InstancedMesh(capsuleGeo, new THREE.MeshBasicMaterial({ toneMapped: false }), flowCount);
-flowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-const flowPhase = new Float32Array(flowCount), flowSize = new Float32Array(flowCount);
-{
-  const c = new THREE.Color();
-  for (let i = 0; i < flowCount; i++) {
-    const pi = Math.floor(i / PER_PATH);
-    flowPhase[i] = Math.random();
-    flowSize[i] = 0.85 + Math.random() * 0.3;
-    c.copy(flowCurves[pi].color).offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
-    flowMesh.setColorAt(i, c);
+const overlayMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false });
+// Chaque portion : couloir translucide (le trajet) et flèches qui avancent dessus
+const flowSteps = FLOW_STEPS.map((st) => ({
+  ...st,
+  segs: st.seg.map(([pi, a, b]) => {
+    const path = heart.flowPaths[pi];
+    const curve = new THREE.CatmullRomCurve3(path.points.slice(a, b + 1), false, 'centripetal', 0.5);
+    const len = curve.getLength();
+    const lane = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(12, Math.round(len * 6)), 0.2, 10, false), overlayMat(path.color, 0.3));
+    lane.renderOrder = 899;
+    lane.visible = false;
+    flowGroup.add(lane);
+    return { curve, len, color: new THREE.Color(path.color), lane };
+  }),
+}));
+// Flèches : chevrons plats tournés vers l'observateur et orientés selon le trajet vu à l'écran (un trajet qui fuit
+// vers l'observateur reste lisible), doublés d'un liseré clair pour se détacher des tissus
+const MAX_ARROWS = 96;
+const arrowShape = new THREE.Shape([new THREE.Vector2(0.5, 0), new THREE.Vector2(-0.38, 0.4), new THREE.Vector2(-0.16, 0), new THREE.Vector2(-0.38, -0.4)]);
+const arrowGeo = new THREE.ShapeGeometry(arrowShape);
+const arrowEdge = new THREE.InstancedMesh(arrowGeo, overlayMat(0xfffdf9, 0.95), MAX_ARROWS);
+const arrows = new THREE.InstancedMesh(arrowGeo, overlayMat(0xffffff, 1), MAX_ARROWS);
+arrowEdge.renderOrder = 901; arrows.renderOrder = 902;
+for (const m of [arrowEdge, arrows]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; flowGroup.add(m); }
+const flow = { step: 0, time: 0, playing: true, pose: { atr: 0, ven: 0, av: 0.9, sl: 0 }, prev: null };
+const fM = new THREE.Matrix4(), fP = new THREE.Vector3(), fT = new THREE.Vector3(), fQ = new THREE.Quaternion(), fS = new THREE.Vector3(), fA = new THREE.Vector3(), fB = new THREE.Vector3(), fR = new THREE.Quaternion(), Z_AXIS = new THREE.Vector3(0, 0, 1);
+function updateFlow(dt) {
+  dt = Math.min(dt, 0.1); // onglet revenu au premier plan : pas de saut d'étapes
+  flow.time += dt;
+  if (flow.playing && flow.time > STEP_DUR) showStep((flow.step + 1) % flowSteps.length);
+  const st = flowSteps[flow.step];
+  let n = 0;
+  for (const s of st.segs) {
+    const gap = 1.3, count = Math.max(2, Math.floor(s.len / gap));
+    for (let k = 0; k < count && n < MAX_ARROWS; k++, n++) {
+      const d = (k * gap + flow.time * 2.4) % (count * gap);
+      const u = Math.min(1, d / s.len);
+      s.curve.getPointAt(u, fP); s.curve.getTangentAt(u, fT);
+      const fade = Math.min(1, d / 0.5, Math.max(0, (s.len - d) / 0.5));
+      // direction du trajet à l'écran
+      fA.copy(fP).project(camera); fB.copy(fP).addScaledVector(fT, 0.3).project(camera);
+      const ang = Math.atan2(fB.y - fA.y, (fB.x - fA.x) * camera.aspect);
+      fQ.copy(camera.quaternion).multiply(fR.setFromAxisAngle(Z_AXIS, ang));
+      fM.compose(fP, fQ, fS.setScalar(0.85 * fade)); arrows.setMatrixAt(n, fM); arrows.setColorAt(n, s.color);
+      fM.compose(fP, fQ, fS.setScalar(0.85 * fade * 1.3)); arrowEdge.setMatrixAt(n, fM);
+    }
   }
+  arrows.count = arrowEdge.count = n;
+  arrows.instanceMatrix.needsUpdate = arrowEdge.instanceMatrix.needsUpdate = true;
+  if (arrows.instanceColor) arrows.instanceColor.needsUpdate = true;
+  // la pose du cœur rejoint celle de l'étape en douceur
+  const k = 1 - Math.exp(-dt * 4);
+  let moved = 0;
+  for (const key of ['atr', 'ven', 'av', 'sl']) { const dv = (st.pose[key] - flow.pose[key]) * k; flow.pose[key] += dv; moved += Math.abs(dv); }
+  if (moved > 1e-4) { heart.setPose(flow.pose, { valves: state.coupe }); if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
 }
-flowMesh.visible = false;
-flowGroup.add(flowMesh);
-const tmpM = new THREE.Matrix4(), tmpP = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3(), tmpT = new THREE.Vector3(), tmpLook = new THREE.Matrix4();
-function updateFlow(time) {
-  for (let i = 0; i < flowCount; i++) {
-    const pc = flowCurves[Math.floor(i / PER_PATH)];
-    const t = (flowPhase[i] + time * pc.speed) % 1;
-    pc.curve.getPointAt(t, tmpP);
-    pc.curve.getTangentAt(t, tmpT);
-    tmpLook.lookAt(tmpT, new THREE.Vector3(0, 0, 0), THREE.Object3D.DEFAULT_UP);
-    tmpQ.setFromRotationMatrix(tmpLook);
-    tmpS.setScalar(flowSize[i]);
-    tmpM.compose(tmpP, tmpQ, tmpS);
-    flowMesh.setMatrixAt(i, tmpM);
-  }
-  flowMesh.instanceMatrix.needsUpdate = true;
+function showStep(i) {
+  flow.step = i; flow.time = 0;
+  flowSteps.forEach((st, j) => st.segs.forEach((s) => {
+    s.lane.visible = j <= i;
+    s.lane.material.opacity = j === i ? 0.32 : 0.12; // déjà parcouru : trace pâle
+  }));
+  const st = flowSteps[i];
+  flowUI.querySelector('.fg-num').textContent = `${i + 1} / ${flowSteps.length}`;
+  flowUI.querySelector('.fg-title').textContent = st.titre;
+  flowUI.querySelector('.fg-text').textContent = st.texte;
+  flowUI.querySelectorAll('.fg-dots i').forEach((d, j) => d.classList.toggle('on', j === i));
+  if (!state.selected) heart.setHighlight(st.focus, { focus: false });
 }
-function setTranslucent(on) {
-  heart.materials.forEach((m) => {
-    if (m.userData.noTranslucent) return;
-    m.transparent = on;
-    // graisse et coronaires presque effacées (0,10–0,14) pour ne pas brouiller les trajets ; parois 0,26–0,30
-    m.opacity = on ? (m.userData.flowOpacity ?? 0.3) : 1;
-    m.depthWrite = !on;
-    if (m.side !== THREE.BackSide) m.side = on ? THREE.FrontSide : THREE.DoubleSide; // une seule couche par paroi
-    m.needsUpdate = true;
-  });
-  renderer.toneMappingExposure = on ? 0.95 : 1.0;
+// Panneau des étapes (au-dessus de la légende)
+const flowUI = document.createElement('div');
+flowUI.className = 'flow-guide hidden';
+flowUI.innerHTML = `<div class="fg-head"><span class="fg-num"></span><b class="fg-title"></b></div>
+  <p class="fg-text"></p><p class="fg-note">${FLOW_NOTE}</p>
+  <div class="fg-ctrl"><button type="button" class="fg-prev" aria-label="Étape précédente">‹</button>
+  <span class="fg-dots">${flowSteps.map(() => '<i></i>').join('')}</span>
+  <button type="button" class="fg-play" aria-label="Pause">❚❚</button><button type="button" class="fg-next" aria-label="Étape suivante">›</button></div>`;
+canvasWrap.appendChild(flowUI);
+const setPlaying = (on) => { flow.playing = on; const b = flowUI.querySelector('.fg-play'); b.textContent = on ? '❚❚' : '▶'; b.setAttribute('aria-label', on ? 'Pause' : 'Lecture'); };
+flowUI.querySelector('.fg-prev').addEventListener('click', () => { setPlaying(false); showStep((flow.step + flowSteps.length - 1) % flowSteps.length); });
+flowUI.querySelector('.fg-next').addEventListener('click', () => { setPlaying(false); showStep((flow.step + 1) % flowSteps.length); });
+flowUI.querySelector('.fg-play').addEventListener('click', () => setPlaying(!flow.playing));
+// cadrage : coupe quatre cavités vue de face et d'en haut (le plan 4 cavités est presque horizontal ; vu de face, les
+// veines caves et l'aorte gardent leur longueur à l'écran), cœur remonté au-dessus du panneau des étapes
+const flowView = () => goDir(heart.cut4.normal.clone().add(new THREE.Vector3(0, 0, 0.9)), { target: CENTER.clone().add(new THREE.Vector3(0, -2.4, 0)), dist: viewDistance() * 0.92 });
+function setCirculation(on) {
+  flowGroup.visible = on;
+  flowUI.classList.toggle('hidden', !on);
   canvasWrap.classList.toggle('is-flow', on);
+  if (on) {
+    if (state.battement) toggle('battement', false);
+    flow.prev = { coupe: state.coupe, mode: state.modeCoupe };
+    flow.pose = { atr: 0, ven: 0, av: 0.9, sl: 0 };
+    if (state.modeCoupe !== 'grand-axe') chooseCut('grand-axe');
+    if (!state.coupe) toggle('coupe', true);
+    flowView();
+    setPlaying(true);
+    showStep(0);
+  } else {
+    restPose();
+    heart.setHighlight(state.selected);
+    if (flow.prev) { if (flow.prev.mode !== state.modeCoupe) chooseCut(flow.prev.mode); if (!flow.prev.coupe && state.coupe) toggle('coupe', false); }
+  }
 }
 
 /* ─────────── étiquettes ─────────── */
@@ -297,75 +416,16 @@ ORDRE.forEach((id, i) => {
 function refreshLabels() {
   for (const id in labels) {
     const L = labels[id];
-    // En mode « planche », les étiquettes sont disposées en colonnes (voir layoutPlanche) ;
-    // l'étiquette flottante ne sert qu'à la sélection et au survol.
+    // étiquette flottante : structure sélectionnée ou survolée
     L.obj.visible = state.selected === id || state.hovered === id;
     L.el.classList.toggle('selected', state.selected === id);
     L.el.classList.toggle('hover', state.hovered === id && state.selected !== id);
   }
-  planche.style.display = state.etiquettes ? '' : 'none';
-}
-
-/* ─────────── planche numérotée (colonnes + lignes de rappel) ─────────── */
-const planche = document.createElement('div');
-planche.className = 'planche';
-planche.style.display = 'none';
-const leaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-leaders.setAttribute('class', 'leaders');
-planche.appendChild(leaders);
-canvasWrap.appendChild(planche);
-const plabels = {};
-ORDRE.forEach((id, i) => {
-  if (!labels[id]) return;
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = 'plabel';
-  el.innerHTML = `${numHtml(id)}<span class="txt">${STRUCTURES[id].nom}</span>`;
-  el.addEventListener('click', () => select(id));
-  planche.appendChild(el);
-  plabels[id] = el;
-});
-const projP = new THREE.Vector3();
-function layoutPlanche() {
-  const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-  const narrow = w < 700; // téléphone : numéros seuls au bout des lignes, la clé est dans le tiroir « Structures »
-  const items = [];
-  for (const id in labels) {
-    const L = labels[id];
-    const show = (!L.coupe || state.coupe) && !L.occluded && !(state.selected === id);
-    if (!show) { plabels[id].style.display = 'none'; continue; }
-    L.obj.getWorldPosition(projP).project(camera);
-    if (projP.z > 1) { plabels[id].style.display = 'none'; continue; }
-    items.push({ id, sx: (projP.x + 1) / 2 * w, sy: (1 - projP.y) / 2 * h });
-  }
-  // pas vertical ≥ hauteur d'une étiquette (30 px sur bureau, 20 px pour les pastilles seules) : plus de boîtes qui se touchent
-  const gap = narrow ? 22 : 31, top = narrow ? 100 : 110, bottom = h - 70;
-  const columns = [items.filter((i) => i.sx < w / 2).sort((a, b) => a.sy - b.sy), items.filter((i) => i.sx >= w / 2).sort((a, b) => a.sy - b.sy)];
-  let svg = '';
-  columns.forEach((col, side) => {
-    const ys = col.map((i) => i.sy);
-    for (let k = 0; k < ys.length; k++) ys[k] = Math.max(k ? ys[k - 1] + gap : top, ys[k]);
-    for (let k = ys.length - 1; k >= 0; k--) ys[k] = Math.min(k < ys.length - 1 ? ys[k + 1] - gap : bottom, ys[k]);
-    for (let k = 0; k < ys.length; k++) ys[k] = Math.max(top, ys[k]);
-    col.forEach((it, k) => {
-      const el = plabels[it.id];
-      el.style.display = '';
-      el.style.top = `${ys[k]}px`;
-      el.classList.toggle('right', side === 1);
-      el.classList.toggle('numonly', narrow);
-      el.classList.toggle('hover', state.hovered === it.id);
-      const ex = side === 0 ? 16 + el.offsetWidth : w - 16 - el.offsetWidth;
-      const kx = side === 0 ? ex + 14 : ex - 14;
-      const pts = `${ex},${ys[k]} ${kx},${ys[k]} ${it.sx},${it.sy}`;
-      svg += `<polyline class="halo" points="${pts}"/><polyline class="line" points="${pts}"/><circle cx="${it.sx}" cy="${it.sy}" r="2.4"/>`;
-    });
-  });
-  leaders.innerHTML = svg;
 }
 
 /* ─────────── sélection / surbrillance ─────────── */
 // La surbrillance (éclaircissement + liseré lumineux) est calculée dans le shader des tissus (voir heart.js).
-function highlight(id) { heart.setHighlight(id); }
+function highlight(id) { if (!id && state.circulation) heart.setHighlight(flowSteps[flow.step].focus, { focus: false }); else heart.setHighlight(id); }
 function select(id) {
   if (id && !STRUCTURES[id]) id = null; // pièce sans fiche
   state.selected = id;
@@ -395,7 +455,6 @@ function pick(ev) {
   const hits = raycaster.intersectObjects(pickables.filter((o) => o.visible && o.parent?.visible !== false), false);
   for (const h of hits) {
     if (isCutAway(h)) continue; // partie retirée par la coupe
-    if (h.object.material.transparent && h.object.material.opacity < 0.5 && !state.circulation) continue;
     return { id: heart.pickId(h.object, h.point, h.face), point: h.point };
   }
   return null;
@@ -428,19 +487,33 @@ const VUES = {
 };
 let camAnim = null;
 // Distance de cadrage : le modèle fait ≈ 22 cm de haut (de l'aorte descendante aux branches de la crosse).
-function viewDistance() { const a = camera.aspect > 0 && Number.isFinite(camera.aspect) ? camera.aspect : 1.3; return 44 * Math.max(1, 1.2 / a) * (state.etiquettes ? 1.2 : 1); } // recul en mode planche : place pour les colonnes
-// Regarde le cœur depuis une direction quelconque (coupe quatre cavités : on regarde le plan de face)
-function goDir(dir, instant = false) {
-  const to = CENTER.clone().add(dir.clone().normalize().multiplyScalar(viewDistance()));
-  if (instant) { camera.position.copy(to); camAnim = null; } else camAnim = { from: camera.position.clone(), to, t: 0 };
+function viewDistance() { const a = camera.aspect > 0 && Number.isFinite(camera.aspect) ? camera.aspect : 1.3; return 44 * Math.max(1, 1.2 / a); }
+const Y_UP = new THREE.Vector3(0, 1, 0), camUp = new THREE.Vector3();
+// Verticale de la caméra (OrbitControls garde la rotation « verticale → +y » calculée à sa création : on la met à jour)
+function setCameraUp(up) {
+  camera.up.copy(up);
+  if (controls._quat) { controls._quat.setFromUnitVectors(camera.up, Y_UP); controls._quatInverse.copy(controls._quat).invert(); }
+}
+// Regarde le cœur depuis une direction quelconque, vers une cible, avec une verticale donnée
+function goDir(dir, { target = CENTER, dist = viewDistance(), up = Y_UP, instant = false } = {}) {
+  const to = target.clone().add(dir.clone().normalize().multiplyScalar(dist));
+  camAnim = { from: camera.position.clone(), to, tFrom: controls.target.clone(), tTo: target.clone(), uFrom: camera.up.clone(), uTo: up.clone().normalize(), t: instant ? 1 : 0 };
+  if (instant) stepCamAnim(0);
   document.querySelectorAll('.view-btn').forEach((b) => b.classList.remove('active'));
+}
+function stepCamAnim(dt) {
+  camAnim.t = Math.min(1, camAnim.t + dt * 1.6);
+  const e = camAnim.t * camAnim.t * (3 - 2 * camAnim.t);
+  camera.position.lerpVectors(camAnim.from, camAnim.to, e);
+  controls.target.lerpVectors(camAnim.tFrom, camAnim.tTo, e);
+  camUp.copy(camAnim.uFrom).lerp(camAnim.uTo, e);
+  if (camUp.lengthSq() > 1e-6) setCameraUp(camUp.normalize());
+  if (camAnim.t >= 1) camAnim = null;
 }
 function goView(name, instant = false) {
   const v = VUES[name];
   state.vue = name;
-  const to = CENTER.clone().add(new THREE.Vector3(...v.dir).normalize().multiplyScalar(viewDistance()));
-  if (instant) { camera.position.copy(to); camAnim = null; }
-  else camAnim = { from: camera.position.clone(), to, t: 0 };
+  goDir(new THREE.Vector3(...v.dir), { instant });
   document.querySelectorAll('.view-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
 }
 
@@ -449,10 +522,11 @@ function toggle(name, value) {
   renderer.shadowMap.needsUpdate = true;
   const btn = document.querySelector(`[data-toggle="${name}"]`);
   if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
-  if (name === 'coupe') { if (state.coupe && state.modeCoupe === 'grand-axe') goDir(heart.cut4.normal); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
-  if (name === 'circulation') { setTranslucent(state.circulation); flowMesh.visible = state.circulation; }
+  if (name === 'battement' && state.battement && state.circulation) toggle('circulation', false);
+  if (name === 'coupe') restPose();
+  if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
+  if (name === 'circulation') setCirculation(state.circulation);
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires; })); }
-  if (name === 'etiquettes') { refreshLabels(); goView(state.vue); }
 }
 
 function renderFiche(id) {
@@ -501,13 +575,7 @@ function buildPanel() {
     list.appendChild(det);
   });
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
-  document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x === b));
-    setCutMode(b.dataset.cut);
-    if (b.dataset.cut === 'horizontale') goView('superieure');
-    else if (b.dataset.cut === 'grand-axe') goDir(heart.cut4.normal);
-    else goView('anterieure');
-  }));
+  document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
   document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); renderer.shadowMap.needsUpdate = true; syncGhost(); updateCapPlanes(); });
   document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
@@ -549,8 +617,8 @@ function occludeLabels() {
   const visibles = pickables.filter((o) => o.visible && o.parent?.visible !== false);
   for (const id in labels) {
     const L = labels[id];
-    if (!L.obj.visible && !state.etiquettes) continue;
-    if (state.selected === id || state.circulation) { L.occluded = false; L.el.style.visibility = ''; continue; }
+    if (!L.obj.visible) continue;
+    if (state.selected === id) { L.occluded = false; L.el.style.visibility = ''; continue; }
     L.obj.getWorldPosition(occPos);
     // étiquette flottante : à gauche du point si l'on est près du bord droit de la scène
     const px = (occPos.clone().project(camera).x + 1) / 2 * canvasWrap.clientWidth;
@@ -577,6 +645,7 @@ function updateOrientation() {
   let txt;
   if (Math.abs(camRight.x) >= Math.abs(camRight.z)) txt = camRight.x > 0 ? '<b>D</b> ← patient → <b>G</b>' : '<b>G</b> ← patient → <b>D</b>';
   else txt = camRight.z > 0 ? '<b>Arrière</b> ← patient → <b>Avant</b>' : '<b>Avant</b> ← patient → <b>Arrière</b>';
+  if (state.coupe && state.modeCoupe === 'chirurgien' && !camAnim) txt = 'Vue depuis l’oreillette gauche · <b>aorte en haut</b>';
   if (txt !== orientTxt) { orientEl.innerHTML = txt; orientTxt = txt; }
 }
 
@@ -588,20 +657,14 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
   const t = clock.elapsedTime;
-  if (camAnim) {
-    camAnim.t = Math.min(1, camAnim.t + dt * 1.6);
-    const e = camAnim.t * camAnim.t * (3 - 2 * camAnim.t);
-    camera.position.lerpVectors(camAnim.from, camAnim.to, e);
-    if (camAnim.t >= 1) camAnim = null;
-  }
+  if (camAnim) stepCamAnim(dt);
   // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
   if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM), { valves: state.coupe }); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
-  else if (!beatIdle) { heart.setBeat(null); beatIdle = true; renderer.shadowMap.needsUpdate = true; }
-  if (state.circulation) updateFlow(t);
+  else if (!beatIdle) { beatIdle = true; restPose(); }
+  if (state.circulation) updateFlow(dt);
   controls.update();
   if ((frame & 7) === 0) updateOrientation();
   if ((frame++ & 3) === 0) occludeLabels();
-  if (state.etiquettes && (frame & 1) === 0) layoutPlanche();
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
 }

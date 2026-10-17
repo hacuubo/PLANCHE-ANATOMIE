@@ -564,12 +564,14 @@ export async function buildHeart() {
     const sl = sm(0.19, 0.22, ph) * (1 - sm(0.5, 0.53, ph));
     return { atr, ven, av, sl };
   };
-  const setBeat = (phase, { valves: withValves = true } = {}) => {
-    const c = phase === null ? { atr: 0, ven: 0, av: 0.9, sl: 0 } : cycle(phase);
+  // Pose du cœur : contraction auriculaire (atr), ventriculaire (ven), ouverture des valves AV (av) et sigmoïdes (sl)
+  const setPose = (c, { valves: withValves = true } = {}) => {
     deformU.uDC.value = c.ven; deformU.uDAt.value = c.atr;
     if (withValves) for (const [id, v] of Object.entries(valves)) v.update(header.valves[id].type === 'av' ? c.av : c.sl, deformPoint);
     return c;
   };
+  const REPOS = { atr: 0, ven: 0, av: 0.9, sl: 0 };
+  const setBeat = (phase, opts) => setPose(phase === null ? REPOS : cycle(phase), opts);
   setBeat(null);
 
   /* ── Système de conduction (positions calculées dans le septum réel) ── */
@@ -593,12 +595,13 @@ export async function buildHeart() {
   // Résolution du clic : structure portée par l'enveloppe (attribut du maillage simplifié) ou par la pièce touchée.
   const pickId = (mesh, worldPoint, face) => (mesh.userData.proxy ? ids[proxySid[face.a]] : mesh.userData.sid ? ids[mesh.userData.sid[face.a]] : mesh.userData.id);
   // Surbrillance : par indice de structure pour l'enveloppe et les cavités, par matériau pour les autres pièces.
-  const setHighlight = (id) => {
+  // focus : met le reste en retrait (sélection) ; sans focus, la structure est seulement éclairée (circulation)
+  const setHighlight = (id, { focus = true } = {}) => {
     selUniform.value = id ? ids.indexOf(id) : -1;
     tissueMats.forEach((m) => { m.userData.uniforms.uHi.value = 0; });
     let any = selUniform.value >= 0;
     (id && registry[id] ? registry[id].meshes : []).forEach((mesh) => { const u = mesh.material?.userData?.uniforms; if (u) { u.uHi.value = 1; any = true; } });
-    focusUniform.value = any ? 1 : 0; // pas de mise en retrait si rien n'est éclairé (septum, par exemple)
+    focusUniform.value = any && focus ? 1 : 0; // pas de mise en retrait si rien n'est éclairé (septum, par exemple)
   };
 
   // Ombres : la carte d'ombre suit le battement (matériau de profondeur déformé, même raideur que le tissu)
@@ -610,5 +613,7 @@ export async function buildHeart() {
   cutOnly.forEach((m) => { m.visible = false; });
 
   return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
-    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, deformPoint, addDeform: (mat, k) => addDeformTo(mat, deformU, k) };
+    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, deformPoint,
+    // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
+    landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k) => addDeformTo(mat, deformU, k) };
 }

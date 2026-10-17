@@ -291,7 +291,7 @@ export const STRUCTURES = {
   },
 };
 
-// Ordre d'affichage dans la planche numérotée (style atlas).
+// Ordre d'affichage et numéros des structures (liste du panneau, style atlas).
 export const ORDRE = [
   'oreillette-droite', 'auricule-droite', 'ventricule-droit', 'oreillette-gauche', 'auricule-gauche', 'ventricule-gauche', 'apex', 'septum-interventriculaire',
   'valve-tricuspide', 'valve-pulmonaire', 'valve-mitrale', 'valve-aortique',

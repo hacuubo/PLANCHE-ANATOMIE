@@ -46,8 +46,7 @@
         <div class="toolbar" role="toolbar" aria-label="Affichage">
           <span class="tool-group" aria-label="Modes">
             <button class="tool mode" data-toggle="coupe" type="button" aria-pressed="false" title="Ouvrir le cœur pour voir les cavités"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="11.5" r="2"/><circle cx="4.5" cy="4.5" r="2"/><path d="M6 6l8 7M6 10l8-7"/></svg>Coupe</button>
-            <button class="tool mode" data-toggle="circulation" type="button" aria-pressed="false" title="Voir le trajet du sang"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2v3h-3"/></svg>Circulation</button>
-            <button class="tool mode" data-toggle="etiquettes" type="button" aria-pressed="false" title="Afficher toutes les étiquettes numérotées"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="3.2"/><path d="M8 8h6M4 6.8l1-.8v4"/></svg>Étiquettes</button>
+            <button class="tool mode" data-toggle="circulation" type="button" aria-pressed="false" title="Suivre le trajet du sang, étape par étape"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2v3h-3"/></svg>Circulation</button>
           </span>
           <span class="tool-sep" aria-hidden="true"></span>
           <span class="tool-group" aria-label="Options">
@@ -57,7 +56,9 @@
         </div>
         <div id="cut-tools" class="cut-tools hidden">
           <div class="seg">
-            <button data-cut="grand-axe" class="active" type="button">Grand axe</button>
+            <button data-cut="grand-axe" class="active" type="button" title="Coupe échographique apicale des quatre cavités">4 cavités</button>
+            <button data-cut="cinq-cavites" type="button" title="Coupe 4 cavités basculée vers l'avant : chambre de chasse du ventricule gauche et valve aortique">5 cavités</button>
+            <button data-cut="chirurgien" type="button" title="Petit axe de la valve mitrale vue depuis l'oreillette gauche, aorte en haut (vue du chirurgien, ETO 3D)">Vue chirurgien</button>
             <button data-cut="frontale" type="button">Frontale</button>
             <button data-cut="horizontale" type="button">Horizontale</button>
           </div>
@@ -74,7 +75,7 @@
         <span class="legend-item not-flow"><i style="background:var(--graisse)"></i>Graisse des sillons</span>
         <span class="legend-item only-cut"><i style="background:var(--valve)"></i>Valves</span>
         <span class="legend-item only-cut"><i style="background:var(--conduction)"></i>Système électrique</span>
-        <span class="legend-item only-flow">Particules : sens de circulation</span>
+        <span class="legend-item only-flow">Flèches : sens du sang</span>
         <span class="legend-sep" aria-hidden="true"></span>
         <span class="orient"><b>D</b> ← patient → <b>G</b></span>
       </div>

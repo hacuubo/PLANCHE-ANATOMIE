@@ -2,7 +2,7 @@
 
 Application web progressive (PWA) destinée à expliquer aux patients l'anatomie du cœur
 et de ses vaisseaux, à la manière d'une planche d'atlas : un modèle 3D interactif,
-des étiquettes numérotées avec lignes de rappel, et une fiche explicative par structure.
+une liste numérotée des structures, et une fiche explicative par structure.
 
 ## Fonctions
 
@@ -15,7 +15,11 @@ des étiquettes numérotées avec lignes de rappel, et une fiche explicative par
 - **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques et
   lobules de graisse en relief procédural, film humide satiné, translucidité, liseré lumineux,
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
-- **Coupe** (grand axe, frontale, horizontale, profondeur réglable) : cavités, septum, valves et
+- **Coupe** (profondeur réglable) : coupes échographiques **4 cavités** et **5 cavités** (la 4 cavités basculée
+  vers l'avant autour de la pointe, jusqu'à la valve aortique : chambre de chasse du VG et racine aortique), **vue
+  chirurgien** (petit axe de la mitrale comme en ETO 3D : oreillettes retirées au-dessus de l'anneau, valve vue
+  depuis l'oreillette gauche, aorte à 12 h, mitrale fermée au repos pour montrer la coaptation), frontale et
+  horizontale. On y voit cavités, septum, valves et
   cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
   tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
@@ -28,10 +32,11 @@ des étiquettes numérotées avec lignes de rappel, et une fiche explicative par
   ≈ 50 %) et torsion, calculés dans le shader de sommets : tous les tissus, les surfaces de coupe et les ombres
   suivent le même mouvement. Le ventricule se vide pendant l'éjection et se remplit après l'ouverture des valves
   mitrale et tricuspide.
-- **Circulation** : parois translucides et particules suivant le trajet du sang à travers les
-  cavités et les valves (bleu = pauvre en oxygène, rouge = riche en oxygène).
-- **Étiquettes** : planche numérotée en deux colonnes avec lignes de rappel ; les étiquettes
-  masquées par le modèle sont retirées automatiquement. Sélection en « mode focus ».
+- **Circulation** : parcours guidé du sang en 8 étapes (veines caves → oreillette droite → ventricule droit →
+  poumons → veines pulmonaires → oreillette gauche → ventricule gauche → aorte), en coupe 4 cavités vue de face et
+  d'en haut. Flèches animées dans le sens du sang (bleu = pauvre en oxygène, rouge = riche), valves dans la position
+  de chaque étape, texte simple, lecture automatique ou pas à pas.
+- **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Hors ligne** : service worker mettant en cache l'application, le modèle et three.js.
 
@@ -66,11 +71,11 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | Fichier | Rôle |
 | --- | --- |
 | `index.html` | Page, barre d'outils, panneau |
-| `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, panneau mobile en tiroir) |
+| `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, circulation guidée, panneau mobile en tiroir) |
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, trajets du sang, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
-| `js/app.js` | Scène, coupe (clipping + capuchons stencil), circulation, étiquettes, interface |
+| `js/app.js` | Scène, coupes (clipping + capuchons stencil), circulation guidée, étiquettes, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
 | `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves |
