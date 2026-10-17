@@ -1,13 +1,13 @@
 {
   "name": "Planche d'anatomie — Le cœur",
   "short_name": "Planche cœur",
-  "description": "Planche d'anatomie interactive en 3D du cœur et de ses vaisseaux, pour expliquer aux patients.",
+  "description": "Le cœur en 3D qui bat, s'ouvre et se tourne, pour l'expliquer aux patients.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4efe6",
+  "background_color": "#e8edf3",
   "theme_color": "#f4efe6",
   "icons": [
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

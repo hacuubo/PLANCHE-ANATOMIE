@@ -1,25 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Icône « planche » : silhouette anatomique au trait d'encre, aplat rouge sur les ventricules,
-       oreillette mauve, tronc pulmonaire bleu, pastille numérotée avec ligne de rappel. -->
-  <rect width="64" height="64" rx="14" fill="#f4efe6"/>
-  <g stroke="#2b2420" stroke-linecap="round" stroke-linejoin="round">
-    <!-- aorte : crosse qui monte de la base et redescend à droite -->
-    <path d="M31 31C30 20 34 13 42 13c7 0 9 6 9 15" fill="none" stroke-width="9.6"/>
-    <path d="M31 31C30 20 34 13 42 13c7 0 9 6 9 15" fill="none" stroke="#b8433c" stroke-width="6.4"/>
-    <!-- tronc pulmonaire, en avant et à gauche de l'aorte -->
-    <path d="M25 31c-1-6 3-10 12-9" fill="none" stroke-width="7.4"/>
-    <path d="M25 31c-1-6 3-10 12-9" fill="none" stroke="#3e519e" stroke-width="4.6"/>
-    <!-- oreillette droite -->
-    <ellipse cx="17.5" cy="29.5" rx="7.5" ry="6.5" fill="#a98bb8" stroke-width="1.6"/>
-    <!-- masse ventriculaire, apex en bas à droite (côté gauche du patient) -->
-    <path d="M15.5 34C13 44 27 56 44.5 57.5 50.5 52 51.5 40 47 30.5 40 26 22 26 15.5 34Z" fill="#b8433c" stroke-width="1.7"/>
-    <!-- sillon interventriculaire antérieur -->
-    <path d="M30.5 29.5c3 8 8 16 13 25" fill="none" stroke="#f0c070" stroke-width="2.2"/>
-    <path d="M30.5 29.5c3 8 8 16 13 25" fill="none" stroke="#7a2b26" stroke-width=".8"/>
-    <!-- ligne de rappel et pastille -->
-    <path d="M38 41L52 44" fill="none" stroke-width=".9"/>
-    <circle cx="38" cy="41" r="1" fill="#2b2420" stroke="none"/>
-    <circle cx="54.5" cy="44.5" r="4.6" fill="#fffdf9" stroke-width=".9"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Icône « coupe 4 cavités » : cœur sectionné au trait d'encre sur fond studio bleuté. Sang pauvre en oxygène
+       à droite du patient (bleu), riche à gauche (rose), septum épais bombé dans le ventricule droit, ventricule
+       gauche épais qui forme la pointe, valves tricuspide et mitrale ouvertes (mitrale insérée plus haut). -->
+  <defs>
+    <radialGradient id="bg" cx=".5" cy=".42" r=".8"><stop offset="0" stop-color="#f7f9fb"/><stop offset="1" stop-color="#cfd8e3"/></radialGradient>
+    <radialGradient id="myo" cx=".4" cy=".35" r=".85"><stop offset="0" stop-color="#cc5b52"/><stop offset=".6" stop-color="#b8433c"/><stop offset="1" stop-color="#933330"/></radialGradient>
+    <linearGradient id="rbl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dce3f6"/><stop offset="1" stop-color="#b6c3ec"/></linearGradient>
+    <linearGradient id="lbl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fae1da"/><stop offset="1" stop-color="#efbbb0"/></linearGradient>
+  </defs>
+  <rect id="fond" width="200" height="200" rx="44" fill="url(#bg)"/>
+  <g transform="translate(100 100) scale(.98) translate(-104 -115)">
+    <!-- épicarde : oreillette droite, ventricule droit, pointe formée par le ventricule gauche, oreillette gauche -->
+    <path d="M102 52C84 42 52 46 46 68C43 82 46 94 54 104C46 122 54 142 72 156C88 168 108 178 126 182C134 184 140 180 144 174C160 152 166 128 162 108C160 104 158 102 156 100C166 88 164 70 154 62C140 48 118 46 102 52Z" fill="url(#myo)" stroke="#2b2420" stroke-width="2.6" stroke-linejoin="round"/>
+    <!-- cœur droit : oreillette et ventricule -->
+    <path d="M98 60C84 52 58 54 52 70C49 84 52 94 58 100C51 118 54 138 70 150C84 160 98 162 108 160C100 150 94 134 96 118L98 109Z" fill="url(#rbl)" stroke="#7a2b26" stroke-width="1.5" stroke-linejoin="round"/>
+    <!-- cœur gauche : oreillette et ventricule, paroi latérale épaisse, cavité jusqu'à la pointe -->
+    <path d="M104 60C120 52 146 54 152 66C156 80 154 90 148 98C146 116 144 136 136 154C132 164 128 170 124 170C116 162 112 140 110 122C109 114 108 108 106 103L104 100Z" fill="url(#lbl)" stroke="#7a2b26" stroke-width="1.5" stroke-linejoin="round"/>
+    <!-- feuillets tricuspides et mitraux, ouverts : voiles effilées accrochées à l'anneau -->
+    <g fill="#ecd9ac" stroke="#2b2420" stroke-width=".9" stroke-linejoin="round">
+      <path d="M57 99.5C57.5 108 60 117 64.5 125.5C65.2 126.2 66 125.8 65.8 125C62.6 116.5 61.2 107.6 60.6 100.5Z"/>
+      <path d="M99 108.5C97.4 116.5 94.2 124.4 89.4 130.6C88.8 131.3 88 130.8 88.3 130C92 123.6 94.4 116 95.6 108.6Z"/>
+      <path d="M105.6 101.8C108.6 111.6 113 121.6 119.4 130.8C120 131.5 120.9 131 120.6 130.2C115.4 121 112 111 109.6 101.6Z"/>
+      <path d="M149.6 97.4C148.6 105.6 146.4 113.6 142.6 120.6C142.1 121.4 141.2 121 141.4 120.2C143.8 113.2 145.2 105.4 145.8 97.6Z"/>
+    </g>
   </g>
-  <text x="54.5" y="46.6" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="6.2" font-weight="600" fill="#2b2420">1</text>
 </svg>
