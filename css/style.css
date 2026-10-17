@@ -69,7 +69,7 @@ button { font: inherit; color: inherit; }
   font-size: 15px; color: var(--ink-2); letter-spacing: .02em;
 }
 .scene canvas { display: block; }
-.labels { position: absolute; inset: 0; }
+.labels { position: absolute; inset: 0; z-index: 1; } /* étiquettes sous la barre d'outils */
 
 /* ── outils flottants ── */
 .tools { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 5; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; pointer-events: none; }

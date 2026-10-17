@@ -395,7 +395,7 @@ export const VALVE_TRICUSPIDE = {
     details: [
       "This is the most common form of tricuspid regurgitation. It accompanies enlargement of the right heart chambers: left-sided valve disease, pulmonary hypertension, long-standing atrial fibrillation.",
       "It may cause swollen legs, an enlarged liver, fatigue, then venous congestion.",
-      "It is called severe when the regurgitant orifice reaches at least 40 mm². During left-sided heart surgery, a ring is placed on the tricuspid valve if its annulus measures at least 40 mm (or more than 21 mm/m²).",
+      "It is called severe when the regurgitant orifice reaches at least 40 mm². During left-sided heart surgery, tricuspid repair (usually with a ring) is recommended if the regurgitation is severe; it may also be considered for less severe regurgitation when the annulus is dilated (at least 40 mm, or more than 21 mm/m²).",
       "Treatments: diuretics, surgical annuloplasty ring, or catheter-based techniques for some patients.",
     ],
     chiffres: ['Annulus ≥ 40 mm', 'Regurgitant orifice ≥ 40 mm²'],

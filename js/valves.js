@@ -290,15 +290,16 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       // d'accolement (bord libre) pend dans le ventricule
       coapt(L, th, u, tmpQ);
       const vc = 0.7, w = smooth(0, vc, v), belly = 0.1 * L.height * Math.sin(Math.PI * Math.min(1, v / vc)) * Math.pow(Math.sin(Math.PI * u), 0.5);
-      const lip = Math.max(0, (v - vc) / (1 - vc)) * 0.28 * h;
+      // segment prolabé : sa zone d'accolement ne pend plus dans le ventricule, elle se retourne vers l'oreillette
+      const lip = Math.max(0, (v - vc) / (1 - vc)) * 0.28 * h * (1 - 2 * flailBell(L, u));
       // fermé : forme de tente (coaptation sous le plan de l'anneau), corps à peine bombé vers l'oreillette
       let cx = tmpA.x + (tmpQ.x - tmpA.x) * w - A.x * belly + A.x * ((0.2 + tether) * w + lip);
       let cy = tmpA.y + (tmpQ.y - tmpA.y) * w - A.y * belly + A.y * ((0.2 + tether) * w + lip);
       let cz = tmpA.z + (tmpQ.z - tmpA.z) * w - A.z * belly + A.z * ((0.2 + tether) * w + lip);
       // prolapsus : le segment se soulève au-dessus de l'anneau, son bord libre se retourne dans l'oreillette
       const fl = flailBell(L, u) * Math.pow(smooth(0.1, 1, v), 1.6);
-      // (il s'écarte aussi de la ligne de fermeture : brèche visible entre les deux feuillets)
-      if (fl > 0) { cx += (-A.x * pro.lift + tmpD.x * 0.32) * fl; cy += (-A.y * pro.lift + tmpD.y * 0.32) * fl; cz += (-A.z * pro.lift + tmpD.z * 0.32) * fl; }
+      // (légèrement écarté de la ligne de fermeture : la brèche par où le sang reflue reste visible)
+      if (fl > 0) { cx += (-A.x * pro.lift + tmpD.x * 0.14) * fl; cy += (-A.y * pro.lift + tmpD.y * 0.14) * fl; cz += (-A.z * pro.lift + tmpD.z * 0.14) * fl; }
       return out.set(cx + (ox - cx) * open, cy + (oy - cy) * open, cz + (oz - cz) * open);
     };
     shell.cache(point);
@@ -320,7 +321,7 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       const key = `${lf.L.name}|${best.name}`;
       if (!groups.has(key)) groups.set(key, { lf, head: best, marg: [], sec: [], rupt: [] });
       // cordage rompu : détaché du pilier, il reste accroché au bord libre du segment prolabé
-      const torn = pro?.ruptured && v === 1 && flailBell(lf.L, u) > 0.5;
+      const torn = pro?.ruptured && v === 1 && pro.leaflet.test(lf.L.name) && Math.abs(u - 0.5) < 0.07; // 2 à 3 cordages
       groups.get(key)[torn ? 'rupt' : v === 1 ? 'marg' : 'sec'].push([u, v]);
     }
   }
@@ -331,7 +332,7 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
     for (let k = 0; k < g.marg.length; k += 3) g.clusters.push(g.marg.slice(k, k + 3));
     return g;
   });
-  const nCh = G.reduce((s, g) => s + 1 + g.clusters.length + g.marg.length + g.sec.length + g.rupt.length, 0);
+  const nCh = G.reduce((s, g) => s + 1 + g.clusters.length + g.marg.length + g.sec.length + 2 * g.rupt.length, 0);
   // chaque cordage est dessiné en 3 tronçons : droit quand il est tendu, courbé quand il est détendu
   const cords = new Cords(nCh * 3, cordMat);
   // xf(point, raideur) : déformation du cycle cardiaque (heart.js) ; feuillets portés par l'anneau, têtes des piliers
@@ -362,10 +363,13 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
         for (const p of cl) out.push([Bc, p, 0.016, 0.013, 0.03]);        // cordage fin, pied évasé
       }
       // cordages rompus : bout libre qui flotte dans l'oreillette au rythme du flux
+      // bout libre : dans l'oreillette quand la valve se ferme, dans le ventricule quand elle s'ouvre ; courbé, il flotte
+      const s = 1 - 2 * openAt(1);
       rupt.forEach((p, k) => {
-        const e = p.clone().addScaledVector(A, -0.3).addScaledVector(dir(g.lf.L.t0 + g.lf.span * g.rupt[k][0], tmpM), 0.42 + 0.06 * k);
-        e.addScaledVector(lineDirR, 0.12 * Math.sin(7 * tNow + 2.3 * k) + 0.1 * (k - 1));
-        out.push([p, e, 0.026, 0.016, 0.016]);
+        const out1 = dir(g.lf.L.t0 + g.lf.span * g.rupt[k][0], tmpM);
+        const e = p.clone().addScaledVector(A, -0.6 * s).addScaledVector(out1, 0.3).addScaledVector(lineDirR, 0.15 * Math.sin(6 * tNow + 2.3 * k) + 0.12 * (k - 1));
+        const m = p.clone().lerp(e, 0.5).addScaledVector(out1, 0.12).addScaledVector(lineDirR, 0.06 * Math.sin(6 * tNow + 1.1 + 2.3 * k));
+        out.push([p, m, 0.026, 0.019, 0.019], [m, e, 0.019, 0.013, 0.013]);
       });
     }
     return out;

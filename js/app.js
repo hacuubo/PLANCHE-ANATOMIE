@@ -472,6 +472,7 @@ function fadeHeart(o, keepValveId = null) {
   const keep = new Set();
   if (keepValveId) for (const m of heart.valves[keepValveId]?.meshes ?? []) keep.add(m.material);
   setOpacity(heart.materials.filter((m) => !viewMats.has(m) && !keep.has(m)), o);
+  setOpacity(keep, 1); // la valve à situer reste opaque
   heart.root.traverse((m) => {
     if (!m.isMesh) return;
     if (o < 0.999 && m.castShadow) { castSaved.set(m, true); m.castShadow = false; }
@@ -479,7 +480,13 @@ function fadeHeart(o, keepValveId = null) {
   });
   for (const id in labels) labels[id].obj.visible = o >= 0.999 && (state.selected === id || state.hovered === id);
 }
-const showHeartValve = (v, on) => { for (const m of heart.valves[v.heartValveId]?.meshes ?? []) m.visible = on; };
+// valve du cœur montrée fermée pendant le repérage (comme dans le gros plan qui suit), remise au repos ensuite
+const showHeartValve = (v, on) => {
+  const hv = heart.valves[v.heartValveId];
+  if (!hv) return;
+  hv.snap(on ? 0 : (v.phase === 'av' ? 0.9 : 0), null);
+  for (const m of hv.meshes) m.visible = on;
+};
 // anneau lumineux et nom de la valve pendant le repérage (calque d'interface : par-dessus, sans ombrage)
 const markerMat = new THREE.MeshBasicMaterial({ color: 0xfff1cf, transparent: true, opacity: 0.6, depthTest: false, depthWrite: false, toneMapped: false });
 const marker = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.07, 12, 72), markerMat);
@@ -496,7 +503,7 @@ function setMarker(v) {
 // états de caméra : cible, direction (de la cible vers l'œil), distance, verticale
 const camSt = () => { const off = camera.position.clone().sub(controls.target); return { target: controls.target.clone(), dir: off.clone().normalize(), dist: off.length(), up: camera.up.clone() }; };
 const portrait = () => Math.max(1, 0.95 / camera.aspect);
-const ctxCam = (v) => ({ target: v.focus.clone(), dir: v.camDir.clone().add(new THREE.Vector3(0, 0.15, 1).multiplyScalar(1.3)).normalize(), dist: viewDistance() * 0.75, up: Y_UP.clone() });
+const ctxCam = (v) => ({ target: v.focus.clone(), dir: v.camDir.clone().multiplyScalar(1.4).add(new THREE.Vector3(0, 0.2, 1)).normalize(), dist: viewDistance() * 0.75, up: Y_UP.clone() });
 const closeCam = (v) => ({ target: v.center.clone(), dir: v.camDir.clone(), dist: v.dist * portrait(), up: v.up.clone() });
 const frontCam = () => ({ target: CENTER.clone(), dir: new THREE.Vector3(...VUES.anterieure.dir).normalize(), dist: viewDistance(), up: Y_UP.clone() });
 const _q = new THREE.Quaternion(), _qi = new THREE.Quaternion(), _d = new THREE.Vector3(), _u = new THREE.Vector3();
@@ -510,7 +517,12 @@ function applyCam(a, b, e) {
   camera.lookAt(controls.target);
 }
 const easeIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-function runSteps(steps, done) { camAnim = null; trans = { steps, i: 0, t: 0, done }; controls.enabled = false; startStep(); }
+const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+let pendingAction = null; // action demandée pendant une transition : exécutée à la fin
+function runSteps(steps, done) {
+  if (reduced.matches) steps.forEach((s) => { s.dur *= 0.35; }); // mouvement réduit : transitions brèves
+  camAnim = null; trans = { steps, i: 0, t: 0, done }; controls.enabled = false; startStep();
+}
 function startStep() { const s = trans.steps[trans.i]; s.from = camSt(); s.onStart?.(); }
 function stepTrans(dt) {
   const s = trans.steps[trans.i];
@@ -523,18 +535,23 @@ function stepTrans(dt) {
   s.onEnd?.();
   trans.i++; trans.t = 0;
   if (trans.i < trans.steps.length) startStep();
-  else { const done = trans.done; trans = null; controls.enabled = true; done?.(); }
+  else {
+    const done = trans.done; trans = null; camAnim = null; controls.enabled = true; controls.update();
+    done?.();
+    const p = pendingAction; pendingAction = null; p?.();
+  }
 }
 const viewSet = (v) => matsOf(v.group);
 // Passe du cœur (ou d'une valve) à la valve « key » ; key = null : retour au cœur. after : appelé à la fin.
 function goValve(key, after) {
-  if (trans) return;
+  if (trans) { pendingAction = () => goValve(key, after); return; }
   const from = state.valve;
   if (from === key) { after?.(); return; }
   if (state.circulation) toggle('circulation', false);
   if (state.coupe) toggle('coupe', false);
   if (state.selected) { state.selected = null; heart.setHighlight(null); document.querySelectorAll('.struct-btn.active').forEach((b) => b.classList.remove('active')); }
   if (key) lastValve = key;
+  heart.setBeat(null); // pose de repos pendant le repérage (pas de cœur figé en systole)
   state.valve = key;
   syncValveUI();
   const V0 = from && VALVE_VIEWS[from], V1 = key && VALVE_VIEWS[key], steps = [];
@@ -572,7 +589,7 @@ function goValve(key, after) {
   } else steps.push({ // retour au cœur entier, de face
     dur: 1.3, to: frontCam,
     onUpdate: (e) => fadeHeart(0.28 + 0.72 * e, V0.heartValveId),
-    onEnd: () => { showHeartValve(V0, false); fadeHeart(1); setMarker(null); state.vue = 'anterieure'; document.querySelectorAll('.view-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === 'anterieure')); },
+    onEnd: () => { showHeartValve(V0, false); for (const m of heart.valves[V0.heartValveId]?.meshes ?? []) m.visible = state.coupe; fadeHeart(1); setMarker(null); state.vue = 'anterieure'; document.querySelectorAll('.view-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === 'anterieure')); },
   });
   runSteps(steps, () => { syncValveUI(); after?.(); });
 }
@@ -646,6 +663,7 @@ function select(id) {
     if (on) b.closest('details').open = true; // pas de défilement : la fiche doit rester lisible en haut du panneau
   });
   // vue chirurgien : seules les valves y sont visibles ; pour une autre structure de coupe, retour à la coupe 4 cavités
+  if (trans) { pendingAction = () => select(id); return; }
   if (id && state.valve) { goValve(null, () => select(id)); return; } // retour au cœur, puis sélection
   if (id && STRUCTURES[id].coupe && state.modeCoupe === 'chirurgien' && !/^valve-(mitrale|tricuspide|aortique)$/.test(id)) chooseCut('grand-axe');
   if (id && STRUCTURES[id].coupe && !state.coupe) toggle('coupe', true);
@@ -729,8 +747,9 @@ function goView(name, instant = false) {
 }
 
 function toggle(name, value) {
-  if (name === 'valves') { if (!trans) goValve(state.valve ? null : lastValve); return; }
-  if ((name === 'coupe' || name === 'circulation') && state.valve) { if (!trans) goValve(null, () => toggle(name, value)); return; }
+  if (trans && name !== 'battement' && name !== 'coronaires') { pendingAction = () => toggle(name, value); return; }
+  if (name === 'valves') { goValve(state.valve ? null : lastValve); return; }
+  if ((name === 'coupe' || name === 'circulation') && state.valve) { goValve(null, () => toggle(name, value)); return; }
   if (name === 'coupe' && state.circulation && value === undefined) { flow.prev = { coupe: true, mode: state.modeCoupe }; toggle('circulation', false); return; }
   state[name] = value ?? !state[name];
   renderer.shadowMap.needsUpdate = true;
@@ -895,7 +914,7 @@ function animate() {
     const target = state.battement ? (v.phase === 'sl' ? c.sl : c.av) : (valveOpen ? 1 : 0);
     if (v.step(target, dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   }
-  if (markerOn) markerMat.opacity = (0.35 + 0.35 * (0.5 + 0.5 * Math.sin(t * 4))) * markerFade;
+  if (markerOn) { markerMat.opacity = (0.35 + 0.35 * (0.5 + 0.5 * Math.sin(t * 4))) * markerFade; marker.quaternion.copy(camera.quaternion); } // anneau face à l'observateur
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe)
   if (state.coupe && !state.valve && heart.stepValves(dt, t, state.battement || state.circulation) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   controls.update();

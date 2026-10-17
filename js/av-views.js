@@ -97,7 +97,7 @@ export function buildAVView(heart, kind) {
     const vaoC = heart.landmarks.valves['valve-aortique'].center;
     up = vaoC.clone().sub(C).projectOnPlane(A).normalize(); // aorte à 12 h
     variants.normale = make({});
-    variants.prolapsus = make({ prolapse: { leaflet: /Posterior/, u0: 0.37, u1: 0.63, lift: 0.75, ruptured: true } });
+    variants.prolapsus = make({ prolapse: { leaflet: /Posterior/, u0: 0.37, u1: 0.63, lift: 1.0, ruptured: true } });
     for (const [k, v] of Object.entries(variants)) {
       v.labels.push(leafLabel(v.valve, /Anterior/, 0.5, 'Feuillet antérieur (A1-A3)', 0.35, 0.2));
       v.labels.push(leafLabel(v.valve, /Posterior/, uP(1 / 6), 'P1'), leafLabel(v.valve, /Posterior/, uP(5 / 6), 'P3'));
@@ -108,7 +108,7 @@ export function buildAVView(heart, kind) {
     const pLAA = floorPoint(vv, tAL + 0.25, 0.7), nLAA = atrialSide.clone().addScaledVector(pLAA.clone().sub(C).projectOnPlane(A).normalize(), -0.6).normalize();
     extra.push(hole(pLAA, nLAA, 0.42, 0.26));
     extra.push(label('Auricule gauche', pLAA.clone().addScaledVector(atrialSide, 0.45)));
-    extra.push(label('Aorte', floorPoint(vv, tAnt, 1).addScaledVector(atrialSide, 0.3)));
+    extra.push(label('Aorte (en arrière)', C.clone().addScaledVector(up, R * 1.45).addScaledVector(atrialSide, 0.5)));
   } else {
     const sep = d.leaflets.find((l) => /Septal/.test(l.name)), post = d.leaflets.find((l) => /Posterior/.test(l.name));
     const tSep = (sep.t0 + sep.t1) / 2;
@@ -125,9 +125,12 @@ export function buildAVView(heart, kind) {
     }
     // sinus coronaire : près de la commissure postéro-septale, sur le plancher de l'oreillette droite
     const tPS = Math.abs(Math.atan2(Math.sin(sep.t0 - post.t1), Math.cos(sep.t0 - post.t1))) < 0.6 ? sep.t0 : sep.t1;
-    const pCS = floorPoint(variants.normale.valve, tPS, 0.55);
-    extra.push(hole(pCS, atrialSide.clone().addScaledVector(pCS.clone().sub(C).projectOnPlane(A).normalize(), -0.5).normalize(), 0.32, 0.24));
-    extra.push(label('Sinus coronaire', pCS.clone().addScaledVector(atrialSide, 0.4)));
+    for (const v of Object.values(variants)) {
+      const pCS = floorPoint(v.valve, tPS, 0.55);
+      const hCS = hole(pCS, atrialSide.clone().addScaledVector(pCS.clone().sub(C).projectOnPlane(A).normalize(), -0.5).normalize(), 0.32, 0.24);
+      hCS.visible = false; v.meshes.push(hCS); group.add(hCS);
+      v.labels.push(label('Sinus coronaire', pCS.clone().addScaledVector(atrialSide, 0.4)));
+    }
   }
   for (const m of extra) if (!m.isCSS2DObject) group.add(m);
   const commonLabels = extra.filter((m) => m.isCSS2DObject);

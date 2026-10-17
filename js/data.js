@@ -392,7 +392,7 @@ export const VALVE_TRICUSPIDE = {
     details: [
       "C'est la forme la plus fréquente d'insuffisance tricuspide. Elle accompagne la dilatation des cavités droites : maladie d'une valve du cœur gauche, hypertension pulmonaire, fibrillation auriculaire au long cours.",
       "Elle peut donner des jambes gonflées, un gros foie, une fatigue, puis une surcharge des veines.",
-      "Elle est dite sévère quand l'orifice de fuite atteint au moins 40 mm². Lors d'une chirurgie du cœur gauche, un anneau est posé sur la tricuspide si son anneau mesure au moins 40 mm (ou plus de 21 mm/m²).",
+      "Elle est dite sévère quand l'orifice de fuite atteint au moins 40 mm². Lors d'une chirurgie du cœur gauche, une réparation de la tricuspide (le plus souvent un anneau) est recommandée si la fuite est sévère ; elle peut aussi être envisagée pour une fuite moins importante quand l'anneau est dilaté (au moins 40 mm, ou plus de 21 mm/m²).",
       "Traitements : diurétiques, anneau prothétique chirurgical, ou techniques percutanées chez certains patients.",
     ],
     chiffres: ['Anneau ≥ 40 mm', 'Orifice de fuite ≥ 40 mm²'],
