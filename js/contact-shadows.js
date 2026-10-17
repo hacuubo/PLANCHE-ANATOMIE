@@ -9,7 +9,19 @@
 // recomposition, puis tonalité et espace de couleur de sortie identiques au rendu direct.
 // Les éléments d'interface 3D (flèches de la circulation, calque 1) sont dessinés après, sans ombrage.
 import * as THREE from 'three';
-import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+
+// Triangle plein écran (sans dépendance aux modules d'exemples de three)
+class FullScreenQuad {
+  constructor(material) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 2, 0, 0, 2, 0], 2));
+    this.mesh = new THREE.Mesh(g, material);
+    this.mesh.frustumCulled = false;
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  }
+  render(renderer) { renderer.render(this.mesh, this.camera); }
+}
 
 const AO_FRAG = /* glsl */`
 uniform sampler2D tDepth;
@@ -78,9 +90,12 @@ void main() {
   float ao = wsum > 1e-4 ? sum / wsum : 1.0;
   if (!(ao == ao)) ao = 1.0;
   col.rgb *= mix(1.0, ao, uStrength);
-  gl_FragColor = col;
+  // silhouettes antialiasées sur fond transparent : couleur prémultipliée → tonalité sur la couleur vraie
+  float a = col.a;
+  gl_FragColor = vec4(col.rgb / max(a, 1e-4), a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
+  gl_FragColor.rgb *= a;
 }`;
 
 const VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
@@ -94,6 +109,7 @@ export class ContactShadows {
     // couleur HDR si l'appareil sait la rendre (sinon 8 bits : quelques dégradés moins fins, mais même image)
     const hdr = renderer.extensions.has('EXT_color_buffer_float') || renderer.extensions.has('EXT_color_buffer_half_float');
     this.target = new THREE.WebGLRenderTarget(1, 1, { type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: 4, stencilBuffer: true, depthTexture: depth });
+    this.target.resolveStencilBuffer = false;
     this.aoTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.UnsignedByteType, depthBuffer: false });
     this.aoMat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: AO_FRAG, depthTest: false, depthWrite: false,
@@ -106,12 +122,13 @@ export class ContactShadows {
     this.aoQuad = new FullScreenQuad(this.aoMat);
     this.composeQuad = new FullScreenQuad(this.composeMat);
   }
-  setSize(w, h) {
-    const pr = this.renderer.getPixelRatio(), W = Math.max(1, Math.round(w * pr)), H = Math.max(1, Math.round(h * pr));
-    this.target.setSize(W, H);
-    this.aoTarget.setSize(Math.max(1, W >> 1), Math.max(1, H >> 1)); // occlusion en demi-résolution
+  setSize() {
+    const s = this.renderer.getDrawingBufferSize(new THREE.Vector2()), W = Math.max(1, s.x), H = Math.max(1, s.y);
+    this.target.setSize(W, H); // mêmes dimensions que le canevas : pas de rééchantillonnage
+    const aw = Math.max(1, W >> 1), ah = Math.max(1, H >> 1);
+    this.aoTarget.setSize(aw, ah); // occlusion en demi-résolution
     this.aoMat.uniforms.uTexel.value.set(1 / W, 1 / H);
-    this.composeMat.uniforms.uAOTexel.value.set(2 / W, 2 / H);
+    this.composeMat.uniforms.uAOTexel.value.set(1 / aw, 1 / ah);
   }
   render() {
     const { renderer, scene, camera } = this;
@@ -119,7 +136,6 @@ export class ContactShadows {
     const mask = camera.layers.mask;
     camera.layers.disable(this.overlayLayer);
     renderer.setRenderTarget(this.target);
-    renderer.clear();
     renderer.render(scene, camera);
     camera.layers.mask = mask;
     this.aoMat.uniforms.uProj.value.copy(camera.projectionMatrix);
@@ -128,7 +144,6 @@ export class ContactShadows {
     renderer.setRenderTarget(this.aoTarget);
     this.aoQuad.render(renderer);
     renderer.setRenderTarget(null);
-    renderer.clear();
     this.composeQuad.render(renderer);
     // calque d'interface (flèches) : par-dessus, sans ombrage ni nouvel effacement
     const auto = renderer.autoClear;

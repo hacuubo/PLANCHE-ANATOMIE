@@ -204,14 +204,13 @@ function patchShader(sh) {
       #ifdef VALVE
       {
         float thin = 1.0 - clamp(vPar.z / 0.12, 0.0, 1.0);
-        vec3 trTint = vec3(1.0, 0.82, 0.64);
+        vec3 trTint = vec3(1.0, 0.9, 0.82);
         #if NUM_DIR_LIGHTS > 0
-        for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
-          float back = clamp(-dot(normal, directionalLights[i].direction), 0.0, 1.0);
-          reflectedLight.directDiffuse += directionalLights[i].color * diffuseColor.rgb * trTint * back * (0.25 + 0.75 * thin) * uTrans;
-        }
+        // lumière principale seulement (les contre-jours rendraient le feuillet lumineux de l'intérieur)
+        float back = clamp(-dot(normal, directionalLights[0].direction), 0.0, 1.0);
+        reflectedLight.directDiffuse += directionalLights[0].color * diffuseColor.rgb * trTint * back * (0.25 + 0.75 * thin) * uTrans * ao;
         #endif
-        totalEmissiveRadiance += diffuseColor.rgb * trTint * 0.03 * thin * uTrans; // lueur diffuse du tissu mince
+        totalEmissiveRadiance += diffuseColor.rgb * trTint * 0.02 * thin * uTrans * ao; // lueur diffuse du tissu mince
       }
       #endif
       float fres = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
@@ -465,7 +464,7 @@ export async function buildHeart() {
   const matCache = new Map();
   const PRESETS = {
     // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
-    valve: () => interior(tissue(0xffffff, { envelope: true, valve: true, trans: 0.55, deformOn: false, sss: 0.25, rim: 0.12, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.09, bump: 1.1, sheen: 0.08, sheenColor: 0xfff2dc, sheenRoughness: 0.4, envMapIntensity: 0.55 })),
+    valve: () => interior(tissue(0xffffff, { envelope: true, valve: true, trans: 0.35, deformOn: false, sss: 0.25, rim: 0.12, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.09, bump: 1.1, sheen: 0.08, sheenColor: 0xfff2dc, sheenRoughness: 0.4, envMapIntensity: 0.55 })),
     cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.6, rim: 0.3, roughness: 0.26, clearcoat: 0.75, clearcoatRoughness: 0.1, bump: 0.03, sheen: 0.1 })),
     // piliers : plus clairs que l'endocarde trabéculé, pour se détacher de la paroi ; coupés comme le reste du muscle
     papillaire: () => tissue(COL.papillaire, { deformK: 0.24, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
@@ -623,7 +622,11 @@ export async function buildHeart() {
     return moving;
   };
   const REPOS = { atr: 0, ven: 0, av: 0.9, sl: 0 };
-  const setBeat = (phase, opts) => setPose(phase === null ? REPOS : cycle(phase), opts);
+  const setBeat = (phase) => {
+    if (phase === null) return setPose(REPOS);
+    const c = cycle(phase), v = cycle((phase + 0.02) % 1); // valves : consigne en avance de ≈ 19 ms sur leur réponse
+    return setPose({ ...c, av: v.av, sl: v.sl });
+  };
   setBeat(null);
 
   /* ── Système de conduction (positions calculées dans le septum réel) ── */

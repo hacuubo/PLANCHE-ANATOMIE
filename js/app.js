@@ -19,7 +19,8 @@ function numHtml(id, big = false) {
 
 /* ─────────── scène ─────────── */
 const canvasWrap = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, stencil: true, powerPreference: 'high-performance' });
+// antialiasing assuré par la cible multi-échantillonnée des ombres de contact (js/contact-shadows.js)
+const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, stencil: true, powerPreference: 'high-performance' });
 // shader de tissu coûteux : densité de pixels plafonnée plus bas sur les écrans tactiles (téléphones, tablettes)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.5 : 2));
 renderer.localClippingEnabled = true;
@@ -66,7 +67,10 @@ const rim = new THREE.DirectionalLight(0xf2f6ff, 2.1);
 rim.position.set(-6, 9, -14);
 const rim2 = new THREE.DirectionalLight(0xfff0f0, 1.4);
 rim2.position.set(9, -4, -10);
-scene.add(key, key.target, fill, rim, rim2, new THREE.HemisphereLight(0xf2f6fc, 0xb08080, 0.95));
+const hemi = new THREE.HemisphereLight(0xf2f6fc, 0xb08080, 0.95);
+scene.add(key, key.target, fill, rim, rim2, hemi);
+// lumières sur tous les calques : le calque d'interface (flèches) partage l'état d'éclairage, pas de recompilation
+[key, fill, rim, rim2, hemi].forEach((l) => l.layers.enableAll());
 
 /* ─────────── cœur ─────────── */
 const heart = await buildHeart();
@@ -93,7 +97,7 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
   heart.materials.forEach((m) => { m.clipShadows = true; });
   toWrap.forEach((o) => {
     // les recouvrements s'additionnent, d'où une opacité basse
-    const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.05, depthWrite: false, clippingPlanes: [ghostPlane] });
+    const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.09, depthWrite: false, clippingPlanes: [ghostPlane] });
     heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07);
     const gh = new THREE.Mesh(o.geometry, gm);
     gh.visible = false; gh.userData.ghost = true;
