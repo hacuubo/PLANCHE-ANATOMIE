@@ -64,13 +64,35 @@ const extreme = (pts, f) => pts.reduce((b, p) => (f(p) > f(b) ? p : b));
 log('champs de distance des pièces prêts');
 const cen0 = (m) => meanOf(verts(m));
 const VC = { mitral: cen0(raw.valve['valve-mitrale']), tricus: cen0(raw.valve['valve-tricuspide']), aortic: cen0(raw.valve['valve-aortique']), pulmo: cen0(raw.valve['valve-pulmonaire']) };
+// Repères des valves (modèle paramétrique de js/valves.js), calculés tôt : l'anneau des valves auriculo-ventriculaires
+// sert aussi à ouvrir les orifices dans les cavités et à couper le muscle ventriculaire au-dessus de la base.
+const leafPts = (re) => pieces.filter((p) => re.test(p.name)).map((p) => ({ name: p.name, pts: mainComponent(loadMesh(DIR, p.file)) }));
+const junction = (Vc, Ac, Sa, Sv) => [...verts(Vc).filter((p) => Math.abs(Sa.query(...p, 1)) < 0.4), ...verts(Ac).filter((p) => Math.abs(Sv.query(...p, 1)) < 0.4)];
+const VALVES = {
+  'valve-mitrale': avModel({ leaflets: leafPts(/leaflet of mitral/), papillaries: leafPts(/papillary muscle of left ventricle/), mitral: true,
+    ring: junction(cav['ventricule-gauche'], cav['oreillette-gauche'], S.OGc, S.VG), axis: v3.sub(cen0(cav['ventricule-gauche']), cen0(cav['oreillette-gauche'])) }),
+  'valve-tricuspide': avModel({ leaflets: leafPts(/leaflet of tricuspid/), papillaries: leafPts(/papillary muscle of right ventricle/),
+    ring: junction(cav['ventricule-droit'], cav['oreillette-droite'], S.ODc, S.VD), axis: v3.sub(cen0(cav['ventricule-droit']), cen0(cav['oreillette-droite'])) }),
+  'valve-aortique': slModel({ cusps: leafPts(/cusp of aortic/), axis: v3.sub(cen0(named(/^Ascending aorta$/)), VC.aortic) }),
+  'valve-pulmonaire': slModel({ cusps: leafPts(/cusp of pulmonary/), axis: v3.sub(cen0(ves['tronc-pulmonaire']), VC.pulmo) }),
+};
+for (const [id, v] of Object.entries(VALVES)) log('valve', id, 'rayon', (v.radii ? v.radii.map((r) => r.toFixed(2)).join(' × ') : v.radius.toFixed(2)), v.leaflets ? `${v.leaflets.length} feuillets, ${v.papillaries.length} piliers` : `${v.cusps.length} cuspides`);
+const AVM = VALVES['valve-mitrale'], AVT = VALVES['valve-tricuspide'];
+// Orifice auriculo-ventriculaire : cylindre de rayon 0,85 × anneau, de 0,6 cm côté oreillette à 1,2 cm côté ventricule.
+// Les cavités BodyParts3D de l'oreillette et du ventricule ne se touchent pas toujours à l'anneau : sans lui, la coupe
+// montrerait une cloison de muscle entre oreillette et ventricule.
+const orifice = (v) => { const Rm = (v.radii[0] + v.radii[1]) / 2; return (x, y, z) => {
+  const q = v3.sub([x, y, z], v.center), al = v3.dot(q, v.axis), r = v3.len(v3.sub(q, v3.mul(v.axis, al)));
+  return Math.max(r - 0.85 * Rm, Math.abs(al - 0.3) - 0.9); }; };
+const ORI = [orifice(AVM), orifice(AVT)];
 // Base du cœur : pas de muscle ventriculaire au-dessus des valves (cylindres le long de la racine aortique, du tronc
 // pulmonaire et vers les oreillettes) ; seules les parois artérielles et auriculaires y restent.
 const BASE_CUTS = [
   [VC.aortic, v3.norm(v3.sub(cen0(named(/^Ascending aorta$/)), VC.aortic)), 0.15, 1.9],
   [VC.pulmo, v3.norm(v3.sub(cen0(ves['tronc-pulmonaire']), VC.pulmo)), 0.15, 1.9],
-  [VC.mitral, v3.norm(v3.sub(cen0(cav['oreillette-gauche']), VC.mitral)), 0.35, 2.6],
-  [VC.tricus, v3.norm(v3.sub(cen0(cav['oreillette-droite']), VC.tricus)), 0.35, 2.8],
+  // valves auriculo-ventriculaires : à partir de l'anneau réel (centre paramétrique), côté oreillette
+  [AVM.center, v3.mul(AVM.axis, -1), 0.1, 2.6],
+  [AVT.center, v3.mul(AVT.axis, -1), 0.1, 2.8],
 ];
 const baseCut = (x, y, z) => {
   let m = 1e9;
@@ -243,6 +265,8 @@ const core = (x, y, z) => {
   const fat = fatSDF(x, y, z);
   return { myo, od, og, fat, all: smin(smin(smin(myo, od, 0.5), og, 0.5), fat, 0.2) };
 };
+// Cavités réelles, réunies par les orifices auriculo-ventriculaires
+const cavField = (x, y, z) => Math.min(S.VG.query(x, y, z, 2), S.VD.query(x, y, z, 2), S.OGc.query(x, y, z, 2), S.ODc.query(x, y, z, 2), ...ORI.map((f) => f(x, y, z)));
 const field = (x, y, z) => {
   const c = core(x, y, z).all;
   let f = c;
@@ -251,7 +275,7 @@ const field = (x, y, z) => {
     for (const [id, k] of A.parts) { const d = PARTS[id](x, y, z); a = k ? smin(a, d, k) : Math.min(a, d); }
     f = Math.min(f, smin(a, c, A.k));
   }
-  return f;
+  return Math.min(f, cavField(x, y, z) - 0.12); // les cavités sont toujours contenues dans l'enveloppe (paroi ≥ 1,2 mm)
 };
 
 // Lissage de Taubin (λ/μ) : retire le grain des maillages réduits sans faire maigrir la forme
@@ -292,9 +316,12 @@ const proxy = extract(field, ENV_B, 0.3, 2);
 log('maillage de clic :', proxy.verts.length, 'sommets');
 
 /* ─────────── 6. cavités, lumières et graisse (solides de coupe) ─────────── */
-const cavField = (x, y, z) => Math.min(S.VG.query(x, y, z, 2), S.VD.query(x, y, z, 2), S.OGc.query(x, y, z, 2), S.ODc.query(x, y, z, 2));
 const cavities = extract(cavField, { min: [-6, -6.5, -6.5], max: [6.5, 5.5, 5] }, 0.1, 4);
 log('cavités :', cavities.verts.length, 'sommets');
+{ // contrôle : chaque point des cavités (1 mm vers l'intérieur) est dans l'enveloppe
+  let ok = 0; cavities.verts.forEach((p, i) => { const n = cavities.normals[i]; if (field(p[0] - n[0] * 0.1, p[1] - n[1] * 0.1, p[2] - n[2] * 0.1) < 0) ok++; });
+  log(`contrôle : ${(100 * ok / cavities.verts.length).toFixed(2)} % des cavités dans l'enveloppe`);
+}
 const lumen = (ids) => (x, y, z) => Math.min(...ids.map((id) => PARTS[id](x, y, z))) + 0.15; // paroi ≈ 1,5 mm
 const lumA = extract(lumen(['aorte', 'carotide-commune-gauche', 'subclaviere-gauche', 'tronc-brachio-cephalique', 'veines-pulmonaires']), ENV_B, 0.22, 2);
 const lumV = extract(lumen(['tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'veine-cave-superieure', 'veine-cave-inferieure']), ENV_B, 0.22, 2);
@@ -362,6 +389,9 @@ log('attributs et occlusion ambiante calculés');
 {
   const L = v3.dist(BASE, lvApexIn);
   const hgt = [];
+  // distance aux muscles papillaires : les trabécules ne doivent pas engloutir leur corps
+  const PAP = Object.values(raw.pilier).flatMap((m) => verts(m));
+  const dPap = (p) => { let d = 1e9; for (const q of PAP) { const dd = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2; if (dd < d) d = dd; } return Math.sqrt(d); };
   cavities.verts = cavities.verts.map((p, i) => {
     const id = ENV_IDS[cavities.sid[i]], n = cavities.normals[i];
     const ventr = id === 'ventricule-gauche' || id === 'ventricule-droit';
@@ -369,6 +399,7 @@ log('attributs et occlusion ambiante calculés');
     const t = v3.dot(v3.sub(p, BASE), AXIS) / L;
     let w = Math.min(1, Math.max(0, (t - 0.12) / 0.4));
     for (const [c, r] of [[aortic, 2.6], [pulmo, 2.8]]) { const d = v3.dist(p, c); if (d < r) w *= (d / r) ** 2; }
+    if (w > 0) { const t2 = Math.min(1, Math.max(0, (dPap(p) - 0.15) / 0.25)); w *= t2 * t2 * (3 - 2 * t2); }
     const q = [v3.dot(p, Vf), v3.dot(p, Uf), v3.dot(p, AXIS)];
     const r1 = 1 - Math.abs(2 * fbm(q[0] * 2.1, q[1] * 2.1, q[2] * 0.5) - 1);
     const r2 = 1 - Math.abs(2 * fbm(q[0] * 3.6 + 5, q[1] * 3.6 + 2, q[2] * 1.3) - 1);
@@ -387,18 +418,7 @@ log('attributs et occlusion ambiante calculés');
   log('endocarde : trabécules appliquées');
 }
 
-/* ─────────── 8 ter. repères des valves (modèle paramétrique de js/valves.js) ─────────── */
-const leafPts = (re) => pieces.filter((p) => re.test(p.name)).map((p) => ({ name: p.name, pts: mainComponent(loadMesh(DIR, p.file)) }));
-const junction = (Vc, Ac, Sa, Sv) => [...verts(Vc).filter((p) => Math.abs(Sa.query(...p, 1)) < 0.4), ...verts(Ac).filter((p) => Math.abs(Sv.query(...p, 1)) < 0.4)];
-const VALVES = {
-  'valve-mitrale': avModel({ leaflets: leafPts(/leaflet of mitral/), papillaries: leafPts(/papillary muscle of left ventricle/), mitral: true,
-    ring: junction(cav['ventricule-gauche'], cav['oreillette-gauche'], S.OGc, S.VG), axis: v3.sub(cen(cav['ventricule-gauche']), cen(cav['oreillette-gauche'])) }),
-  'valve-tricuspide': avModel({ leaflets: leafPts(/leaflet of tricuspid/), papillaries: leafPts(/papillary muscle of right ventricle/),
-    ring: junction(cav['ventricule-droit'], cav['oreillette-droite'], S.ODc, S.VD), axis: v3.sub(cen(cav['ventricule-droit']), cen(cav['oreillette-droite'])) }),
-  'valve-aortique': slModel({ cusps: leafPts(/cusp of aortic/), axis: v3.sub(cen(named(/^Ascending aorta$/)), aortic) }),
-  'valve-pulmonaire': slModel({ cusps: leafPts(/cusp of pulmonary/), axis: v3.sub(cen(ves['tronc-pulmonaire']), pulmo) }),
-};
-for (const [id, v] of Object.entries(VALVES)) log('valve', id, 'rayon', (v.radii ? v.radii.map((r) => r.toFixed(2)).join(' × ') : v.radius.toFixed(2)), v.leaflets ? `${v.leaflets.length} feuillets, ${v.papillaries.length} piliers` : `${v.cusps.length} cuspides`);
+/* ─────────── 8 ter. repères des valves : calculés en section 1 (VALVES) ─────────── */
 
 /* ─────────── 9. conduction, trajets du sang, ancres ─────────── */
 // Septum interventriculaire : surface médiane entre les deux cavités (|dVG − dVD| ≈ 0), à plusieurs niveaux de l'axe

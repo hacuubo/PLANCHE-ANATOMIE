@@ -86,6 +86,7 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     if (!o.isMesh) return;
     if (!o.userData.envelope && (!o.userData.id || o.userData.proxy || o.userData.cap || o.userData.leaf || o.material.side === THREE.BackSide)) return;
     o.castShadow = true; o.receiveShadow = true;
+    if (heart.cutOnly.includes(o)) return; // structures intérieures (piliers, conduction) : pas de fantôme
     toWrap.push(o);
   });
   heart.materials.forEach((m) => { m.clipShadows = true; });
@@ -102,10 +103,13 @@ function syncGhost() { ghostPlane.normal.copy(cutPlane.normal).negate(); ghostPl
 
 /* ─────────── coupe (plan de clipping + capuchons stencil) ─────────── */
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
-// Les structures intérieures (valves, cordages, piliers) sont coupées 1,6 cm plus loin : on les voit entières devant
-// la tranche, comme sur les planches et en animation médicale, au lieu d'une section plate.
+// Dans la coupe quatre cavités, valves et cordages sont coupés 0,6 cm plus loin : on les voit entiers devant la tranche,
+// comme sur les planches et en animation médicale, au lieu d'une section plate. Les piliers sont coupés avec le muscle.
 const interiorPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 2.0);
-function syncInterior() { interiorPlane.normal.copy(cutPlane.normal); interiorPlane.constant = cutPlane.constant + 1.6; }
+function syncInterior() { interiorPlane.normal.copy(cutPlane.normal); interiorPlane.constant = cutPlane.constant + interiorOff; }
+let interiorOff = 0.6; // 0,6 cm en coupe quatre cavités, 0 dans les autres coupes (réglé par setCutMode)
+// partie retirée par la coupe (en tenant compte du plan décalé des structures intérieures)
+const isCutAway = (h) => state.coupe && (h.object.material?.userData?.interior ? interiorPlane : cutPlane).distanceToPoint(h.point) < 0;
 const CUT_MODES = {
   frontale: { normal: new THREE.Vector3(0, 0, -1), min: -6, max: 6, def: 0.2 },
   horizontale: { normal: new THREE.Vector3(0, -1, 0), min: -5, max: 9, def: 0.0 },
@@ -204,6 +208,7 @@ function applyClipping() {
 
 function setCutMode(mode, value) {
   state.modeCoupe = mode;
+  interiorOff = mode === 'grand-axe' ? 0.6 : 0;
   const cfg = CUT_MODES[mode];
   const n = cfg.normal ? cfg.normal.clone() : localAnterior().negate();
   cutPlane.normal.copy(n);
@@ -211,6 +216,7 @@ function setCutMode(mode, value) {
   slider.min = cfg.min; slider.max = cfg.max; slider.step = 0.1;
   slider.value = value ?? cfg.def;
   cutPlane.constant = parseFloat(slider.value) - cutPlaneOffset();
+  renderer.shadowMap.needsUpdate = true;
   syncGhost();
   updateCapPlanes();
 }
@@ -361,6 +367,7 @@ function layoutPlanche() {
 // La surbrillance (éclaircissement + liseré lumineux) est calculée dans le shader des tissus (voir heart.js).
 function highlight(id) { heart.setHighlight(id); }
 function select(id) {
+  if (id && !STRUCTURES[id]) id = null; // pièce sans fiche
   state.selected = id;
   highlight(id);
   renderFiche(id);
@@ -387,7 +394,7 @@ function pick(ev) {
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects(pickables.filter((o) => o.visible && o.parent?.visible !== false), false);
   for (const h of hits) {
-    if (state.coupe && cutPlane.distanceToPoint(h.point) < 0) continue; // partie retirée par la coupe
+    if (isCutAway(h)) continue; // partie retirée par la coupe
     if (h.object.material.transparent && h.object.material.opacity < 0.5 && !state.circulation) continue;
     return { id: heart.pickId(h.object, h.point, h.face), point: h.point };
   }
@@ -501,7 +508,7 @@ function buildPanel() {
     else if (b.dataset.cut === 'grand-axe') goDir(heart.cut4.normal);
     else goView('anterieure');
   }));
-  document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); syncGhost(); updateCapPlanes(); });
+  document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); renderer.shadowMap.needsUpdate = true; syncGhost(); updateCapPlanes(); });
   document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   renderFiche(null);
@@ -555,7 +562,7 @@ function occludeLabels() {
     occRay.set(camera.position, occDir.normalize());
     occRay.far = dist - 0.45;
     const hits = occRay.intersectObjects(visibles, false);
-    L.occluded = hits.some((h) => heart.pickId(h.object, h.point, h.face) !== id && !(state.coupe && cutPlane.distanceToPoint(h.point) < 0));
+    L.occluded = hits.some((h) => heart.pickId(h.object, h.point, h.face) !== id && !isCutAway(h));
     L.el.style.visibility = L.occluded ? 'hidden' : '';
   }
 }
@@ -588,7 +595,7 @@ function animate() {
     if (camAnim.t >= 1) camAnim = null;
   }
   // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
-  if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
+  if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM), { valves: state.coupe }); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
   else if (!beatIdle) { heart.setBeat(null); beatIdle = true; renderer.shadowMap.needsUpdate = true; }
   if (state.circulation) updateFlow(t);
   controls.update();

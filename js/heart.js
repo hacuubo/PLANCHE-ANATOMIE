@@ -20,7 +20,7 @@ export const COL = {
   oreilletteCoupe: 0xe3a09a,
   endocarde: 0xc7646b,       // paroi interne des cavités (trabéculée), rose soutenu
   endoOreillette: 0xc8737a,
-  papillaire: 0xc35e67,
+  papillaire: 0xd06f76,
   valve: 0xeed7a6,           // feuillets et cuspides : crème jaune translucide (animation médicale)
   cordage: 0xf8f2e6,         // cordages tendineux : blanc nacré
   conduction: 0xf3c23b,
@@ -98,15 +98,18 @@ vec3 heartDeform(vec3 p) {
   vec3 q = p - uDB; float al = dot(q, uDA); float s = al / uDL; vec3 r = q - uDA * al;
   float sc = clamp(s, 0.0, 1.0);
   float wV = smoothstep(-0.12, 0.12, s) * (1.0 - smoothstep(1.05, 1.3, s));
-  float desc = 0.13 * uDL * uDC * (1.0 - sc) * (s < 0.0 ? clamp(1.0 + s / 0.55, 0.0, 1.0) : 1.0);
-  float rad = 1.0 - uDK * uDC * wV * (0.65 + 0.35 * sin(3.14159 * sc));
+  float desc = 0.15 * uDL * uDC * (1.0 - sc) * (s < 0.0 ? clamp(1.0 + s / 0.9, 0.0, 1.0) : 1.0);
+  // déplacement radial plafonné à 2,8 cm de l'axe : la paroi libre du VD, loin de l'axe du VG, ne s'effondre pas
+  float rad = 1.0 - uDK * uDC * wV * (0.65 + 0.35 * sin(3.14159 * sc)) * min(1.0, 2.8 / max(length(r), 1e-3));
   float ang = uDC * wV * radians(-4.0 + 11.0 * sc);
   vec3 rr = (r * cos(ang) + cross(uDA, r) * sin(ang)) * rad;
   vec3 o = uDB + uDA * (al + desc) + rr;
   float dRA = length(p - uDRA), dLA = length(p - uDLA);
-  vec3 cA = dRA < dLA ? uDRA : uDLA;
+  // centres des deux oreillettes mélangés en continu (pas de pli dans le septum interauriculaire)
+  float wR = smoothstep(-0.8, 0.8, dLA - dRA);
+  vec3 dd = wR * (o - uDRA) + (1.0 - wR) * (o - uDLA);
   float wAt = (1.0 - smoothstep(-0.05, 0.1, s)) * (1.0 - smoothstep(2.6, 4.2, min(dRA, dLA)));
-  return mix(o, cA + (o - cA) * (1.0 - 0.08 * uDAt), wAt);
+  return o - dd * (0.08 * uDAt * wAt);
 }
 `;
 const DEFORM_VERTEX = 'if (uDOn > 0.5) { vec4 wpD = modelMatrix * vec4(transformed, 1.0); transformed += heartDeform(wpD.xyz) - wpD.xyz; }';
@@ -122,6 +125,12 @@ export function addDeformTo(mat, shared, k) {
   const key = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : () => '';
   mat.customProgramCacheKey = () => key() + '|deform';
   return mat;
+}
+
+// Matériau de profondeur des ombres, déformé. three clone le matériau pour les ombres coupées (clipShadows) :
+// la copie doit garder la déformation.
+class DeformDepthMaterial extends THREE.MeshDepthMaterial {
+  copy(src) { super.copy(src); this.onBeforeCompile = src.onBeforeCompile; this.customProgramCacheKey = src.customProgramCacheKey; return this; }
 }
 
 function patchShader(sh) {
@@ -388,8 +397,13 @@ export async function buildHeart() {
   const deformU = { uDB: { value: v3(F.base) }, uDA: { value: v3(F.axis).normalize() }, uDL: { value: v3(F.apex).distanceTo(v3(F.base)) },
     uDC: { value: 0 }, uDAt: { value: 0 }, uDRA: { value: new THREE.Vector3() }, uDLA: { value: new THREE.Vector3() } };
   const focusUniform = { value: 0 };
+  const depthCache = new Map();
+  const deformedDepth = (k) => {
+    if (!depthCache.has(k)) depthCache.set(k, addDeformTo(new DeformDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), deformU, k));
+    return depthCache.get(k);
+  };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, bump = 0.22, sss = 0.32, rim = 0.12, flowOpacity, deformK = 0.07, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, bump = 0.22, sss = 0.32, rim = 0.12, flowOpacity, deformK = 0.05, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -414,7 +428,8 @@ export async function buildHeart() {
     // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
     valve: () => interior(tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.4, rim: 0.12, roughness: 0.34, clearcoat: 0.55, clearcoatRoughness: 0.2, bump: 0.05, sheen: 0 })),
     cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.5, rim: 0.25, roughness: 0.3, clearcoat: 0.5, bump: 0.02 })),
-    papillaire: () => interior(tissue(COL.papillaire, { deformK: 0.15, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.2, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })),
+    // piliers : plus clairs que l'endocarde trabéculé, pour se détacher de la paroi ; coupés comme le reste du muscle
+    papillaire: () => tissue(COL.papillaire, { deformK: 0.24, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
     coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.1, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
     coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.35, bump: 0.08, sss: 0.3, flowOpacity: 0.14 }),
@@ -433,7 +448,7 @@ export async function buildHeart() {
   envelope.userData.envelope = true;
   envelope.castShadow = true; envelope.receiveShadow = true;
   root.add(envelope);
-  solids.push({ mesh: envelope, hole: false, cap: 'myo', k: 0.07 });
+  solids.push({ mesh: envelope, hole: false, cap: 'myo', k: 0.05 });
   // maillage simplifié invisible : clic et masquage des étiquettes
   const proxySid = geos.proxy.sid;
   const proxy = new THREE.Mesh(geos.proxy.geometry, new THREE.MeshBasicMaterial({ visible: false }));
@@ -450,7 +465,7 @@ export async function buildHeart() {
     const m = new THREE.Mesh(geos[name].geometry, hidden);
     m.renderOrder = -2;
     root.add(m);
-    solids.push({ mesh: m, hole: false, cap, k: cap === 'fat' ? 0.07 : 0.03 });
+    solids.push({ mesh: m, hole: false, cap, k: cap === 'fat' ? 0.05 : 0.03 });
   }
 
   /* ── Cavités (paroi interne, visibles en coupe ; « trou » unique pour les surfaces de coupe) ── */
@@ -467,12 +482,13 @@ export async function buildHeart() {
     }
     if (!fromFile) { g.setAttribute('col', new THREE.BufferAttribute(col, 4, true)); g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true)); }
     // endocarde : film humide brillant sur le relief des trabécules
-    const cavMat = tissue(0xffffff, { envelope: true, deformK: 0.18, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
+    const cavMat = tissue(0xffffff, { envelope: true, deformK: 0.26, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
     const cav = new THREE.Mesh(g, cavMat);
     cav.userData.id = 'cavites';
+    cav.userData.sid = sid; // clic : cavité touchée (oreillette ou ventricule)
     cav.userData.leaf = true;
     root.add(cav);
-    solids.push({ mesh: cav, hole: true, cap: 'myo', k: 0.18 });
+    solids.push({ mesh: cav, hole: true, cap: 'myo', k: 0.26 });
     cutOnly.push(cav);
   }
 
@@ -494,6 +510,7 @@ export async function buildHeart() {
       mesh.castShadow = true;
       register(meta.id, mesh);
       cutOnly.push(mesh);
+      solids.push({ mesh, hole: false, cap: 'myo', k: 0.24 });
     }
   }
 
@@ -518,33 +535,39 @@ export async function buildHeart() {
     tr.copy(tq).addScaledVector(A, -al);
     const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     const wV = sm(-0.12, 0.12, s) * (1 - sm(1.05, 1.3, s));
-    const desc = 0.13 * L * C * (1 - sc) * (s < 0 ? Math.min(1, Math.max(0, 1 + s / 0.55)) : 1);
-    const rad = 1 - k * C * wV * (0.65 + 0.35 * Math.sin(Math.PI * sc));
+    const desc = 0.15 * L * C * (1 - sc) * (s < 0 ? Math.min(1, Math.max(0, 1 + s / 0.9)) : 1);
+    const rad = 1 - k * C * wV * (0.65 + 0.35 * Math.sin(Math.PI * sc)) * Math.min(1, 2.8 / Math.max(tr.length(), 1e-3));
     const ang = C * wV * THREE.MathUtils.degToRad(-4 + 11 * sc);
     tc.crossVectors(A, tr);
     const ox = B.x + A.x * (al + desc) + (tr.x * Math.cos(ang) + tc.x * Math.sin(ang)) * rad;
     const oy = B.y + A.y * (al + desc) + (tr.y * Math.cos(ang) + tc.y * Math.sin(ang)) * rad;
     const oz = B.z + A.z * (al + desc) + (tr.z * Math.cos(ang) + tc.z * Math.sin(ang)) * rad;
-    const dRA = p.distanceTo(deformU.uDRA.value), dLA = p.distanceTo(deformU.uDLA.value), cA = dRA < dLA ? deformU.uDRA.value : deformU.uDLA.value;
-    const wAt = (1 - sm(-0.05, 0.1, s)) * (1 - sm(2.6, 4.2, Math.min(dRA, dLA))), f = 1 - 0.08 * At;
-    p.set(ox + ((cA.x + (ox - cA.x) * f) - ox) * wAt, oy + ((cA.y + (oy - cA.y) * f) - oy) * wAt, oz + ((cA.z + (oz - cA.z) * f) - oz) * wAt);
+    const RA = deformU.uDRA.value, LA = deformU.uDLA.value;
+    const dRA = p.distanceTo(RA), dLA = p.distanceTo(LA), wR = sm(-0.8, 0.8, dLA - dRA);
+    const wAt = (1 - sm(-0.05, 0.1, s)) * (1 - sm(2.6, 4.2, Math.min(dRA, dLA))), f = 0.08 * At * wAt;
+    p.set(ox - (wR * (ox - RA.x) + (1 - wR) * (ox - LA.x)) * f, oy - (wR * (oy - RA.y) + (1 - wR) * (oy - LA.y)) * f, oz - (wR * (oz - RA.z) + (1 - wR) * (oz - LA.z)) * f);
     return p;
   };
   // Cycle cardiaque (phase 0 → 1 = un battement) : systole auriculaire, contraction isovolumique (fermeture
   // mitrale et tricuspide), éjection (ouverture aortique et pulmonaire), relaxation isovolumique (fermeture des
   // sigmoïdes), remplissage rapide (réouverture mitrale et tricuspide), diastasis. phase = null : planche au repos.
   const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  // À 64/min (940 ms) : systole auriculaire 0–110 ms, contraction isovolumique ≈ 45 ms, éjection ≈ 295 ms,
+  // relaxation isovolumique ≈ 70 ms, remplissage rapide puis diastasis. Le ventricule se vide pendant l'éjection et se
+  // remplit pendant le remplissage (pas avant l'ouverture des valves mitrale et tricuspide).
   const cycle = (ph) => {
-    const atr = ph < 0.13 ? Math.sin(Math.PI * ph / 0.13) ** 2 : 0;
-    const ven = sm(0.13, 0.3, ph) * (1 - sm(0.37, 0.53, ph));
-    const av = Math.min(1, Math.max(0, 1 - sm(0.12, 0.16, ph) + sm(0.48, 0.55, ph))) * (0.82 + 0.18 * Math.max(atr, sm(0.55, 0.62, ph) * (1 - sm(0.66, 0.8, ph))));
-    const sl = sm(0.17, 0.21, ph) * (1 - sm(0.39, 0.44, ph));
+    const atr = ph < 0.12 ? Math.sin(Math.PI * ph / 0.12) ** 2 : 0;
+    const contr = 0.2 * sm(0.13, 0.2, ph) + 0.8 * sm(0.2, 0.5, ph);
+    const relax = 0.15 * sm(0.52, 0.6, ph) + 0.85 * sm(0.6, 0.74, ph);
+    const ven = contr * (1 - relax);
+    const av = Math.min(1, Math.max(0, 1 - sm(0.11, 0.15, ph) + sm(0.58, 0.63, ph))) * (0.82 + 0.18 * Math.max(atr, sm(0.6, 0.66, ph) * (1 - sm(0.72, 0.84, ph))));
+    const sl = sm(0.19, 0.22, ph) * (1 - sm(0.5, 0.53, ph));
     return { atr, ven, av, sl };
   };
-  const setBeat = (phase) => {
+  const setBeat = (phase, { valves: withValves = true } = {}) => {
     const c = phase === null ? { atr: 0, ven: 0, av: 0.9, sl: 0 } : cycle(phase);
     deformU.uDC.value = c.ven; deformU.uDAt.value = c.atr;
-    for (const [id, v] of Object.entries(valves)) v.update(header.valves[id].type === 'av' ? c.av : c.sl, deformPoint);
+    if (withValves) for (const [id, v] of Object.entries(valves)) v.update(header.valves[id].type === 'av' ? c.av : c.sl, deformPoint);
     return c;
   };
   setBeat(null);
@@ -568,7 +591,7 @@ export async function buildHeart() {
   const flowPaths = header.flowPaths.map((f) => ({ color: f.color, speed: f.speed, points: f.points.map(v3) }));
 
   // Résolution du clic : structure portée par l'enveloppe (attribut du maillage simplifié) ou par la pièce touchée.
-  const pickId = (mesh, worldPoint, face) => (mesh.userData.proxy ? ids[proxySid[face.a]] : mesh.userData.id);
+  const pickId = (mesh, worldPoint, face) => (mesh.userData.proxy ? ids[proxySid[face.a]] : mesh.userData.sid ? ids[mesh.userData.sid[face.a]] : mesh.userData.id);
   // Surbrillance : par indice de structure pour l'enveloppe et les cavités, par matériau pour les autres pièces.
   const setHighlight = (id) => {
     selUniform.value = id ? ids.indexOf(id) : -1;
@@ -577,6 +600,12 @@ export async function buildHeart() {
     (id && registry[id] ? registry[id].meshes : []).forEach((mesh) => { const u = mesh.material?.userData?.uniforms; if (u) { u.uHi.value = 1; any = true; } });
     focusUniform.value = any ? 1 : 0; // pas de mise en retrait si rien n'est éclairé (septum, par exemple)
   };
+
+  // Ombres : la carte d'ombre suit le battement (matériau de profondeur déformé, même raideur que le tissu)
+  root.traverse((o) => {
+    const u = o.isMesh && o.material?.userData?.uniforms;
+    if (u && u.uDOn.value > 0.5) o.customDepthMaterial = deformedDepth(u.uDK.value);
+  });
 
   cutOnly.forEach((m) => { m.visible = false; });
 

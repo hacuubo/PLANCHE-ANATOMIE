@@ -4,7 +4,7 @@
 //
 // Valves auriculo-ventriculaires (mitrale, tricuspide) : feuillets minces suspendus à l'anneau, bord libre festonné ;
 // ouvertes, ils pendent dans le ventricule le long de la paroi ; fermées, ils bombent vers l'oreillette et s'accolent
-// sur la ligne de coaptation (droite pour la mitrale, en Y pour la tricuspide). Cordages tendineux en éventail : un
+// sur la ligne de coaptation (en « sourire » pour la mitrale, en Y pour la tricuspide). Cordages tendineux en éventail : un
 // tronc depuis la tête de chaque pilier, puis des branches vers le bord libre et la face ventriculaire des feuillets.
 // Valves sigmoïdes (aortique, pulmonaire) : trois cuspides en poche ; fermées, leurs bords libres se rejoignent en Y
 // au centre ; ouvertes, elles se plaquent contre la paroi de la racine.
@@ -14,7 +14,7 @@ const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
-const CREME = [0.925, 0.82, 0.6], BORD = [0.9, 0.77, 0.52], ENDO = [0.85, 0.58, 0.56];
+const CREME = [0.94, 0.86, 0.7], BORD = [0.92, 0.82, 0.62], ENDO = [0.85, 0.58, 0.56];
 // feuillet AV : base rosée (continuité avec l'endocarde auriculaire), corps crème, bord libre épaissi plus jaune
 const shadeLeaflet = (u, v) => {
   let c = mix(ENDO, CREME, Math.min(1, v / 0.22));
@@ -107,13 +107,21 @@ function avValve(id, d, leafletMat, cordMat) {
   const dir = (th, out) => out.copy(E1).multiplyScalar(Math.cos(th)).addScaledVector(E2, Math.sin(th)).normalize();
   // anneau en selle (plus haut en avant et en arrière pour la mitrale)
   const annulus = (th, out) => out.copy(C).addScaledVector(E1, ra * Math.cos(th)).addScaledVector(E2, rb * Math.sin(th)).addScaledVector(A, -d.saddle * Math.cos(2 * (th - tAnt)));
-  // ligne de coaptation : mitrale = segment décalé vers l'arrière (le feuillet antérieur couvre l'essentiel de l'orifice)
+  // ligne de coaptation. Mitrale : courbe en « sourire » reportée vers l'arrière (le feuillet antérieur couvre
+  // l'essentiel de l'orifice), les deux zones d'accolement légèrement décalées l'une de l'autre. Tricuspide : trois
+  // rayons (Y), chaque feuillet rejoignant ses voisins le long des rayons de ses commissures.
   const dirAnt = dir(tAnt, new THREE.Vector3()), lineDir = new THREE.Vector3().crossVectors(A, dirAnt).normalize();
-  const Rm = (ra + rb) / 2, Cc = C.clone().addScaledVector(dirAnt, -0.18 * Rm);
-  const tmpA = new THREE.Vector3(), tmpQ = new THREE.Vector3(), tmpD = new THREE.Vector3();
-  const coapt = (th, out) => {
-    if (mitral) { annulus(th, tmpA); const s = THREE.MathUtils.clamp(tmpA.sub(Cc).dot(lineDir), -0.85 * Rm, 0.85 * Rm); return out.copy(Cc).addScaledVector(lineDir, s); }
-    return out.copy(C).addScaledVector(dir(th, tmpD), 0.1 * Rm);
+  const Rm = (ra + rb) / 2, Cc = C.clone().addScaledVector(dirAnt, -0.05 * Rm);
+  const tmpA = new THREE.Vector3(), tmpQ = new THREE.Vector3(), tmpD = new THREE.Vector3(), tmpR = new THREE.Vector3(), tmpM = new THREE.Vector3();
+  const coapt = (L, th, u, out) => {
+    if (mitral) {
+      annulus(th, tmpR); const s = THREE.MathUtils.clamp(tmpR.sub(Cc).dot(lineDir), -0.85 * Rm, 0.85 * Rm);
+      const smile = 0.2 * Rm * (1 - (s / (0.85 * Rm)) ** 2);
+      return out.copy(Cc).addScaledVector(lineDir, s).addScaledVector(dirAnt, -smile + (L === ant ? 0.03 : -0.03));
+    }
+    const k = u < 0.5 ? 1 - 2 * u : 2 * u - 1;
+    out.copy(C).addScaledVector(dir(u < 0.5 ? L.t0 : L.t1, tmpD), 0.8 * Rm * k);
+    return out.addScaledVector(dir((L.t0 + L.t1) / 2, tmpM), 0.03); // côté de son propre feuillet
   };
   const leaflets = d.leaflets.map((L) => {
     const span = L.t1 - L.t0, nu = Math.max(16, Math.round(span / 0.12)), pad = 0.06;
@@ -127,7 +135,7 @@ function avValve(id, d, leafletMat, cordMat) {
     const point = (u, v, open, out) => {
       const th = L.t0 - pad + (span + 2 * pad) * u, h = prof(u);
       annulus(th, tmpA);
-      const R = tmpA.clone().sub(C).projectOnPlane(A).length();
+      const R = tmpR.copy(tmpA).sub(C).projectOnPlane(A).length();
       dir(th, tmpD);
       // ouvert : le feuillet pend dans le ventricule, légèrement rentré vers le centre
       const ox = tmpA.x + A.x * v * h * 0.95 - tmpD.x * R * (0.1 * v + 0.12 * v * v);
@@ -135,7 +143,7 @@ function avValve(id, d, leafletMat, cordMat) {
       const oz = tmpA.z + A.z * v * h * 0.95 - tmpD.z * R * (0.1 * v + 0.12 * v * v);
       // fermé : le corps du feuillet rejoint la ligne de coaptation en bombant vers l'oreillette, puis la zone
       // d'accolement (bord libre) pend dans le ventricule
-      coapt(th, tmpQ);
+      coapt(L, th, u, tmpQ);
       const vc = 0.7, w = smooth(0, vc, v), belly = 0.2 * L.height * Math.sin(Math.PI * Math.min(1, v / vc)) * Math.pow(Math.sin(Math.PI * u), 0.5);
       const lip = Math.max(0, (v - vc) / (1 - vc)) * 0.35 * h;
       const cx = tmpA.x + (tmpQ.x - tmpA.x) * w - A.x * belly + A.x * (0.08 * w + lip);
@@ -153,10 +161,12 @@ function avValve(id, d, leafletMat, cordMat) {
     const ins = [];
     for (let k = 0; k < nA; k++) ins.push([(k + 0.5) / nA, 1]);
     for (let k = 0; k < Math.max(2, nA >> 2); k++) ins.push([(k + 0.5) / Math.max(2, nA >> 2), 0.62]); // cordages de 2e ordre
+    // chaque feuillet est tenu par les deux piliers qui encadrent ses commissures : la moitié proche de t0 par le
+    // pilier le plus proche de la commissure t0, l'autre moitié par celui de la commissure t1
+    const near = (t, not) => heads.filter((h) => h !== not).reduce((b, h) => (Math.abs(wrap(t - h.angle)) < Math.abs(wrap(t - b.angle)) ? h : b), heads.find((h) => h !== not) ?? heads[0]);
+    const p0 = near(lf.L.t0), p1 = heads.length > 1 ? near(lf.L.t1, p0) : p0;
     for (const [u, v] of ins) {
-      const th = lf.L.t0 + lf.span * u;
-      let best = heads[0], bd = 1e9;
-      for (const h of heads) { const dd = Math.abs(wrap(th - h.angle)); if (dd < bd) { bd = dd; best = h; } }
+      const best = u < 0.5 ? p0 : p1;
       const key = `${lf.L.name}|${best.name}`;
       if (!groups.has(key)) groups.set(key, { lf, head: best, ins: [] });
       groups.get(key).ins.push([u, v]);
@@ -164,25 +174,52 @@ function avValve(id, d, leafletMat, cordMat) {
   }
   const G = [...groups.values()];
   const nSeg = G.reduce((s, g) => s + g.ins.length + 1, 0);
-  const cords = new Cords(nSeg, cordMat);
-  const pts = new Map();
+  // chaque cordage est dessiné en 3 tronçons : droit quand il est tendu, courbé quand il est détendu
+  const cords = new Cords(nSeg * 3, cordMat);
+  cords.mesh.castShadow = true;
   // xf(point, raideur) : déformation du cycle cardiaque (heart.js) ; feuillets portés par l'anneau, têtes des piliers
-  // entraînées par la paroi ventriculaire
-  const update = (open, xf = null) => {
-    for (const lf of leaflets) lf.sheet.update((u, v, out) => { lf.point(u, v, open, out); if (xf) xf(out, 0.1); });
+  // entraînées par la paroi ventriculaire (même raideur que les piliers)
+  const rawSegs = (open, xf) => {
     const segs = [];
     for (const g of G) {
-      const H = g.head.H.clone(); if (xf) xf(H, 0.15);
+      const H = g.head.H.clone(); if (xf) xf(H, 0.24);
       const ins = g.ins.map(([u, v]) => { const q = g.lf.point(u, v, open, new THREE.Vector3()); if (xf) xf(q, 0.1); return q; });
       const m = ins.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / ins.length);
       const B = H.clone().lerp(m, 0.42);
       segs.push([H, B, 0.05, 0.035]);
       for (const p of ins) segs.push([B, p, 0.026, 0.018]);
     }
+    return segs;
+  };
+  // longueur de repos : valve fermée (cordages tendus). Un cordage est inextensible : plus court que sa longueur de
+  // repos, il fléchit (arc vers l'oreillette et vers l'axe de la valve).
+  const rest = rawSegs(0, null).map(([a, b]) => a.distanceTo(b));
+  const ctl = new THREE.Vector3(), mid = new THREE.Vector3(), sd = new THREE.Vector3();
+  const bez = (a, c, b, t, out) => out.copy(a).multiplyScalar((1 - t) * (1 - t)).addScaledVector(c, 2 * t * (1 - t)).addScaledVector(b, t * t);
+  const update = (open, xf = null) => {
+    for (const lf of leaflets) lf.sheet.update((u, v, out) => { lf.point(u, v, open, out); if (xf) xf(out, 0.1); });
+    const segs = [];
+    rawSegs(open, xf).forEach(([a, b, ra, rb], i) => {
+      const dd = a.distanceTo(b), L0 = rest[i];
+      mid.addVectors(a, b).multiplyScalar(0.5);
+      let h = 0;
+      // flèche modérée : le cordage détendu s'incurve doucement, sans former de boucle
+      if (dd < L0 && dd > 1e-4) h = Math.min(0.12 * L0, 0.5 * Math.sqrt((3 * dd * (L0 - dd)) / 8));
+      sd.subVectors(b, a).normalize();
+      ctl.subVectors(C, mid).projectOnPlane(A).normalize().addScaledVector(A, -0.6);
+      ctl.addScaledVector(sd, -ctl.dot(sd)).normalize();
+      ctl.multiplyScalar(2 * h).add(mid); // point de contrôle : flèche h au milieu
+      let prev = a.clone();
+      for (let k = 1; k <= 3; k++) {
+        const p = k === 3 ? b.clone() : bez(a, ctl, b, k / 3, new THREE.Vector3());
+        segs.push([prev, p, ra + (rb - ra) * (k - 1) / 3, ra + (rb - ra) * k / 3]);
+        prev = p;
+      }
+    });
     cords.update(segs);
   };
   update(1);
-  return { meshes: [...leaflets.map((l) => l.sheet.mesh), cords.mesh], update, pts };
+  return { meshes: [...leaflets.map((l) => l.sheet.mesh), cords.mesh], update };
 }
 
 /* ─────────── valve sigmoïde ─────────── */

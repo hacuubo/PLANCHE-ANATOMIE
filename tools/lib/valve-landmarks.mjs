@@ -82,8 +82,10 @@ export function avModel({ leaflets, papillaries, ring, axis, mitral = false }) {
   }
   const scale = Rm / 1.35;
   const outLeaflets = top.map((t, i) => ({ name: t.name, t0: sectors[i][0], t1: sectors[i][1], height: (AV_HEIGHT[t.name]?.[0] ?? 1.5) * scale, scallops: AV_HEIGHT[t.name]?.[1] ?? 1 }));
+  // tête du pilier : sa pointe, côté oreillette (moyenne des 4 % de points les plus hauts le long de l'axe)
   const heads = papillaries.map((p) => {
-    const head = p.pts.reduce((b, q) => (len(sub(q, center)) < len(sub(b, center)) ? q : b));
+    const s = [...p.pts].sort((a, b) => dot(sub(a, center), axis) - dot(sub(b, center), axis));
+    const head = mean(s.slice(0, Math.max(3, Math.round(s.length * 0.04))));
     return { name: p.name, head, angle: angleOf(head, center, e1, e2) };
   });
   return { type: 'av', center, axis, e1, e2, radii, saddle: mitral ? 0.18 * scale : 0.08 * scale, leaflets: outLeaflets, papillaries: heads };

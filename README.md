@@ -18,12 +18,16 @@ des étiquettes numérotées avec lignes de rappel, et une fiche explicative par
 - **Coupe** (grand axe, frontale, horizontale, profondeur réglable) : cavités, septum, valves et
   cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
-  tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires, cuspides aortiques et
-  pulmonaires en poche fermées en Y — avec un degré d'ouverture animable.
+  tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
+  les deux piliers qui encadrent ses commissures), coaptation mitrale en « sourire » et tricuspide en Y, cuspides
+  aortiques et pulmonaires en poche fermées en Y — avec un degré d'ouverture animable. Les cordages sont
+  inextensibles : tendus valve fermée, ils s'incurvent quand la valve s'ouvre.
 - **Battement** : cycle cardiaque physiologique (≈ 64/min) — systole auriculaire, contraction isovolumique
   (fermeture mitrale et tricuspide), éjection (ouverture aortique et pulmonaire), relaxation, remplissage.
-  Raccourcissement base → pointe, épaississement des parois, réduction des cavités et torsion, calculés dans le
-  shader de sommets (tous les tissus et les surfaces de coupe suivent le même mouvement).
+  Raccourcissement base → pointe, épaississement des parois, réduction des cavités (fraction d'éjection apparente
+  ≈ 50 %) et torsion, calculés dans le shader de sommets : tous les tissus, les surfaces de coupe et les ombres
+  suivent le même mouvement. Le ventricule se vide pendant l'éjection et se remplit après l'ouverture des valves
+  mitrale et tricuspide.
 - **Circulation** : parois translucides et particules suivant le trajet du sang à travers les
   cavités et les valves (bleu = pauvre en oxygène, rouge = riche en oxygène).
 - **Étiquettes** : planche numérotée en deux colonnes avec lignes de rappel ; les étiquettes

@@ -70,7 +70,7 @@ export const STRUCTURES = {
     details: [
       "Forms the apex and the left border of the heart, as well as most of its inferior surface.",
       "Receives blood from the left atrium through the mitral valve and ejects it through the aortic valve.",
-      "Two papillary muscles (anterior and posterior) hold the mitral valve by means of chordae tendineae.",
+      "Two papillary muscles (anterolateral and posteromedial) hold the mitral valve by means of chordae tendineae.",
       "With each beat it ejects about 70 mL, slightly more than half of its contents: this is the “ejection fraction”, normally ≥ 55%.",
     ],
     chiffres: ['Systolic pressure: ≈ 120 mmHg', 'Wall thickness: 8–12 mm', 'End-diastolic volume: ≈ 120 mL'],
@@ -94,7 +94,7 @@ export const STRUCTURES = {
 
   /* ───────────── Valves ───────────── */
   'valve-tricuspide': {
-    nom: 'Tricuspid valve', latin: 'Valva atrioventricularis dextra', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Tricuspid valve', latin: 'Valva atrioventricularis dextra', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "A three-leaflet gate between the right atrium and the right ventricle. It opens to let blood pass into the ventricle and closes to prevent it from flowing back.",
     details: [
       "Three leaflets: anterior, septal and posterior, held by chordae tendineae attached to the papillary muscles.",
@@ -102,7 +102,7 @@ export const STRUCTURES = {
     ],
   },
   'valve-pulmonaire': {
-    nom: 'Pulmonary valve', latin: 'Valva trunci pulmonalis', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Pulmonary valve', latin: 'Valva trunci pulmonalis', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "The outlet valve of the right ventricle, at the entrance to the pulmonary trunk. Three small half-moon-shaped pockets fill with blood to close it.",
     details: [
       "Three semilunar cusps (anterior, right and left), without chordae.",
@@ -111,7 +111,7 @@ export const STRUCTURES = {
     chiffres: ['Diameter: ≈ 2.5 cm'],
   },
   'valve-mitrale': {
-    nom: 'Mitral valve', latin: 'Valva atrioventricularis sinistra (bicuspidalis)', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Mitral valve', latin: 'Valva atrioventricularis sinistra (bicuspidalis)', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "A two-leaflet gate between the left atrium and the left ventricle. Its name comes from its resemblance to a bishop's miter.",
     details: [
       "Two leaflets: anterior (or aortic) and posterior (or mural), held by chordae attached to the two papillary muscles of the left ventricle.",
@@ -121,7 +121,7 @@ export const STRUCTURES = {
     chiffres: ['Normal orifice area: 4–6 cm²'],
   },
   'valve-aortique': {
-    nom: 'Aortic valve', latin: 'Valva aortae', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Aortic valve', latin: 'Valva aortae', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "The outlet valve of the left ventricle, at the entrance to the aorta. Located at the center of the heart, it opens and closes about 100,000 times a day.",
     details: [
       "Three semilunar cusps (right coronary, left coronary and non-coronary).",

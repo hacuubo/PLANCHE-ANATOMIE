@@ -67,7 +67,7 @@ export const STRUCTURES = {
     details: [
       "Forme la pointe (apex) et le bord gauche du cœur, ainsi que la plus grande partie de sa face inférieure.",
       "Reçoit le sang de l'oreillette gauche par la valve mitrale et l'éjecte par la valve aortique.",
-      "Deux muscles papillaires (antérieur et postérieur) retiennent la valve mitrale par des cordages tendineux.",
+      "Deux muscles papillaires (antérolatéral et postéro-médian) retiennent la valve mitrale par des cordages tendineux.",
       "À chaque battement, il éjecte environ 70 mL, soit un peu plus de la moitié de son contenu : c'est la « fraction d'éjection », normalement ≥ 55 %.",
     ],
     chiffres: ['Pression systolique : ≈ 120 mmHg', 'Paroi : 8 à 12 mm', 'Volume en fin de remplissage : ≈ 120 mL'],
@@ -91,7 +91,7 @@ export const STRUCTURES = {
 
   /* ───────────── Valves ───────────── */
   'valve-tricuspide': {
-    nom: 'Valve tricuspide', latin: 'Valva atrioventricularis dextra', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Valve tricuspide', latin: 'Valva atrioventricularis dextra', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "Porte à trois feuillets entre l'oreillette droite et le ventricule droit. Elle s'ouvre pour laisser passer le sang vers le ventricule et se ferme pour l'empêcher de refluer.",
     details: [
       "Trois feuillets : antérieur, septal et postérieur, retenus par des cordages tendineux fixés aux muscles papillaires.",
@@ -99,7 +99,7 @@ export const STRUCTURES = {
     ],
   },
   'valve-pulmonaire': {
-    nom: 'Valve pulmonaire', latin: 'Valva trunci pulmonalis', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Valve pulmonaire', latin: 'Valva trunci pulmonalis', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "Valve de sortie du ventricule droit, à l'entrée du tronc pulmonaire. Trois petites poches en demi‑lune se gonflent pour la fermer.",
     details: [
       "Trois valvules semi‑lunaires (antérieure, droite et gauche), sans cordages.",
@@ -108,7 +108,7 @@ export const STRUCTURES = {
     chiffres: ['Diamètre : ≈ 2,5 cm'],
   },
   'valve-mitrale': {
-    nom: 'Valve mitrale', latin: 'Valva atrioventricularis sinistra (bicuspidalis)', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Valve mitrale', latin: 'Valva atrioventricularis sinistra (bicuspidalis)', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "Porte à deux feuillets entre l'oreillette gauche et le ventricule gauche. Son nom vient de sa ressemblance avec la mitre d'un évêque.",
     details: [
       "Deux feuillets : antérieur (ou aortique) et postérieur (ou mural), retenus par des cordages fixés aux deux muscles papillaires du ventricule gauche.",
@@ -118,7 +118,7 @@ export const STRUCTURES = {
     chiffres: ['Surface d’ouverture normale : 4 à 6 cm²'],
   },
   'valve-aortique': {
-    nom: 'Valve aortique', latin: 'Valva aortae', groupe: 'valves', couleur: '#e3e8ea', coupe: true,
+    nom: 'Valve aortique', latin: 'Valva aortae', groupe: 'valves', couleur: '#e8d3a2', coupe: true,
     resume: "Valve de sortie du ventricule gauche, à l'entrée de l'aorte. Située au centre du cœur, elle s'ouvre et se ferme environ 100 000 fois par jour.",
     details: [
       "Trois valvules semi‑lunaires (coronaire droite, coronaire gauche et non coronaire).",
