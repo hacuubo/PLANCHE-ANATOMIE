@@ -357,7 +357,7 @@ function updateFlow(dt) {
     if (key === 'av' && st.pose.av > flow.pose.av && flow.pose.sl > 0.15) continue;
     const dv = (st.pose[key] - flow.pose[key]) * k; flow.pose[key] += dv; moved += Math.abs(dv);
   }
-  if (moved > 1e-4) { heart.setPose(flow.pose, { valves: state.coupe }); if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
+  if (moved > 1e-4) { heart.setPose(flow.pose); if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
 }
 function showStep(i) {
   flow.step = i; flow.time = 0;
@@ -697,9 +697,11 @@ function animate() {
   const t = clock.elapsedTime;
   if (camAnim) stepCamAnim(dt);
   // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
-  if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM), { valves: state.coupe }); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
+  if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
   else if (!beatIdle) { beatIdle = true; restPose(); }
   if (state.circulation) updateFlow(dt);
+  // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe)
+  if (state.coupe && heart.stepValves(dt, t, state.battement || state.circulation) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   controls.update();
   if ((frame & 7) === 0) updateOrientation();
   if ((frame++ & 3) === 0) occludeLabels();
@@ -709,4 +711,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, setCutMode, renderer };
+window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer };

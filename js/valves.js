@@ -1,11 +1,19 @@
 // Valves du cœur : modèle paramétrique calé sur les repères BodyParts3D (anneaux, secteurs des feuillets, muscles
-// papillaires), préparés par tools/build-heart-bp3d.mjs. Chaque valve a un degré d'ouverture (0 = fermée, 1 = ouverte),
-// ce qui permet de l'animer pendant le cycle cardiaque.
+// papillaires), préparés par tools/build-heart-bp3d.mjs.
 //
-// Valves auriculo-ventriculaires (mitrale, tricuspide) : feuillets minces suspendus à l'anneau, bord libre festonné ;
-// ouvertes, ils pendent dans le ventricule le long de la paroi ; fermées, ils bombent vers l'oreillette et s'accolent
-// sur la ligne de coaptation (en « sourire » pour la mitrale, en Y pour la tricuspide). Cordages tendineux en éventail : un
-// tronc depuis la tête de chaque pilier, puis des branches vers le bord libre et la face ventriculaire des feuillets.
+// Tissu : chaque feuillet ou cuspide est une lame épaisse (deux faces + bord libre arrondi), d'épaisseur variable selon
+// l'anatomie — base fibreuse, zone claire mince et translucide, zone rugueuse épaissie près du bord libre (valves
+// auriculo-ventriculaires), lunules minces et nodule d'Arantius (valves sigmoïdes). Le shader (heart.js, VALVE) y
+// dessine les fibres de collagène radiales, les fines ondulations du bord et la lumière qui traverse les zones minces.
+//
+// Cinétique : l'ouverture suit un ressort amorti (léger rebond à la fermeture) ; le bord libre suit la base avec un
+// retard, si bien que le feuillet ondule comme une voile ; pendant le passage du sang, le bord libre vibre légèrement.
+//
+// Valves auriculo-ventriculaires (mitrale, tricuspide) : feuillets suspendus à l'anneau en selle, bord libre festonné ;
+// ouvertes, ils pendent dans le ventricule ; fermées, ils bombent vers l'oreillette et s'accolent sur la ligne de
+// coaptation (en « sourire » pour la mitrale, en Y pour la tricuspide). Cordages tendineux en trois ordres : un tronc
+// depuis la tête de chaque pilier, des branches, puis de fins cordages évasés à leur insertion sur le bord libre ;
+// cordages de 2e ordre sur la face ventriculaire. Inextensibles : tendus valve fermée, ils s'incurvent quand elle s'ouvre.
 // Valves sigmoïdes (aortique, pulmonaire) : trois cuspides en poche ; fermées, leurs bords libres se rejoignent en Y
 // au centre ; ouvertes, elles se plaquent contre la paroi de la racine.
 import * as THREE from 'three';
@@ -14,70 +22,161 @@ const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
-const CREME = [0.94, 0.86, 0.7], BORD = [0.92, 0.82, 0.62], ENDO = [0.85, 0.58, 0.56];
-// feuillet AV : base rosée (continuité avec l'endocarde auriculaire), corps crème, bord libre épaissi plus jaune
+
+/* ─────────── aspect et épaisseur (cm) ─────────── */
+const ENDO = [0.82, 0.52, 0.5];           // base rosée : continuité avec l'endocarde
+const CLAIRE = [0.86, 0.76, 0.6];         // zone claire : ivoire, mince et translucide
+const RUGUEUSE = [0.86, 0.71, 0.48];      // zone rugueuse : plus épaisse, plus jaune
+const NODULE = [0.94, 0.88, 0.74];
+// Feuillet auriculo-ventriculaire
 const shadeLeaflet = (u, v) => {
-  let c = mix(ENDO, CREME, Math.min(1, v / 0.22));
-  if (v > 0.78) c = mix(c, BORD, (v - 0.78) / 0.22);
-  const ao = 0.78 + 0.22 * Math.min(1, v / 0.3) - 0.1 * Math.pow(1 - Math.sin(Math.PI * u), 4);
+  let c = mix(ENDO, CLAIRE, smooth(0.02, 0.2, v));
+  c = mix(c, RUGUEUSE, smooth(0.6, 0.85, v));
+  // crête de la zone rugueuse (ligne de fermeture) : pli d'ombre
+  const ao = 0.55 + 0.45 * smooth(0, 0.35, v) - 0.15 * Math.pow(1 - Math.sin(Math.PI * u), 4) - 0.16 * Math.exp(-(((v - 0.7) / 0.045) ** 2));
   return [...c, ao];
 };
-// cuspide sigmoïde : creux de la poche plus sombre, bord libre et nodule plus clairs
+const thickLeaflet = (u, v) => {
+  const edge = 0.75 + 0.25 * Math.pow(Math.sin(Math.PI * u), 0.4); // amincie aux commissures
+  return edge * (0.075 * (1 - smooth(0, 0.15, v)) + 0.045 + 0.065 * smooth(0.55, 0.85, v) - 0.02 * smooth(0.95, 1, v));
+};
+// Cuspide sigmoïde : poche plus sombre au fond, lunules minces de part et d'autre du nodule d'Arantius
+const nodule = (u, v) => Math.exp(-(((u - 0.5) / 0.07) ** 2) - (((v - 0.93) / 0.07) ** 2));
 const shadeCusp = (u, v) => {
   const belly = Math.sin(Math.PI * v) * Math.sin(Math.PI * u);
-  let c = mix(CREME, [0.86, 0.66, 0.5], belly * 0.5);
-  if (v > 0.85) c = mix(c, BORD, (v - 0.85) / 0.15);
-  return [...c, 0.62 + 0.38 * (1 - belly) - 0.12 * Math.pow(1 - Math.sin(Math.PI * u), 6)];
+  let c = mix(CLAIRE, [0.88, 0.72, 0.6], belly * 0.35);
+  c = mix(c, ENDO, 1 - smooth(0, 0.12, v));
+  c = mix(c, NODULE, nodule(u, v));
+  return [...c, 0.66 + 0.34 * (1 - belly) - 0.12 * Math.pow(1 - Math.sin(Math.PI * u), 6)];
+};
+const thickCusp = (u, v) => {
+  const lunule = smooth(0.78, 0.9, v) * (1 - nodule(u, v));
+  return 0.065 * (1 - smooth(0, 0.18, v)) + 0.035 - 0.012 * lunule + 0.11 * nodule(u, v);
 };
 
-// Nappe paramétrique (u, v) mise à jour à chaque image : positions recalculées, normales recalculées.
-class Sheet {
-  constructor(nu, nv, material, shade) {
+/* ─────────── dynamique : ressort amorti ─────────── */
+class Spring {
+  constructor(hz, damping, x = 0) { this.w = 2 * Math.PI * hz; this.z = damping; this.x = x; this.v = 0; }
+  step(target, dt) {
+    const n = Math.max(1, Math.ceil(dt / (1 / 240))), h = dt / n; // sous-pas : stable même à 15 images/s
+    for (let i = 0; i < n; i++) { this.v += (this.w * this.w * (target - this.x) - 2 * this.z * this.w * this.v) * h; this.x += this.v * h; }
+  }
+  snap(x) { this.x = x; this.v = 0; }
+}
+// Ouverture d'une valve : la base suit la consigne, le bord libre suit la base avec retard (ondulation en voile)
+class Opening {
+  constructor(base, tip, x) { this.base = new Spring(...base, x); this.tip = new Spring(...tip, x); this.target = x; }
+  step(dt) { this.base.step(this.target, dt); this.tip.step(this.base.x, dt); }
+  snap(x) { this.target = x; this.base.snap(x); this.tip.snap(x); }
+  at(v) { return Math.min(1.04, Math.max(-0.06, this.base.x + (this.tip.x - this.base.x) * Math.pow(v, 1.5))); }
+  get moving() { return Math.abs(this.base.v) + Math.abs(this.tip.v) > 1e-3 || Math.abs(this.tip.x - this.target) > 1e-3; }
+}
+
+/* ─────────── lame épaisse ─────────── */
+// Surface moyenne (u, v) recalculée à chaque image ; faces supérieure et inférieure décalées de ± épaisseur / 2 le long
+// de la normale, bord libre arrondi (rangée intermédiaire). Normales posées directement (pas de recalcul coûteux).
+class Shell {
+  constructor(nu, nv, material, shade, thick) {
     this.nu = nu; this.nv = nv;
+    const W = nu + 1, G = W * (nv + 1), n = 2 * G + W;
+    this.G = G;
+    this.mid = new Float32Array(G * 3); this.nrm = new Float32Array(G * 3); this.th = new Float32Array(G);
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array((nu + 1) * (nv + 1) * 3), 3));
-    // couleur sRGB + occlusion (col) et tissu « paroi lisse » sans identifiant d'enveloppe (tis.w = 255)
-    const col = new Uint8Array((nu + 1) * (nv + 1) * 4), tis = new Uint8Array((nu + 1) * (nv + 1) * 4);
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const col = new Uint8Array(n * 4), tis = new Uint8Array(n * 4), par = new Float32Array(n * 3);
+    const put = (k, u, v) => {
+      const c = shade(u, v);
+      for (let q = 0; q < 4; q++) col[k * 4 + q] = Math.round(Math.min(1, Math.max(0, c[q])) * 255);
+      tis[k * 4 + 1] = 255; tis[k * 4 + 3] = 255; // tissu lisse, sans identifiant d'enveloppe
+      par[k * 3] = u; par[k * 3 + 1] = v; par[k * 3 + 2] = thick(u, v);
+    };
     for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
-      const k = (j * (nu + 1) + i) * 4, c = shade(i / nu, j / nv);
-      for (let q = 0; q < 4; q++) col[k + q] = Math.round(Math.min(1, Math.max(0, c[q])) * 255);
-      tis[k + 1] = 255; tis[k + 3] = 255;
+      const k = j * W + i, u = i / nu, v = j / nv;
+      this.th[k] = thick(u, v);
+      put(k, u, v); put(G + k, u, v);
     }
+    for (let i = 0; i <= nu; i++) put(2 * G + i, i / nu, 1);
     g.setAttribute('col', new THREE.BufferAttribute(col, 4, true));
     g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true));
+    g.setAttribute('vparam', new THREE.BufferAttribute(par, 3)); // u, v, épaisseur (cm) : fibres et translucidité
     const idx = [];
-    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { const a = j * (nu + 1) + i, b = a + 1, c = a + nu + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const a = j * W + i, b = a + 1, c = a + W, d = c + 1;
+      idx.push(a, b, c, b, d, c);                         // face supérieure (normale +N)
+      idx.push(G + a, G + c, G + b, G + b, G + c, G + d); // face inférieure (normale −N)
+    }
+    for (let i = 0; i < nu; i++) { // bord libre arrondi : face sup. → rangée du bord → face inf.
+      const t0 = nv * W + i, t1 = t0 + 1, r0 = 2 * G + i, r1 = r0 + 1, b0 = G + t0, b1 = G + t1;
+      idx.push(t0, t1, r1, t0, r1, r0, r0, r1, b1, r0, b1, b0);
+    }
     g.setIndex(idx);
     this.mesh = new THREE.Mesh(g, material);
-    this.mesh.castShadow = true;
+    this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+    this._p = new THREE.Vector3();
   }
-  update(fn) {
-    const p = this.mesh.geometry.attributes.position, t = new THREE.Vector3();
-    for (let j = 0; j <= this.nv; j++) for (let i = 0; i <= this.nu; i++) { fn(i / this.nu, j / this.nv, t); p.setXYZ(j * (this.nu + 1) + i, t.x, t.y, t.z); }
-    p.needsUpdate = true;
-    this.mesh.geometry.computeVertexNormals();
+  // fn(u, v, out) : point de la surface moyenne ; wob(u, v) : déplacement le long de la normale (vibration)
+  update(fn, wob = null) {
+    const { nu, nv, G, mid, nrm, th } = this, W = nu + 1, p = this._p;
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const k = j * W + i;
+      fn(i / nu, j / nv, p);
+      if (wob) { const w = wob(i / nu, j / nv); p.x += nrm[k * 3] * w; p.y += nrm[k * 3 + 1] * w; p.z += nrm[k * 3 + 2] * w; }
+      mid[k * 3] = p.x; mid[k * 3 + 1] = p.y; mid[k * 3 + 2] = p.z;
+    }
+    // normales de la surface moyenne (différences centrées)
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const k = j * W + i;
+      const iA = j * W + Math.max(0, i - 1), iB = j * W + Math.min(nu, i + 1), jA = Math.max(0, j - 1) * W + i, jB = Math.min(nv, j + 1) * W + i;
+      const ux = mid[iB * 3] - mid[iA * 3], uy = mid[iB * 3 + 1] - mid[iA * 3 + 1], uz = mid[iB * 3 + 2] - mid[iA * 3 + 2];
+      const vx = mid[jB * 3] - mid[jA * 3], vy = mid[jB * 3 + 1] - mid[jA * 3 + 1], vz = mid[jB * 3 + 2] - mid[jA * 3 + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+      nrm[k * 3] = nx; nrm[k * 3 + 1] = ny; nrm[k * 3 + 2] = nz;
+    }
+    const P = this.mesh.geometry.attributes.position.array, N = this.mesh.geometry.attributes.normal.array;
+    for (let k = 0; k < G; k++) {
+      const h = th[k] / 2;
+      for (let q = 0; q < 3; q++) {
+        P[k * 3 + q] = mid[k * 3 + q] + nrm[k * 3 + q] * h; N[k * 3 + q] = nrm[k * 3 + q];
+        P[(G + k) * 3 + q] = mid[k * 3 + q] - nrm[k * 3 + q] * h; N[(G + k) * 3 + q] = -nrm[k * 3 + q];
+      }
+    }
+    for (let i = 0; i <= nu; i++) { // bord libre : prolongement de la surface, normale tangente
+      const k = nv * W + i, kp = (nv - 1) * W + i;
+      let tx = mid[k * 3] - mid[kp * 3], ty = mid[k * 3 + 1] - mid[kp * 3 + 1], tz = mid[k * 3 + 2] - mid[kp * 3 + 2];
+      const l = Math.hypot(tx, ty, tz) || 1; tx /= l; ty /= l; tz /= l;
+      const r = (2 * G + i) * 3, h = th[k] / 2;
+      P[r] = mid[k * 3] + tx * h; P[r + 1] = mid[k * 3 + 1] + ty * h; P[r + 2] = mid[k * 3 + 2] + tz * h;
+      N[r] = tx; N[r + 1] = ty; N[r + 2] = tz;
+    }
+    this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.geometry.attributes.normal.needsUpdate = true;
     this.mesh.geometry.computeBoundingSphere();
   }
 }
 
-// Faisceau de cylindres (cordages) dont les extrémités bougent : une seule géométrie, topologie fixe.
+/* ─────────── cordages ─────────── */
+// Faisceau de tubes dont les extrémités bougent : une seule géométrie, topologie fixe, normales radiales.
 class Cords {
-  constructor(count, material, radial = 6) {
+  constructor(count, material, radial = 8) {
     this.n = count; this.radial = radial;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * radial * 2 * 3), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(count * radial * 2 * 3), 3));
     const idx = [];
     for (let s = 0; s < count; s++) for (let j = 0; j < radial; j++) {
       const a = s * radial * 2 + j, b = s * radial * 2 + (j + 1) % radial, c = a + radial, d = b + radial;
-      idx.push(a, c, b, b, c, d);
+      idx.push(a, b, c, b, d, c); // faces tournées vers l'extérieur (normales radiales)
     }
     g.setIndex(idx);
     this.mesh = new THREE.Mesh(g, material);
+    this.mesh.castShadow = true;
     this._t = new THREE.Vector3(); this._n = new THREE.Vector3(); this._b = new THREE.Vector3(); this._q = new THREE.Vector3();
   }
   // segs : [[a: Vector3, b: Vector3, ra, rb]]
   update(segs) {
-    const p = this.mesh.geometry.attributes.position, { radial } = this;
+    const P = this.mesh.geometry.attributes.position.array, N = this.mesh.geometry.attributes.normal.array, { radial } = this;
     segs.forEach(([a, b, ra, rb], s) => {
       const t = this._t.subVectors(b, a).normalize();
       const n = this._n.set(0, 1, 0); if (Math.abs(t.y) > 0.9) n.set(1, 0, 0);
@@ -86,13 +185,15 @@ class Cords {
       for (let end = 0; end < 2; end++) {
         const c = end ? b : a, r = end ? rb : ra;
         for (let j = 0; j < radial; j++) {
-          const ang = (j / radial) * Math.PI * 2, cs = Math.cos(ang) * r, sn = Math.sin(ang) * r;
-          p.setXYZ(s * radial * 2 + end * radial + j, c.x + n.x * cs + bb.x * sn, c.y + n.y * cs + bb.y * sn, c.z + n.z * cs + bb.z * sn);
+          const ang = (j / radial) * Math.PI * 2, cs = Math.cos(ang), sn = Math.sin(ang), k = (s * radial * 2 + end * radial + j) * 3;
+          const nx = n.x * cs + bb.x * sn, ny = n.y * cs + bb.y * sn, nz = n.z * cs + bb.z * sn;
+          P[k] = c.x + nx * r; P[k + 1] = c.y + ny * r; P[k + 2] = c.z + nz * r;
+          N[k] = nx; N[k + 1] = ny; N[k + 2] = nz;
         }
       }
     });
-    p.needsUpdate = true;
-    this.mesh.geometry.computeVertexNormals();
+    this.mesh.geometry.attributes.position.needsUpdate = true;
+    this.mesh.geometry.attributes.normal.needsUpdate = true;
     this.mesh.geometry.computeBoundingSphere();
   }
 }
@@ -117,109 +218,140 @@ function avValve(id, d, leafletMat, cordMat) {
     if (mitral) {
       annulus(th, tmpR); const s = THREE.MathUtils.clamp(tmpR.sub(Cc).dot(lineDir), -0.85 * Rm, 0.85 * Rm);
       const smile = 0.2 * Rm * (1 - (s / (0.85 * Rm)) ** 2);
-      return out.copy(Cc).addScaledVector(lineDir, s).addScaledVector(dirAnt, -smile + (L === ant ? 0.03 : -0.03));
+      return out.copy(Cc).addScaledVector(lineDir, s).addScaledVector(dirAnt, -smile + (L === ant ? 0.04 : -0.04));
     }
     const k = u < 0.5 ? 1 - 2 * u : 2 * u - 1;
     out.copy(C).addScaledVector(dir(u < 0.5 ? L.t0 : L.t1, tmpD), 0.8 * Rm * k);
-    return out.addScaledVector(dir((L.t0 + L.t1) / 2, tmpM), 0.03); // côté de son propre feuillet
+    return out.addScaledVector(dir((L.t0 + L.t1) / 2, tmpM), 0.04); // côté de son propre feuillet
   };
   const leaflets = d.leaflets.map((L) => {
-    const span = L.t1 - L.t0, nu = Math.max(16, Math.round(span / 0.12)), pad = 0.06;
-    const sheet = new Sheet(nu, 14, leafletMat, shadeLeaflet);
+    const span = L.t1 - L.t0, nu = Math.max(24, Math.round(span / 0.07)), pad = 0.06;
+    const shell = new Shell(nu, 22, leafletMat, shadeLeaflet, thickLeaflet);
     const prof = (u) => {
       let h = Math.pow(Math.sin(Math.PI * u), 0.55);
-      if (L.scallops > 1) h *= 0.78 + 0.22 * Math.abs(Math.sin(L.scallops * Math.PI * u));
+      if (L.scallops > 1) h *= 0.74 + 0.26 * Math.pow(Math.abs(Math.sin(L.scallops * Math.PI * u)), 0.7); // festons et fentes
       return L.height * (0.25 + 0.75 * h);
     };
-    // position d'un point (u le long de l'anneau, v de l'anneau au bord libre) pour une ouverture donnée
+    // position d'un point de la surface moyenne (u le long de l'anneau, v de l'anneau au bord libre)
     const point = (u, v, open, out) => {
       const th = L.t0 - pad + (span + 2 * pad) * u, h = prof(u);
       annulus(th, tmpA);
       const R = tmpR.copy(tmpA).sub(C).projectOnPlane(A).length();
       dir(th, tmpD);
       // ouvert : le feuillet pend dans le ventricule, légèrement rentré vers le centre
-      const ox = tmpA.x + A.x * v * h * 0.95 - tmpD.x * R * (0.1 * v + 0.12 * v * v);
-      const oy = tmpA.y + A.y * v * h * 0.95 - tmpD.y * R * (0.1 * v + 0.12 * v * v);
-      const oz = tmpA.z + A.z * v * h * 0.95 - tmpD.z * R * (0.1 * v + 0.12 * v * v);
+      // voile : ventre bombé vers la paroi au milieu du feuillet, bord libre recourbé vers l'axe, ondulations souples
+      const sail = R * (0.13 * Math.sin(Math.PI * v) * Math.pow(Math.sin(Math.PI * u), 0.7) + 0.025 * Math.sin(3 * Math.PI * u + 2 * v) * v);
+      const inw = R * (0.1 * v + 0.12 * v * v + 0.08 * smooth(0.75, 1, v));
+      const ox = tmpA.x + A.x * v * h * 0.95 + tmpD.x * (sail - inw);
+      const oy = tmpA.y + A.y * v * h * 0.95 + tmpD.y * (sail - inw);
+      const oz = tmpA.z + A.z * v * h * 0.95 + tmpD.z * (sail - inw);
       // fermé : le corps du feuillet rejoint la ligne de coaptation en bombant vers l'oreillette, puis la zone
       // d'accolement (bord libre) pend dans le ventricule
       coapt(L, th, u, tmpQ);
-      const vc = 0.7, w = smooth(0, vc, v), belly = 0.2 * L.height * Math.sin(Math.PI * Math.min(1, v / vc)) * Math.pow(Math.sin(Math.PI * u), 0.5);
+      const vc = 0.7, w = smooth(0, vc, v), belly = 0.22 * L.height * Math.sin(Math.PI * Math.min(1, v / vc)) * Math.pow(Math.sin(Math.PI * u), 0.5);
       const lip = Math.max(0, (v - vc) / (1 - vc)) * 0.35 * h;
       const cx = tmpA.x + (tmpQ.x - tmpA.x) * w - A.x * belly + A.x * (0.08 * w + lip);
       const cy = tmpA.y + (tmpQ.y - tmpA.y) * w - A.y * belly + A.y * (0.08 * w + lip);
       const cz = tmpA.z + (tmpQ.z - tmpA.z) * w - A.z * belly + A.z * (0.08 * w + lip);
       return out.set(cx + (ox - cx) * open, cy + (oy - cy) * open, cz + (oz - cz) * open);
     };
-    return { L, sheet, point, span };
+    return { L, shell, point, span };
   });
-  // cordages : points d'insertion sur le bord libre et sur la face ventriculaire, groupés par pilier
+  // cordages : insertions marginales (bord libre, denses) et de 2e ordre (face ventriculaire), groupées par pilier
   const heads = d.papillaries.map((p) => ({ ...p, H: V(p.head) }));
   const groups = new Map();
   for (const lf of leaflets) {
-    const nA = Math.max(4, Math.round(lf.span / 0.32));
+    const nA = Math.max(6, Math.round(lf.span / 0.16)), nB = Math.max(2, Math.round(lf.span / 0.55));
     const ins = [];
     for (let k = 0; k < nA; k++) ins.push([(k + 0.5) / nA, 1]);
-    for (let k = 0; k < Math.max(2, nA >> 2); k++) ins.push([(k + 0.5) / Math.max(2, nA >> 2), 0.62]); // cordages de 2e ordre
-    // chaque feuillet est tenu par les deux piliers qui encadrent ses commissures : la moitié proche de t0 par le
-    // pilier le plus proche de la commissure t0, l'autre moitié par celui de la commissure t1
+    for (let k = 0; k < nB; k++) ins.push([(k + 0.5) / nB, 0.6]);
+    // chaque feuillet est tenu par les deux piliers qui encadrent ses commissures
     const near = (t, not) => heads.filter((h) => h !== not).reduce((b, h) => (Math.abs(wrap(t - h.angle)) < Math.abs(wrap(t - b.angle)) ? h : b), heads.find((h) => h !== not) ?? heads[0]);
     const p0 = near(lf.L.t0), p1 = heads.length > 1 ? near(lf.L.t1, p0) : p0;
     for (const [u, v] of ins) {
       const best = u < 0.5 ? p0 : p1;
       const key = `${lf.L.name}|${best.name}`;
-      if (!groups.has(key)) groups.set(key, { lf, head: best, ins: [] });
-      groups.get(key).ins.push([u, v]);
+      if (!groups.has(key)) groups.set(key, { lf, head: best, marg: [], sec: [] });
+      groups.get(key)[v === 1 ? 'marg' : 'sec'].push([u, v]);
     }
   }
-  const G = [...groups.values()];
-  const nSeg = G.reduce((s, g) => s + g.ins.length + 1, 0);
+  // grappes de 3 cordages marginaux voisins (2e niveau de ramification)
+  const G = [...groups.values()].map((g) => {
+    g.marg.sort((a, b) => a[0] - b[0]);
+    g.clusters = [];
+    for (let k = 0; k < g.marg.length; k += 3) g.clusters.push(g.marg.slice(k, k + 3));
+    return g;
+  });
+  const nCh = G.reduce((s, g) => s + 1 + g.clusters.length + g.marg.length + g.sec.length, 0);
   // chaque cordage est dessiné en 3 tronçons : droit quand il est tendu, courbé quand il est détendu
-  const cords = new Cords(nSeg * 3, cordMat);
-  cords.mesh.castShadow = true;
+  const cords = new Cords(nCh * 3, cordMat);
   // xf(point, raideur) : déformation du cycle cardiaque (heart.js) ; feuillets portés par l'anneau, têtes des piliers
   // entraînées par la paroi ventriculaire (même raideur que les piliers)
-  const rawSegs = (open, xf) => {
-    const segs = [];
+  const mean = (pts) => pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+  const rawChords = (openAt, xf) => {
+    const out = [];
+    const ins = (g, [u, v]) => { const q = g.lf.point(u, v, openAt(v), new THREE.Vector3()); if (xf) xf(q, 0.1); return q; };
     for (const g of G) {
       const H = g.head.H.clone(); if (xf) xf(H, 0.24);
-      const ins = g.ins.map(([u, v]) => { const q = g.lf.point(u, v, open, new THREE.Vector3()); if (xf) xf(q, 0.1); return q; });
-      const m = ins.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / ins.length);
-      const B = H.clone().lerp(m, 0.42);
-      segs.push([H, B, 0.05, 0.035]);
-      for (const p of ins) segs.push([B, p, 0.026, 0.018]);
+      const marg = g.clusters.map((cl) => cl.map((x) => ins(g, x)));
+      const sec = g.sec.map((x) => ins(g, x));
+      const B = H.clone().lerp(mean([...marg.flat(), ...sec]), 0.36);
+      out.push([H, B, 0.055, 0.042, 0.042]);                                // tronc
+      for (const p of sec) out.push([B, p, 0.026, 0.02, 0.036]);           // 2e ordre, évasé à l'insertion
+      for (const cl of marg) {
+        const Bc = B.clone().lerp(mean(cl), 0.55);
+        out.push([B, Bc, 0.03, 0.022, 0.022]);                             // branche
+        for (const p of cl) out.push([Bc, p, 0.016, 0.013, 0.03]);        // cordage fin, pied évasé
+      }
     }
-    return segs;
+    return out;
   };
-  // longueur de repos : valve fermée (cordages tendus). Un cordage est inextensible : plus court que sa longueur de
-  // repos, il fléchit (arc vers l'oreillette et vers l'axe de la valve).
-  const rest = rawSegs(0, null).map(([a, b]) => a.distanceTo(b));
+  // longueur de repos : valve fermée (cordages tendus)
+  const rest = rawChords(() => 0, null).map(([a, b]) => a.distanceTo(b));
   const ctl = new THREE.Vector3(), mid = new THREE.Vector3(), sd = new THREE.Vector3();
   const bez = (a, c, b, t, out) => out.copy(a).multiplyScalar((1 - t) * (1 - t)).addScaledVector(c, 2 * t * (1 - t)).addScaledVector(b, t * t);
-  const update = (open, xf = null) => {
-    for (const lf of leaflets) lf.sheet.update((u, v, out) => { lf.point(u, v, open, out); if (xf) xf(out, 0.1); });
+  // base rapide, bord libre plus lent : ouverture « en voile », léger rebond à la fermeture
+  const op = new Opening([6, 0.5], [3.6, 0.42], 0.9);
+  let flow = 0;
+  const draw = (xf, time) => {
+    const openAt = (v) => op.at(v);
+    // vibration du bord libre dans le flux de remplissage (valve ouverte, cœur qui bat)
+    const wob = flow > 0 ? (u, v) => flow * 0.022 * v * v * Math.sin(2 * Math.PI * 7 * time + 9 * u + 2 * v) * Math.max(0, op.tip.x) : null;
+    for (const lf of leaflets) lf.shell.update((u, v, out) => { lf.point(u, v, openAt(v), out); if (xf) xf(out, 0.1); }, wob);
     const segs = [];
-    rawSegs(open, xf).forEach(([a, b, ra, rb], i) => {
+    rawChords(openAt, xf).forEach(([a, b, r0, r1, foot], i) => {
       const dd = a.distanceTo(b), L0 = rest[i];
       mid.addVectors(a, b).multiplyScalar(0.5);
       let h = 0;
-      // flèche modérée : le cordage détendu s'incurve doucement, sans former de boucle
       if (dd < L0 && dd > 1e-4) h = Math.min(0.12 * L0, 0.5 * Math.sqrt((3 * dd * (L0 - dd)) / 8));
       sd.subVectors(b, a).normalize();
       ctl.subVectors(C, mid).projectOnPlane(A).normalize().addScaledVector(A, -0.6);
       ctl.addScaledVector(sd, -ctl.dot(sd)).normalize();
-      ctl.multiplyScalar(2 * h).add(mid); // point de contrôle : flèche h au milieu
+      ctl.multiplyScalar(2 * h).add(mid);
       let prev = a.clone();
       for (let k = 1; k <= 3; k++) {
         const p = k === 3 ? b.clone() : bez(a, ctl, b, k / 3, new THREE.Vector3());
-        segs.push([prev, p, ra + (rb - ra) * (k - 1) / 3, ra + (rb - ra) * k / 3]);
+        segs.push([prev, p, r0 + (r1 - r0) * (k - 1) / 3, k === 3 ? foot : r0 + (r1 - r0) * k / 3]);
         prev = p;
       }
     });
     cords.update(segs);
   };
-  update(1);
-  return { meshes: [...leaflets.map((l) => l.sheet.mesh), cords.mesh], update };
+  const valve = {
+    meshes: [...leaflets.map((l) => l.shell.mesh), cords.mesh],
+    setTarget: (o) => { op.target = o; },
+    snap: (o, xf) => { op.snap(o); draw(xf, 0); },
+    // avance la dynamique ; redessine si la valve bouge, si le cœur s'est déformé (dirty) ou si elle vibre (live)
+    step: (dt, time, xf, dirty, live) => {
+      op.step(dt);
+      flow = live ? smooth(0.5, 0.9, op.target) : 0;
+      const moving = op.moving || flow > 0;
+      if (moving || dirty) draw(xf, time);
+      return moving;
+    },
+  };
+  valve.snap(0.9, null);
+  return valve;
 }
 
 /* ─────────── valve sigmoïde ─────────── */
@@ -229,7 +361,7 @@ function slValve(id, d, cuspMat) {
   const dir = (th, out) => out.copy(E1).multiplyScalar(Math.cos(th)).addScaledVector(E2, Math.sin(th)).normalize();
   const tD = new THREE.Vector3(), t0D = new THREE.Vector3(), t1D = new THREE.Vector3(), Hp = new THREE.Vector3(), Fc = new THREE.Vector3(), Fo = new THREE.Vector3();
   const cusps = d.cusps.map((c) => {
-    const sheet = new Sheet(22, 14, cuspMat, shadeCusp);
+    const shell = new Shell(34, 22, cuspMat, shadeCusp, thickCusp);
     const point = (u, v, open, out) => {
       const th = c.t0 + (c.t1 - c.t0) * u;
       dir(th, tD); dir(c.t0, t0D); dir(c.t1, t1D);
@@ -247,11 +379,29 @@ function slValve(id, d, cuspMat) {
       out.addScaledVector(A, -0.32 * Hc * bulge * (1 - open)).addScaledVector(tD, 0.12 * R * bulge * open);
       return out;
     };
-    return { sheet, point };
+    return { shell, point };
   });
-  const update = (open, xf = null) => { for (const c of cusps) c.sheet.update((u, v, out) => { c.point(u, v, open, out); if (xf) xf(out, 0.04); }); };
-  update(0);
-  return { meshes: cusps.map((c) => c.sheet.mesh), update };
+  const op = new Opening([7, 0.5], [4.2, 0.4], 0);
+  let flow = 0;
+  const draw = (xf, time) => {
+    // vibration du bord libre pendant l'éjection
+    const wob = flow > 0 ? (u, v) => flow * 0.03 * v * v * Math.sin(2 * Math.PI * 9 * time + 12 * u) * Math.max(0, op.tip.x) : null;
+    for (const c of cusps) c.shell.update((u, v, out) => { c.point(u, v, op.at(v), out); if (xf) xf(out, 0.04); }, wob);
+  };
+  const valve = {
+    meshes: cusps.map((c) => c.shell.mesh),
+    setTarget: (o) => { op.target = o; },
+    snap: (o, xf) => { op.snap(o); draw(xf, 0); },
+    step: (dt, time, xf, dirty, live) => {
+      op.step(dt);
+      flow = live ? smooth(0.5, 0.9, op.target) : 0;
+      const moving = op.moving || flow > 0;
+      if (moving || dirty) draw(xf, time);
+      return moving;
+    },
+  };
+  valve.snap(0, null);
+  return valve;
 }
 
 // Construit les quatre valves. makeMat(id, preset) fournit les matériaux (feuillet, cordage) de heart.js.

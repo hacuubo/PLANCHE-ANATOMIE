@@ -24,8 +24,13 @@ une liste numérotée des structures, et une fiche explicative par structure.
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
   tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
   les deux piliers qui encadrent ses commissures), coaptation mitrale en « sourire » et tricuspide en Y, cuspides
-  aortiques et pulmonaires en poche fermées en Y — avec un degré d'ouverture animable. Les cordages sont
-  inextensibles : tendus valve fermée, ils s'incurvent quand la valve s'ouvre.
+  aortiques et pulmonaires en poche fermées en Y. **Tissu** : lames épaisses (0,4 à 1,2 mm) à bord libre arrondi,
+  base fibreuse rosée, zone claire mince et translucide, zone rugueuse épaissie ; lunules et nodule d'Arantius des
+  sigmoïdes ; fibres de collagène radiales, ondulations du bord et lumière traversant les zones minces dessinées
+  dans le shader (`VALVE`, js/heart.js). Cordages en trois ordres (tronc, branches, cordages fins évasés à
+  l'insertion), inextensibles : tendus valve fermée, ils s'incurvent quand elle s'ouvre. **Cinétique** : ouverture
+  suivant un ressort amorti (léger rebond à la fermeture), bord libre en retard sur la base (ondulation en voile),
+  vibration du bord libre dans le flux pendant le battement.
 - **Battement** : cycle cardiaque physiologique (≈ 64/min) — systole auriculaire, contraction isovolumique
   (fermeture mitrale et tricuspide), éjection (ouverture aortique et pulmonaire), relaxation, remplissage.
   Raccourcissement base → pointe, épaississement des parois, réduction des cavités (fraction d'éjection apparente

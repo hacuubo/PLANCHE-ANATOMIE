@@ -46,6 +46,9 @@ uniform float uBump;
 uniform float uSSS;
 uniform float uRim;
 uniform float uFocus;
+#ifdef VALVE
+varying vec3 vPar; uniform float uTrans;
+#endif
 float hash13(vec3 p3) { p3 = fract(p3 * 0.1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec3 p) {
   vec3 i = floor(p), f = fract(p); vec3 u = f * f * (3.0 - 2.0 * f);
@@ -141,9 +144,15 @@ function patchShader(sh) {
       uniform vec4 uTis;
       #ifdef ENVELOPPE
       attribute vec4 col; attribute vec4 tis;
+      #endif
+      #ifdef VALVE
+      attribute vec3 vparam; varying vec3 vPar;
       #endif`)
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       vObj = position;
+      #ifdef VALVE
+      vPar = vparam;
+      #endif
       #ifdef ENVELOPPE
       vCol = pow(col.rgb, vec3(2.2)); vTis = vec4(tis.xyz, col.a); vSid = floor(tis.w * 255.0 + 0.5);
       #else
@@ -155,6 +164,22 @@ function patchShader(sh) {
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
+      #ifdef VALVE
+      {
+        // feuillet : fibres de collagène radiales (de l'anneau au bord libre), fines ondulations parallèles au bord,
+        // grain nodulaire de la zone rugueuse ; fondus quand ils deviennent plus fins qu'un pixel
+        vec2 g = fwidth(vPar.xy);
+        float lodF = clamp(g.x * 55.0, 0.0, 1.0), lodC = clamp(g.y * 60.0, 0.0, 1.0);
+        float f1 = vnoise(vec3(vPar.x * 70.0, vPar.y * 4.0, 0.5));
+        float f2 = vnoise(vec3(vPar.x * 150.0 + 7.0, vPar.y * 7.0, 3.0));
+        float fib = mix(smoothstep(0.28, 0.72, 0.6 * f1 + 0.4 * f2), 0.5, lodF); // contraste étiré : faisceaux nets
+        float rough = smoothstep(0.6, 0.9, vPar.y);
+        float crimp = mix(0.5 + 0.5 * sin(vPar.y * 110.0 + 5.0 * vnoise(vec3(vPar.x * 12.0, 1.0, 2.0))), 0.5, lodC);
+        float nod = vnoise(vec3(vPar.x * 28.0, vPar.y * 20.0, 9.0));
+        dH = 0.55 * fib + 0.25 * crimp * (0.3 + 0.7 * rough) + 0.3 * nod * rough;
+        dTint = 0.8 + 0.3 * fib - 0.1 * rough * nod + 0.05 * crimp * rough;
+      }
+      #endif
       diffuseColor.rgb *= vCol * dTint;`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       normal = perturbN(-vViewPosition, normal, vec2(dFdx(dH), dFdy(dH)) * uBump, faceDirection);`)
@@ -174,6 +199,19 @@ function patchShader(sh) {
         float ndl = dot(normal, directionalLights[i].direction);
         float wrap = clamp((ndl + 0.6) / 1.6, 0.0, 1.0) - clamp(ndl, 0.0, 1.0);
         reflectedLight.directDiffuse += directionalLights[i].color * diffuseColor.rgb * sssTint * max(wrap, 0.0) * uSSS * ao;
+      }
+      #endif
+      #ifdef VALVE
+      {
+        float thin = 1.0 - clamp(vPar.z / 0.12, 0.0, 1.0);
+        vec3 trTint = vec3(1.0, 0.82, 0.64);
+        #if NUM_DIR_LIGHTS > 0
+        for (int i = 0; i < NUM_DIR_LIGHTS; i++) {
+          float back = clamp(-dot(normal, directionalLights[i].direction), 0.0, 1.0);
+          reflectedLight.directDiffuse += directionalLights[i].color * diffuseColor.rgb * trTint * back * (0.25 + 0.75 * thin) * uTrans;
+        }
+        #endif
+        totalEmissiveRadiance += diffuseColor.rgb * trTint * 0.03 * thin * uTrans; // lueur diffuse du tissu mince
       }
       #endif
       float fres = pow(1.0 - clamp(abs(dot(normal, normalize(vViewPosition))), 0.0, 1.0), 3.0);
@@ -403,19 +441,20 @@ export async function buildHeart() {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, bump = 0.22, sss = 0.32, rim = 0.12, flowOpacity, deformK = 0.05, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, flowOpacity, deformK = 0.05, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
     });
     if (envelope) m.defines = { ...m.defines, ENVELOPPE: '' };
+    if (valve) m.defines = { ...m.defines, VALVE: '' };
     const uniforms = {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
       uBump: { value: bump }, uSSS: { value: sss }, uRim: { value: rim }, uFocus: focusUniform,
-      ...deformU, uDK: { value: deformK }, uDOn: { value: deformOn ? 1 : 0 },
+      ...deformU, uDK: { value: deformK }, uDOn: { value: deformOn ? 1 : 0 }, uTrans: { value: trans },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
-    m.customProgramCacheKey = () => (envelope ? 'tissu-enveloppe' : 'tissu');
+    m.customProgramCacheKey = () => (valve ? 'tissu-valve' : envelope ? 'tissu-enveloppe' : 'tissu');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
     if (flowOpacity !== undefined) m.userData.flowOpacity = flowOpacity;
@@ -426,8 +465,8 @@ export async function buildHeart() {
   const matCache = new Map();
   const PRESETS = {
     // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
-    valve: () => interior(tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.4, rim: 0.12, roughness: 0.34, clearcoat: 0.55, clearcoatRoughness: 0.2, bump: 0.05, sheen: 0 })),
-    cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.5, rim: 0.25, roughness: 0.3, clearcoat: 0.5, bump: 0.02 })),
+    valve: () => interior(tissue(0xffffff, { envelope: true, valve: true, trans: 0.55, deformOn: false, sss: 0.25, rim: 0.12, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.09, bump: 1.1, sheen: 0.08, sheenColor: 0xfff2dc, sheenRoughness: 0.4, envMapIntensity: 0.55 })),
+    cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.6, rim: 0.3, roughness: 0.26, clearcoat: 0.75, clearcoatRoughness: 0.1, bump: 0.03, sheen: 0.1 })),
     // piliers : plus clairs que l'endocarde trabéculé, pour se détacher de la paroi ; coupés comme le reste du muscle
     papillaire: () => tissue(COL.papillaire, { deformK: 0.24, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
@@ -565,10 +604,22 @@ export async function buildHeart() {
     return { atr, ven, av, sl };
   };
   // Pose du cœur : contraction auriculaire (atr), ventriculaire (ven), ouverture des valves AV (av) et sigmoïdes (sl)
-  const setPose = (c, { valves: withValves = true } = {}) => {
+  // Les valves reçoivent une consigne d'ouverture ; leur mouvement (ressort amorti, retard du bord libre, vibration)
+  // est avancé à chaque image par stepValves.
+  let deformDirty = true;
+  const setPose = (c) => {
+    if (deformU.uDC.value !== c.ven || deformU.uDAt.value !== c.atr) deformDirty = true;
     deformU.uDC.value = c.ven; deformU.uDAt.value = c.atr;
-    if (withValves) for (const [id, v] of Object.entries(valves)) v.update(header.valves[id].type === 'av' ? c.av : c.sl, deformPoint);
+    for (const [id, v] of Object.entries(valves)) v.setTarget(header.valves[id].type === 'av' ? c.av : c.sl);
     return c;
+  };
+  // dt (s), time (s), live : cœur en mouvement (battement, circulation) → vibration des bords libres. Renvoie vrai si
+  // une valve bouge encore.
+  const stepValves = (dt, time, live) => {
+    let moving = false;
+    for (const v of Object.values(valves)) moving = v.step(dt, time, deformPoint, deformDirty, live) || moving;
+    deformDirty = false;
+    return moving;
   };
   const REPOS = { atr: 0, ven: 0, av: 0.9, sl: 0 };
   const setBeat = (phase, opts) => setPose(phase === null ? REPOS : cycle(phase), opts);
@@ -613,7 +664,7 @@ export async function buildHeart() {
   cutOnly.forEach((m) => { m.visible = false; });
 
   return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
-    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, deformPoint,
+    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint,
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
     landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k) => addDeformTo(mat, deformU, k) };
 }
