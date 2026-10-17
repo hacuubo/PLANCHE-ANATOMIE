@@ -1,8 +1,9 @@
 // Tranche de coupe du muscle cardiaque : au lieu d'un aplat, la surface coupée montre le tissu comme sur une pièce
 // anatomique sectionnée ou en animation médicale :
 //   - fibres myocardiques en hélice : leur angle tourne dans l'épaisseur de la paroi (≈ +60° sous l'endocarde,
-//     circulaires au milieu, ≈ −60° sous l'épicarde). Sur la tranche, une fibre couchée dans le plan dessine une strie,
-//     une fibre qui le traverse un point : d'où les bandes caractéristiques de la paroi coupée ;
+//     circulaires au milieu, ≈ −60° sous l'épicarde ; dans la cloison, de la face gauche à la face droite ;
+//     Streeter 1969). Sur la tranche, une fibre couchée dans le plan dessine une strie, une fibre qui le traverse un
+//     point : d'où les bandes caractéristiques de la paroi coupée ;
 //   - faisceaux séparés par de fines cloisons (périmysium), relief léger qui accroche la lumière, surface humide ;
 //   - endocarde : liseré nacré le long des cavités ; épicarde : fine pellicule claire et couche sous-épicardique plus
 //     sombre ; paroi des oreillettes plus mince et désordonnée ; paroi des gros vaisseaux crème, en lames.
@@ -29,13 +30,13 @@ float svn3(vec3 p) { vec3 i = floor(p), f = fract(p); vec3 u = f * f * (3.0 - 2.
              mix(mix(sh13(i + vec3(0,0,1)), sh13(i + vec3(1,0,1)), u.x), mix(sh13(i + vec3(0,1,1)), sh13(i + vec3(1,1,1)), u.x), u.y), u.z); }
 vec4 volAt(vec3 p) {
   vec3 t = (p - uVolMin) * uVolScale + uVolHalf;
-  if (uVolOn < 0.5 || any(lessThan(t, vec3(0.0))) || any(greaterThan(t, vec3(1.0)))) return vec4(0.4, 0.4, 1.0, 0.0); // hors carte : gros vaisseau
+  if (uVolOn < 0.5 || any(lessThan(t, vec3(0.0))) || any(greaterThan(t, vec3(1.0)))) return vec4(0.4, 0.4, 0.5, 1.0); // hors carte : gros vaisseau
   return textureLod(uVol, t, 0.0); // pas de mipmaps : lecture sans dérivées (appelée dans une boucle)
 }
 // motif des fibres dans un carreau : q = coordonnées locales (x le long des fibres), el = allongement des stries
 float fiberTile(vec2 q, float el, vec2 seed) {
   q += seed * 17.0;
-  float along = mix(30.0, 3.2, el), across = 30.0;
+  float along = mix(18.0, 2.5, el), across = 18.0; // faisceaux ≈ 0,5 mm
   float a = svn2(vec2(q.x * along, q.y * across));
   float b = svn2(vec2(q.x * along * 2.1 + 5.0, q.y * across * 2.3 + 3.0));
   // cloisons entre faisceaux (≈ 1,3 mm), ondulées
@@ -75,8 +76,11 @@ export function sectionMaterial(heart, { stencil, rank }) {
       p0 = vW - (heartDeform(p0, mix(0.26, 0.05, f0)) - p0);
       vol = volAt(p0);
     }
-    float dEpi = vol.r * 2.55, dEndo = vol.g * 2.55, wVes = vol.b, wAtr = vol.a * (1.0 - vol.b);
-    float frac = clamp(dEndo / max(dEndo + dEpi, 0.05), 0.0, 1.0); // 0 endocarde → 1 épicarde
+    // r : profondeur sous l'épicarde, g : distance à l'endocarde, b : fraction transmurale du VG (cloison comprise),
+    // a : code de tissu (0 ventricule, 0,5 oreillette, 1 gros vaisseau)
+    float dEpi = vol.r * 2.55, dEndo = vol.g * 2.55;
+    float wVes = smoothstep(0.7, 0.95, vol.a), wAtr = (1.0 - wVes) * smoothstep(0.2, 0.45, vol.a);
+    float frac = vol.b; // 0 endocarde du VG → 1 épicarde ou face droite de la cloison
     // direction des fibres : hélice autour du grand axe, angle de +60° (endocarde) à −60° (épicarde)
     vec3 q = p0 - uDB; vec3 rr = q - uDA * dot(q, uDA);
     vec3 eT = normalize(cross(uDA, rr) + vec3(1e-4));
@@ -101,21 +105,22 @@ export function sectionMaterial(heart, { stencil, rank }) {
       acc += w * (fiberTile(lq, el, vec2(sh12(c), sh12(c + 7.3))) - 0.5); wsum += w; w2 += w * w;
     }
     float fib = clamp(0.5 + acc / sqrt(max(w2, 1e-3)), 0.0, 1.0);
+    fib = mix(fib, 0.5, smoothstep(0.015, 0.06, length(fwidth(uv)) * 0.35)); // vu de loin : pas de fourmillement
     float mot = svn3(p0 * 1.6 + 4.0);
     // oreillettes : faisceaux entrecroisés, plus fins et désordonnés
     float atrN = 0.6 * svn3(p0 * vec3(22.0, 9.0, 22.0)) + 0.4 * svn3(p0 * 40.0 + 3.0);
     // paroi vasculaire : lames élastiques (crème), très fines
     float vesN = 0.5 + 0.5 * sin(dEpi * 160.0 + 3.0 * svn3(p0 * 5.0));
     // teintes (linéaires) : muscle rouge profond nuancé, endocarde nacré, épicarde clair, sous-épicarde plus brun
-    vec3 musDeep = vec3(0.19, 0.022, 0.02), musLight = vec3(0.44, 0.065, 0.05);
+    vec3 musDeep = vec3(0.20, 0.035, 0.03), musLight = vec3(0.46, 0.10, 0.08);
     vec3 mus = mix(musDeep, musLight, fib) * (0.88 + 0.24 * mot);
     mus = mix(mus, mus * vec3(0.95, 0.78, 0.72), smoothstep(0.6, 0.95, frac));         // couche sous-épicardique, plus brune
     mus = mix(mus, mus * vec3(1.3, 1.25, 1.2), 1.0 - smoothstep(0.0, 0.25, dEndo));  // sous-endocarde, plus clair
-    vec3 atr = mix(vec3(0.24, 0.035, 0.03), vec3(0.5, 0.09, 0.07), atrN);
+    vec3 atr = mix(vec3(0.25, 0.045, 0.04), vec3(0.50, 0.11, 0.09), atrN);
     vec3 ves = mix(vec3(0.62, 0.45, 0.32), vec3(0.78, 0.62, 0.47), vesN);
     vec3 col = mix(mix(mus, atr, wAtr), ves, wVes);
-    float endo = (1.0 - smoothstep(0.015, 0.05, dEndo)) * (1.0 - wVes);             // endocarde nacré (≈ 0,4 mm)
-    col = mix(col, vec3(0.72, 0.36, 0.33), endo * 0.85);
+    float endo = (1.0 - smoothstep(0.03, 0.09, dEndo)) * (1.0 - wVes);              // endocarde nacré, lisible à l'échelle du cœur
+    col = mix(col, vec3(0.78, 0.45, 0.42), endo * 0.85);
     float epi = 1.0 - smoothstep(0.015, 0.05, dEpi);                                  // épicarde, pellicule claire
     col = mix(col, vec3(0.66, 0.4, 0.34), epi * 0.7 * (1.0 - wVes));
     diffuseColor.rgb = col;

@@ -126,7 +126,7 @@ function syncInterior() {
   heart.cutUniforms.uCutOffI.value = interiorOff;
 }
 let interiorOff = 0.6; // 0,6 cm en coupe 5 cavités, 1,5 cm en vue chirurgien, 0 dans les autres coupes (setCutMode)
-let curved = false;    // coupe courbe active (5 cavités)
+let curved = false;    // coupe courbe active (5 cavités, 4 valves)
 // partie retirée par la coupe (en tenant compte du décalage des structures intérieures)
 const isCutAway = (h) => {
   if (!state.coupe) return false;
@@ -144,11 +144,12 @@ const LM = heart.landmarks, VMI = LM.valves['valve-mitrale'], VTR = LM.valves['v
 // valves mitrale et tricuspide. Le plan 5 cavités passe par le centre de la valve aortique mais 2 cm en avant de la
 // mitrale et de la tricuspide (leurs feuillets antérieurs seulement). La tranche suit donc ce plan et se creuse en
 // pente douce autour des deux valves auriculo-ventriculaires jusqu'au plan 4 cavités (pointe, mitrale, tricuspide) :
-// les trois valves sont coupées en leur milieu, feuillets de profil, avec les cinq cavités ouvertes.
+// les trois valves sont coupées en leur milieu (à ≈ 2 mm près), feuillets de profil, avec les cinq cavités ouvertes.
+// La valve pulmonaire, en avant de l'aorte, n'y figure pas : voir la coupe « 4 valves ».
 // Surface : z = h(x, y) dans le repère de l'écran de la coupe (x à droite, y vers la base, z vers l'observateur) ;
 // h mêle le plan de fond et des plans locaux autour de chaque valve (poids exp(−(d/σ)^e)) : voir cutU dans heart.js.
-function buildCurve({ V, fond, locaux, S }) {
-  const Y = LM.base.clone().sub(LM.apex).projectOnPlane(V).normalize(); // base du cœur en haut de l'écran
+function buildCurve({ V, fond, locaux, S, up }) {
+  const Y = (up ?? LM.base.clone().sub(LM.apex)).clone().projectOnPlane(V).normalize(); // par défaut, base du cœur en haut de l'écran
   const XS = new THREE.Vector3().crossVectors(Y, V);
   const O = fond[0].clone();
   const loc = (p) => { const q = p.clone().sub(O); return [q.dot(XS), q.dot(Y), q.dot(V)]; };
@@ -179,10 +180,12 @@ const CURVE_5C = (() => {
   return { V: n5, fond: [X, Ao, Ao.clone().add(M).sub(T)], locaux: [[M, n4], [T, n4], [Ao, n5]], S: [1.4, 4, 100] }; // centres à ≤ 2 mm près
 })();
 let CURVE = buildCurve(CURVE_5C);
-CUT_MODES['cinq-cavites'] = { curved: true, min: -3, max: 3, def: 0 };
-// « 4 valves » : coupe à plat de la base du cœur (plan au plus près des centres des quatre valves, à moins de 4 mm de
-// chacun), oreillettes et gros vaisseaux retirés : les quatre valves vues d'en haut, comme sur les planches classiques
-// de la base du cœur — pulmonaire en avant, aortique au centre, mitrale et tricuspide de part et d'autre.
+CUT_MODES['cinq-cavites'] = { curved: CURVE_5C, min: -3, max: 3, def: 0 };
+// « 4 valves » : la base du cœur vue d'en haut, comme sur les planches classiques — pulmonaire en avant, aortique au
+// centre, mitrale et tricuspide de part et d'autre. Surface de fond : plan au plus près des centres des quatre valves
+// (à moins de 4 mm de chacun) ; autour de chaque valve, la tranche suit son propre plan : anneau des valves mitrale et
+// tricuspide (oreillettes retirées jusqu'à l'anneau, feuillets entiers dessous), plan perpendiculaire à l'axe des
+// valves aortique et pulmonaire en leur milieu (sinus et trois cuspides vus de dessus).
 const VALVE_PLANE = (() => {
   const pts = [VTR.center, VMI.center, VAO.center, VPU.center];
   const c = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
@@ -198,7 +201,13 @@ const VALVE_PLANE = (() => {
   if (n.dot(LM.base.clone().sub(LM.apex)) < 0) n.negate(); // vers les oreillettes (côté retiré)
   return { normal: n, center: c };
 })();
-CUT_MODES.valves = (() => { const n = VALVE_PLANE.normal, c = n.dot(VALVE_PLANE.center); return { normal: n.clone().negate(), min: c - 2.5, max: c + 3, def: c + 0.15 }; })();
+const CURVE_4V = (() => {
+  const n = VALVE_PLANE.normal, c = VALVE_PLANE.center, t = new THREE.Vector3(1, 0, 0).projectOnPlane(n).normalize();
+  const V = n.clone().add(new THREE.Vector3(0, 0, 0.2)).normalize(); // d'en haut, un peu de face
+  return { V, up: new THREE.Vector3(0, 0, 1), fond: [c, c.clone().add(t), c.clone().add(new THREE.Vector3().crossVectors(n, t))],
+    locaux: [[VMI.center, VMI.axis], [VTR.center, VTR.axis], [VAO.center, VAO.axis], [VPU.center, VPU.axis]], S: [1.6, 4, 100] };
+})();
+CUT_MODES.valves = { curved: CURVE_4V, min: -3, max: 3, def: 0 };
 // « Vue chirurgien » (ETO 3D, petit axe de la mitrale) : oreillettes retirées au-dessus de l'anneau mitral, valve vue
 // de face depuis l'oreillette gauche, aorte à 12 h. On garde le côté ventriculaire : axe · (p − centre) ≥ −profondeur.
 const SURG_UP = VAO.center.clone().sub(VMI.center).projectOnPlane(VMI.axis).normalize();
@@ -209,7 +218,7 @@ const INTERIOR_OFF = { 'cinq-cavites': 0.6, valves: 1.5, chirurgien: 1.5 };
 // coupes vues de dessus (valves) : pas de voile de la partie retirée entre l'œil et les valves
 const NO_GHOST = new Set(['chirurgien', 'valves']);
 // direction de l'observateur pour une coupe (côté retiré)
-const cutViewDir = (mode = state.modeCoupe) => (CUT_MODES[mode].curved ? CURVE.V.clone() : cutPlane.normal.clone().negate());
+const cutViewDir = (mode = state.modeCoupe) => (CUT_MODES[mode].curved ? CUT_MODES[mode].curved.V.clone() : cutPlane.normal.clone().negate());
 // Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; en vue chirurgien, mitrale fermée (systole) pour
 // montrer la ligne de coaptation et les festons, comme le chirurgien l'examine
 function restPose() {
@@ -219,10 +228,9 @@ function restPose() {
 }
 // Cadrage de chaque coupe (onlyOriented : à l'ouverture de la coupe, seules les coupes « échographiques » déplacent la caméra)
 function viewForCut(mode, onlyOriented = false) {
-  if (mode === 'cinq-cavites') goDir(CURVE.V, { up: CURVE.Y });
+  if (mode === 'cinq-cavites') goDir(CURVE.V, { up: CURVE.Y, dist: viewDistance() * 0.72 }); // cœur plus grand : la coupe se lit mieux
   else if (mode === 'valves') { // vue d'en haut, légèrement de face, l'avant (valve pulmonaire) en haut de l'écran
-    const d = VALVE_PLANE.normal.clone().add(new THREE.Vector3(0, 0, 0.35)).normalize();
-    goDir(d, { target: VALVE_PLANE.center, dist: 21, up: new THREE.Vector3(0, 0, 1).projectOnPlane(d).normalize() });
+    goDir(CURVE.V, { target: VALVE_PLANE.center.clone().addScaledVector(CURVE.Y, 1.5), dist: 24, up: CURVE.Y }); // cible remontée : le cœur passe sous le panneau des coupes
   }
   else if (mode === 'chirurgien') goDir(VMI.axis.clone().negate(), { target: VMI.center, dist: 17, up: SURG_UP });
   else if (onlyOriented) { if (camera.up.y < 0.99) goView('anterieure'); }
@@ -338,6 +346,7 @@ function setCutMode(mode, value) {
   ghosts.forEach((g) => { g.visible = state.coupe && !NO_GHOST.has(mode); });
   const cfg = CUT_MODES[mode], was = curved;
   curved = !!cfg.curved;
+  if (curved) CURVE = buildCurve(cfg.curved);
   if (!curved) cutPlane.normal.copy(cfg.normal ? cfg.normal : localAnterior().negate());
   const slider = document.getElementById('cut-depth');
   slider.min = cfg.min; slider.max = cfg.max; slider.step = 0.1;
@@ -909,7 +918,7 @@ function buildPanel() {
   { const b = document.querySelector('[data-toggle="battement"]'); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
 }
 buildPanel();
-setCutMode('cinq-cavites'); // coupe par défaut : coupe pliée qui traverse les quatre valves
+setCutMode('cinq-cavites'); // coupe par défaut : 5 cavités, par le centre des valves tricuspide, mitrale et aortique
 applyClipping();
 
 /* ─────────── PWA ─────────── */

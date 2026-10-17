@@ -264,14 +264,7 @@ export const STRUCTURES = {
       "Drains about two-thirds of the heart's venous blood. Resynchronization leads (biventricular, or “triple-chamber”, pacemakers) are introduced through it.",
     ],
   },
-  'sillons': {
-    nom: 'Sulci (grooves) of the heart', latin: 'Sulcus coronarius, sulci interventriculares', groupe: 'coronaires', couleur: '#e8a846',
-    resume: "Grooves on the surface of the heart, filled with fat, in which the coronary arteries and veins run. They mark the boundaries between the chambers.",
-    details: [
-      "The coronary (atrioventricular) sulcus encircles the heart between the atria and the ventricles.",
-      "The anterior and posterior interventricular sulci separate the two ventricles and meet near the apex.",
-    ],
-  },
+
 
   /* ───────────── Conduction system ───────────── */
   'noeud-sinusal': {

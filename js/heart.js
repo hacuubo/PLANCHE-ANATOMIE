@@ -9,7 +9,7 @@
 //   - cavités et lumière des vaisseaux en solides fermés (surfaces de coupe), carte 3D de la paroi (tranches) ;
 //   - pièces réelles : coronaires et veines du cœur, feuillets valvulaires avec leurs cordages, muscles papillaires ;
 //   - repères : axe du cœur, système de conduction placé dans le septum réel, trajets du sang, ancres d'étiquettes.
-// Rendu « tissu vivant » : fibres musculaires, graisse lobulée, film humide, translucidité, occlusion ambiante cuite.
+// Rendu « tissu vivant » : fibres musculaires, film humide, translucidité, occlusion ambiante cuite.
 import * as THREE from 'three';
 import { buildValves } from './valves.js';
 
@@ -22,8 +22,8 @@ export const COL = {
   valve: 0xeed7a6,           // feuillets et cuspides : crème jaune translucide (animation médicale)
   cordage: 0xf8f2e6,         // cordages tendineux : blanc nacré
   conduction: 0xf3c23b,
-  coronaire: 0xc8352c,       // artères coronaires : rouge vif (convention des atlas)
-  veineCard: 0x3f5fae,       // veines du cœur : bleu
+  coronaire: 0xb52a25,       // artères coronaires : rouge (convention des atlas)
+  veineCard: 0x34509a,       // veines du cœur : bleu
   lumenArtere: 0xb0585b, lumenVeine: 0x857a9c,
 };
 
@@ -67,7 +67,7 @@ float tissueDetail(vec3 p, vec4 t, out float tint) {
   // oreillettes : plis fins de la paroi mince
   float wr = vnoise(vec3(p.x * 4.5, p.y * 8.0, p.z * 4.5));
   float muscH = mix(fib, 0.45 * fib + 0.55 * wr, atr);
-  // graisse : lobules arrondis
+  // graisse : lobules arrondis (plus utilisée : les sillons n'ont plus de graisse)
   float lob = 1.0 - abs(2.0 * vnoise(p * 3.2) - 1.0);
   float fatH = mix(0.72 * lob + 0.28 * vnoise(p * 9.0), lob, lod);
   // paroi vasculaire : très lisse
@@ -512,8 +512,8 @@ export async function buildHeart() {
     intima: () => tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.45, rim: 0.1, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.12, sheen: 0.1 }),
     papillaire: () => tissue(COL.papillaire, { deformK: 0.24, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
-    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.34, clearcoat: 0.45, clearcoatRoughness: 0.2, bump: 0.06, sss: 0.3, rim: 0.2, sheen: 0.2, sheenColor: 0xffb4a6, flowOpacity: 0.14 }),
-    coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.3, clearcoat: 0.45, clearcoatRoughness: 0.2, bump: 0.05, sss: 0.25, rim: 0.2, sheen: 0.2, sheenColor: 0xb8c8ff, flowOpacity: 0.14 }),
+    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a, flowOpacity: 0.14 }),
+    coroV: () => tissue(COL.veineCard, { tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff, flowOpacity: 0.14 }),
   };
   const matFor = (id, preset) => {
     const key = `${id}|${preset}`;

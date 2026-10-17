@@ -14,20 +14,23 @@ une liste numérotée des structures, et une fiche explicative par structure.
   trajet réel des coronaires.
 - **Coronaires** comme sur les planches de référence : sillons dégagés de leur graisse, artères en rouge et veines en
   bleu, troncs remis au calibre des atlas (tronc commun ≈ 4,5 mm, IVA proximale et coronaire droite ≈ 3,5 mm, branches
-  ≈ 2,4 mm, sinus coronaire ≈ 6 mm). Visibles : coronaire droite, branche du conus, branches ventriculaires et
-  marginales, IVP (interventriculaire postérieure) ; tronc commun, IVA et diagonales, circonflexe ; grande veine du
-  cœur, veine interventriculaire antérieure, veine moyenne, petites veines, sinus coronaire.
+  ≈ 2,4 mm, sinus coronaire ≈ 6 mm), calibre qui diminue vers la périphérie ; le myocarde reconstruit est creusé
+  sous chaque vaisseau, visible sur toute sa longueur (jamais interrompu). Visibles : coronaire droite, branche du
+  conus, branches ventriculaires et marginales, IVP (interventriculaire postérieure) ; tronc commun, IVA et
+  diagonales, circonflexe ; grande veine du cœur, veine interventriculaire antérieure, veine moyenne, petites veines,
+  sinus coronaire.
 - **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques en relief procédural, film humide satiné, translucidité, liseré lumineux,
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
 - **Coupe** (profondeur réglable) : **5 cavités** (coupe courbe : plan 5 cavités par la pointe et la valve aortique,
   creusé en pente douce autour des valves mitrale et tricuspide jusqu'au plan 4 cavités, si bien que les trois valves
-  sont coupées en leur milieu, à 2 mm près), **4 valves** (base du cœur coupée à plat au plus près des centres des
-  quatre valves, oreillettes et gros vaisseaux retirés : pulmonaire, aortique, mitrale et tricuspide vues d'en
-  haut), **vue
+  sont coupées en leur milieu, à ≈ 2 mm près ; la valve pulmonaire, en avant de l'aorte, n'y figure pas), **4 valves**
+  (base du cœur vue d'en haut, l'avant en haut de l'écran : chaque valve coupée dans son plan — mitrale et tricuspide
+  à l'anneau, oreillettes retirées jusqu'à lui ; aortique et pulmonaire perpendiculairement à leur axe, cuspides vues
+  de dessus), **vue
   chirurgien** (petit axe de la mitrale comme en ETO 3D : oreillettes retirées au-dessus de l'anneau, valve vue
   depuis l'oreillette gauche, aorte à 12 h, mitrale fermée au repos pour montrer la coaptation), frontale et
   horizontale. **Tranches** (js/cut-surface.js) : muscle rouge sectionné, fibres en hélice dont l'angle tourne dans
-  l'épaisseur (stries ou points selon leur orientation dans la tranche), cloisons entre faisceaux, endocarde nacré,
+  l'épaisseur (cloison comprise, de sa face gauche à sa face droite) (stries ou points selon leur orientation dans la tranche), cloisons entre faisceaux, endocarde nacré,
   épicarde et couche sous-épicardique, paroi des oreillettes, paroi crème des gros vaisseaux ; profondeur lue dans
   une carte 3D de la paroi (voxels de 2 mm) qui suit le battement. On y voit cavités, septum, valves et
   cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.

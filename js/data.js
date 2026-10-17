@@ -261,14 +261,7 @@ export const STRUCTURES = {
       "Draine environ deux tiers du sang veineux du cœur. Les sondes de resynchronisation (pacemaker triple chambre) y sont introduites.",
     ],
   },
-  'sillons': {
-    nom: 'Sillons du cœur', latin: 'Sulcus coronarius, sulci interventriculares', groupe: 'coronaires', couleur: '#e8a846',
-    resume: "Rainures à la surface du cœur, comblées de graisse, où cheminent les artères et veines coronaires. Elles marquent la limite entre les cavités.",
-    details: [
-      "Le sillon coronaire (atrio‑ventriculaire) fait le tour du cœur entre oreillettes et ventricules.",
-      "Les sillons interventriculaires antérieur et postérieur séparent les deux ventricules et se rejoignent près de la pointe.",
-    ],
-  },
+
 
   /* ───────────── Conduction ───────────── */
   'noeud-sinusal': {

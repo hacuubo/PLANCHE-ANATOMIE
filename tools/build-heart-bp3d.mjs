@@ -54,8 +54,20 @@ const CALIBRE = [
   [/^Trunk of (right coronary artery|anterior interventricular branch of left coronary artery)$|^Circumflex branch of left coronary artery$/, 0.045],
   [/^Posterior interventricular branch of right coronary artery$/, 0.035],
 ];
+// Gonflement proportionnel au rayon local (distance au barycentre des sommets à moins de 4,5 mm) rapporté au rayon
+// médian de la pièce : le vaisseau garde son effilement (IVA distale ≈ 2 mm, Dodge 1992).
 function inflate(m, d) {
   const n = m.pos.length / 3, nor = new Float64Array(n * 3);
+  const rl = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let cx = 0, cy = 0, cz = 0, k = 0;
+    for (let j = 0; j < n; j++) {
+      const dx = m.pos[j * 3] - m.pos[i * 3], dy = m.pos[j * 3 + 1] - m.pos[i * 3 + 1], dz = m.pos[j * 3 + 2] - m.pos[i * 3 + 2];
+      if (dx * dx + dy * dy + dz * dz < 0.2025) { cx += m.pos[j * 3]; cy += m.pos[j * 3 + 1]; cz += m.pos[j * 3 + 2]; k++; }
+    }
+    rl[i] = Math.hypot(m.pos[i * 3] - cx / k, m.pos[i * 3 + 1] - cy / k, m.pos[i * 3 + 2] - cz / k);
+  }
+  const rMed = Float64Array.from(rl).sort()[n >> 1] || 1;
   let vol = 0;
   for (let t = 0; t < m.idx.length; t += 3) {
     const [a, b, c] = [m.idx[t], m.idx[t + 1], m.idx[t + 2]];
@@ -66,7 +78,10 @@ function inflate(m, d) {
   }
   const s = vol < 0 ? -d : d; // maillage orienté vers l'intérieur : on inverse
   const pos = new Float64Array(m.pos);
-  for (let i = 0; i < n; i++) { const l = Math.hypot(nor[i * 3], nor[i * 3 + 1], nor[i * 3 + 2]) || 1; for (let k = 0; k < 3; k++) pos[i * 3 + k] += nor[i * 3 + k] / l * s; }
+  for (let i = 0; i < n; i++) {
+    const l = Math.hypot(nor[i * 3], nor[i * 3 + 1], nor[i * 3 + 2]) || 1, f = Math.min(1.25, Math.max(0.35, rl[i] / rMed));
+    for (let k = 0; k < 3; k++) pos[i * 3 + k] += nor[i * 3 + k] / l * s * f;
+  }
   return { pos, idx: m.idx };
 }
 const loadPiece = (p) => {
@@ -256,6 +271,19 @@ function tubeMesh(pts, rFn, radial = 10) {
 }
 
 /* ─────────── 5. enveloppe ─────────── */
+// Vaisseaux du cœur (gonflés) : le myocarde reconstruit ne doit jamais les recouvrir. On creuse le myocarde dans le
+// volume du vaisseau balayé vers l'extérieur (jusqu'à 6 mm) : chaque vaisseau repose au fond d'un sillon ouvert,
+// visible sur toute sa longueur (une artère interrompue se lirait comme une artère bouchée).
+const coroAll = mergeMeshes([...Object.values(raw.coronaire), ...Object.values(raw.veine)]);
+const coroSDF = sdf(coroAll);
+const groove = (x, y, z) => {
+  const d0 = coroSDF.query(x, y, z, 1.2);
+  if (d0 > 1.0) return d0;
+  const g = gradOf(dV, [x, y, z]); // vers l'extérieur du ventricule (nul hors de la grille)
+  let d = d0;
+  for (const k of [0.15, 0.3, 0.45, 0.6]) d = Math.min(d, coroSDF.query(x - g[0] * k, y - g[1] * k, z - g[2] * k, 1.2));
+  return d;
+};
 const TRIM = {
   aorte: (x, y) => -(y + 8), 'veine-cave-inferieure': (x, y) => -(y + 6.5), 'veine-cave-superieure': (x, y) => y - 12.5,
   'carotide-commune-gauche': (x, y) => y - 13.6, 'subclaviere-gauche': (x) => x - 4.8, 'tronc-brachio-cephalique': (x, y) => Math.max(y - 13.6, -x - 4.8),
@@ -278,7 +306,9 @@ const ASSEMBLIES = [
 ];
 const core = (x, y, z) => {
   // épaisseur : celle des coronaires, au moins ≈ 1 cm pour le VG et 0,35 cm pour le VD (fiche : 8–12 mm et 3–5 mm)
-  const myo = -smin(-(dV(x, y, z) - Math.max(thick(x, y, z), 0.35 + 0.65 * wLV(x, y, z))), baseCut(x, y, z), 0.3);
+  let myo = -smin(-(dV(x, y, z) - Math.max(thick(x, y, z), 0.35 + 0.65 * wLV(x, y, z))), baseCut(x, y, z), 0.3);
+  // sillon ouvert sous chaque vaisseau, dans le myocarde ventriculaire seulement (les auricules restent intactes)
+  if (myo < 0.4) myo = Math.max(myo, 0.03 - groove(x, y, z));
   const od = smin(S.ODw.query(x, y, z, 1.5), S.ODc.query(x, y, z, 1.5), 0.25);
   const og = smin(S.OGw.query(x, y, z, 1.5), S.OGc.query(x, y, z, 1.5), 0.25);
   return { myo, od, og, all: smin(smin(myo, od, 0.5), og, 0.5) };
@@ -365,8 +395,6 @@ const isAurD = autoAur(wall['oreillette-droite'], cav['oreillette-droite'], (p) 
 const isAurG = autoAur(wall['oreillette-gauche'], cav['oreillette-gauche'], (p) => p[2] + 0.3 * p[0], 2.0);
 
 /* ─────────── 8. attributs de l'enveloppe ─────────── */
-const coroAll = mergeMeshes([...Object.values(raw.coronaire), ...Object.values(raw.veine)]);
-const coroSDF = sdf(coroAll);
 const TISSU = { muscle: [0, 0, 0], oreillette: [0, 0, 1], graisse: [1, 0, 0], vaisseau: [0, 1, 0] };
 function attributes(p) {
   const c = core(...p);
@@ -558,8 +586,10 @@ for (const [role, o] of Object.entries(raw)) for (const [id, m] of Object.entrie
   addMesh(`${role}:${id}`, mesh, { role, id });
 }
 // Carte 3D de la paroi (tranches de coupe) : pour chaque voxel de 2 mm autour du cœur, profondeur sous la surface
-// externe (épicarde), distance à l'endocarde des cavités, et part de paroi vasculaire / auriculaire. Le shader des
-// surfaces de coupe en tire l'orientation des fibres dans l'épaisseur, l'endocarde, l'épicarde et le type de tissu.
+// externe (épicarde), distance à l'endocarde des cavités, fraction transmurale du ventricule gauche et code de tissu.
+// Fraction : dVG / (dVG + min(dEpi, dVD)) — 0 sous l'endocarde du VG, 1 sous l'épicarde ou sur la face droite de la
+// cloison (la cloison appartient au VG : l'angle des fibres y passe de positif à négatif, Streeter 1969).
+// Code de tissu : 0 myocarde ventriculaire, 0,5 paroi auriculaire, 1 paroi de gros vaisseau.
 const VOL = (() => {
   const step = 0.2, min = [-6.6, -7.6, -6.6], max = [7.2, 7.2, 6.2];
   const n = [0, 1, 2].map((k) => Math.ceil((max[k] - min[k]) / step) + 1);
@@ -573,8 +603,10 @@ const VOL = (() => {
     let ves = 1e9; for (const id of Object.keys(PARTS)) ves = Math.min(ves, PARTS[id](x, y, z));
     const atr = Math.min(c.od, c.og), mus = Math.min(c.myo, atr);
     data[o] = q(-f); data[o + 1] = q(cavField(x, y, z));
-    data[o + 2] = Math.round(255 / (1 + Math.exp((ves - mus) / 0.08))); // 255 : paroi de gros vaisseau
-    data[o + 3] = Math.round(255 / (1 + Math.exp((atr - c.myo) / 0.08))); // 255 : paroi auriculaire
+    const dEpi = Math.max(0, -f), dVG = Math.max(0, S.VG.query(x, y, z, 3)), dVD = Math.max(0, S.VD.query(x, y, z, 3));
+    data[o + 2] = Math.round(255 * dVG / Math.max(0.02, dVG + Math.min(dEpi, dVD)));
+    const wVes = 1 / (1 + Math.exp((ves - mus) / 0.08)), wAtr = 1 / (1 + Math.exp((atr - c.myo) / 0.08));
+    data[o + 3] = Math.round(255 * Math.max(wVes, 0.5 * wAtr * (1 - wVes)));
   }
   return { min, step, n, data };
 })();
