@@ -22,7 +22,7 @@ const gauss = (x, s) => Math.exp(-((x / s) ** 2));
 const rng = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 
 // Matériaux de la vue : uniformes de mise en retrait (mode focus) et de sélection propres, avant toute compilation
-const isolate = (m) => { const u = m.userData.uniforms; if (u) { u.uFocus = { value: 0 }; u.uSel = { value: -2 }; } return m; };
+export const isolate = (m) => { const u = m.userData.uniforms; if (u) { u.uFocus = { value: 0 }; u.uSel = { value: -2 }; } return m; };
 
 export function buildAorticView(heart) {
   const d = heart.valveData['valve-aortique'];
@@ -251,20 +251,26 @@ export function buildAorticView(heart) {
     const wob = live && v.wob ? (u, w) => v.wob * w * w * Math.sin(2 * Math.PI * 9 * time + 12 * u) * Math.max(0, v.op.tip.x) : null;
     for (const c of v.cusps) c.shell.updateOpen((w) => v.op.at(w), null, 0, wob);
   };
+  let labelsOn = true;
   const view = {
+    key: 'aortique', title: 'Valve aortique', heartValveId: 'valve-aortique', phase: 'sl',
+    variantList: [['normale', 'Normale'], ['bicuspide', 'Bicuspidie L-R'], ['rao', 'Rétrécissement serré']],
+    orient: 'Vue depuis l’aorte · chirurgien <b>à droite</b> du patient',
     group, variants,
     center: C.clone().addScaledVector(A, Hc * 0.55), axis: A.clone(),
+    camDir: A.clone(), focus: C.clone().addScaledVector(A, Hc * 0.4), dist: 11.5, // caméra côté aorte
     // chirurgien à droite du patient : le côté gauche du patient en haut de l'image
     up: new THREE.Vector3(1, 0, 0).projectOnPlane(A).normalize(),
     get variant() { return current; },
     setVariant(name) { current = name; dirty = true; view.setVisible(group.visible); },
+    showLabels(on) { labelsOn = on; view.setVisible(group.visible); },
     setVisible(on) {
       group.visible = on;
       for (const [k, v] of Object.entries(variants)) {
         for (const c of v.cusps) c.shell.mesh.visible = on && k === current;
-        for (const l of v.labels) l.visible = on && k === current;
+        for (const l of v.labels) l.visible = on && labelsOn && k === current;
       }
-      for (const l of commonLabels) l.visible = on;
+      for (const l of commonLabels) l.visible = on && labelsOn;
       dirty = true;
     },
     // open : 0 fermée → 1 ouverture maximale de la variante

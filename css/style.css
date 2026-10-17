@@ -140,8 +140,9 @@ button { font: inherit; color: inherit; }
 /* pastille d'étiquette : encre sur papier (monochrome, comme un numéro d'atlas) */
 .label .num { background: var(--card) !important; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-family: var(--sans); width: 20px; height: 20px; font-size: 11.5px; }
 
-/* ── vue de la valve aortique ── */
-.ao-tools { display: flex; gap: 8px; flex-wrap: wrap; flex-basis: 100%; }
+/* ── vues des valves ── */
+.scene.is-valve .legend-item, .scene.is-valve .legend-sep { display: none; }
+.ao-label.marker { font-weight: 600; border-color: var(--ink); }
 .ao-label {
   font-size: 13px; color: var(--ink); white-space: nowrap; pointer-events: none;
   background: rgba(255, 253, 249, .9); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 9px;

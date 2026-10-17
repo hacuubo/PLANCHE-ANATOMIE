@@ -345,3 +345,56 @@ export const VALVE_AORTIQUE = {
     chiffres: ['Surface < 1 cm²', 'Vitesse max ≥ 4 m/s', 'Gradient moyen ≥ 40 mmHg'],
   },
 };
+
+// Vue chirurgicale de la valve mitrale (js/av-views.js)
+export const VALVE_MITRALE = {
+  normale: {
+    titre: 'Valve mitrale normale',
+    sousTitre: 'Vue du chirurgien, depuis l’oreillette gauche',
+    texte: "La valve mitrale sépare l'oreillette gauche du ventricule gauche. Elle a deux feuillets : l'antérieur, grand et souple, tourné vers l'aorte, et le postérieur, plus court, découpé en trois festons appelés P1, P2 et P3 (les zones du feuillet antérieur qui leur font face sont A1, A2 et A3). Des cordages tendineux relient le bord des feuillets aux piliers du ventricule et les empêchent de se retourner.",
+    details: [
+      "Quand le ventricule se relâche, les feuillets s'ouvrent et le sang de l'oreillette remplit le ventricule.",
+      "Quand il se contracte, ils se ferment en dessinant une ligne en forme de sourire : le sang part vers l'aorte et ne reflue pas vers les poumons.",
+      "En vue « chirurgien », l'aorte est en haut et l'auricule gauche à gauche, comme le chirurgien la voit en ouvrant l'oreillette gauche.",
+    ],
+    chiffres: ['Surface d’ouverture : 4 à 6 cm²', 'Deux feuillets, deux piliers'],
+  },
+  prolapsus: {
+    titre: 'Insuffisance mitrale par prolapsus de P2',
+    sousTitre: 'Rupture de cordage, feuillet postérieur flottant',
+    texte: "Un ou plusieurs cordages qui retenaient le milieu du feuillet postérieur (P2) se sont rompus. Ce segment n'est plus tenu : à chaque contraction, il remonte au-dessus de l'anneau et son bord se retourne dans l'oreillette. Les deux feuillets ne se rejoignent plus en regard de P2, et une partie du sang reflue vers l'oreillette gauche et les poumons.",
+    details: [
+      "C'est la forme la plus fréquente d'insuffisance mitrale « dégénérative », liée à une fragilité du tissu de la valve ; P2 est le segment le plus souvent atteint.",
+      "Le reflux fatigue le cœur : essoufflement, fatigue, palpitations (fibrillation auriculaire) ; la rupture d'un cordage peut aussi survenir brutalement.",
+      "L'insuffisance est dite sévère, à l'échographie, quand l'orifice de fuite atteint au moins 40 mm² ou le volume qui reflue au moins 60 mL par battement.",
+      "Lorsqu'elle est possible, la réparation de la valve est le traitement de référence (résection du segment ou nouveaux cordages artificiels, anneau) ; une réparation par voie percutanée peut être proposée à certains patients.",
+    ],
+    chiffres: ['Orifice de fuite ≥ 40 mm²', 'Volume régurgité ≥ 60 mL', 'P2 : segment le plus touché'],
+  },
+};
+
+// Vue chirurgicale de la valve tricuspide (js/av-views.js)
+export const VALVE_TRICUSPIDE = {
+  normale: {
+    titre: 'Valve tricuspide normale',
+    sousTitre: 'Vue depuis l’oreillette droite',
+    texte: "La valve tricuspide sépare l'oreillette droite du ventricule droit. Elle a trois feuillets : antérieur (le plus grand), postérieur et septal, ce dernier fixé sur la cloison entre les deux ventricules. Comme la mitrale, elle est retenue par des cordages et des piliers ; c'est la plus grande des quatre valves du cœur.",
+    details: [
+      "Elle s'ouvre quand le ventricule droit se relâche et se ferme en Y quand il se contracte, pour que le sang parte vers les poumons sans refluer vers les veines.",
+      "Le feuillet septal est présenté en bas ; l'orifice du sinus coronaire, qui ramène le sang des veines du cœur, s'ouvre tout près, dans l'oreillette droite.",
+    ],
+    chiffres: ['Surface d’ouverture : 7 à 9 cm²', 'Trois feuillets'],
+  },
+  dilatation: {
+    titre: 'Insuffisance tricuspide par dilatation de l’anneau',
+    sousTitre: 'Insuffisance « fonctionnelle » : feuillets normaux',
+    texte: "Les feuillets sont normaux, mais l'anneau sur lequel ils sont attachés s'est élargi, surtout du côté de la paroi libre du ventricule (le côté du septum, fixé, se dilate peu). Les feuillets, devenus trop courts pour cet orifice et attirés vers le ventricule, ne se rejoignent plus au centre : le sang reflue vers l'oreillette droite et les veines.",
+    details: [
+      "C'est la forme la plus fréquente d'insuffisance tricuspide. Elle accompagne la dilatation des cavités droites : maladie d'une valve du cœur gauche, hypertension pulmonaire, fibrillation auriculaire au long cours.",
+      "Elle peut donner des jambes gonflées, un gros foie, une fatigue, puis une surcharge des veines.",
+      "Elle est dite sévère quand l'orifice de fuite atteint au moins 40 mm². Lors d'une chirurgie du cœur gauche, un anneau est posé sur la tricuspide si son anneau mesure au moins 40 mm (ou plus de 21 mm/m²).",
+      "Traitements : diurétiques, anneau prothétique chirurgical, ou techniques percutanées chez certains patients.",
+    ],
+    chiffres: ['Anneau ≥ 40 mm', 'Orifice de fuite ≥ 40 mm²'],
+  },
+};

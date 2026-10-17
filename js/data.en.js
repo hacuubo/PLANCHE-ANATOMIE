@@ -348,3 +348,56 @@ export const VALVE_AORTIQUE = {
     chiffres: ['Valve area < 1 cm²', 'Peak velocity ≥ 4 m/s', 'Mean gradient ≥ 40 mmHg'],
   },
 };
+
+// Surgical view of the mitral valve (js/av-views.js)
+export const VALVE_MITRALE = {
+  normale: {
+    titre: 'Normal mitral valve',
+    sousTitre: 'Surgeon’s view, from the left atrium',
+    texte: "The mitral valve separates the left atrium from the left ventricle. It has two leaflets: the anterior leaflet, large and pliable, facing the aorta, and the posterior leaflet, shorter, divided into three scallops called P1, P2 and P3 (the facing areas of the anterior leaflet are A1, A2 and A3). Chordae tendineae connect the leaflet edges to the papillary muscles of the ventricle and prevent them from turning inside out.",
+    details: [
+      "When the ventricle relaxes, the leaflets open and blood from the atrium fills the ventricle.",
+      "When it contracts, they close along a smile-shaped line: blood leaves through the aorta and does not flow back towards the lungs.",
+      "In the “surgeon’s view”, the aorta is at the top and the left atrial appendage on the left, as the surgeon sees it when opening the left atrium.",
+    ],
+    chiffres: ['Valve area: 4–6 cm²', 'Two leaflets, two papillary muscles'],
+  },
+  prolapsus: {
+    titre: 'Mitral regurgitation due to P2 prolapse',
+    sousTitre: 'Chordal rupture, flail posterior leaflet',
+    texte: "One or more chordae that held the middle of the posterior leaflet (P2) have ruptured. This segment is no longer restrained: with each contraction it rises above the annulus and its edge turns over into the atrium. The two leaflets no longer meet opposite P2, and some blood flows back into the left atrium and the lungs.",
+    details: [
+      "This is the most common form of “degenerative” mitral regurgitation, due to fragile valve tissue; P2 is the segment most often affected.",
+      "The backflow tires the heart: breathlessness, fatigue, palpitations (atrial fibrillation); a chordal rupture can also occur suddenly.",
+      "Regurgitation is called severe on echocardiography when the regurgitant orifice reaches at least 40 mm² or the regurgitant volume at least 60 mL per beat.",
+      "When feasible, valve repair is the treatment of choice (resection of the segment or artificial chordae, annuloplasty ring); a catheter-based repair may be offered to some patients.",
+    ],
+    chiffres: ['Regurgitant orifice ≥ 40 mm²', 'Regurgitant volume ≥ 60 mL', 'P2: most affected segment'],
+  },
+};
+
+// Surgical view of the tricuspid valve (js/av-views.js)
+export const VALVE_TRICUSPIDE = {
+  normale: {
+    titre: 'Normal tricuspid valve',
+    sousTitre: 'View from the right atrium',
+    texte: "The tricuspid valve separates the right atrium from the right ventricle. It has three leaflets: anterior (the largest), posterior and septal, the latter attached to the wall between the two ventricles. Like the mitral valve, it is held by chordae and papillary muscles; it is the largest of the four heart valves.",
+    details: [
+      "It opens when the right ventricle relaxes and closes in a Y shape when it contracts, so that blood goes to the lungs without flowing back into the veins.",
+      "The septal leaflet is shown at the bottom; the opening of the coronary sinus, which returns blood from the heart's veins, lies close by in the right atrium.",
+    ],
+    chiffres: ['Valve area: 7–9 cm²', 'Three leaflets'],
+  },
+  dilatation: {
+    titre: 'Tricuspid regurgitation due to annular dilatation',
+    sousTitre: '“Functional” regurgitation: normal leaflets',
+    texte: "The leaflets are normal, but the annulus to which they are attached has enlarged, mainly on the free-wall side of the ventricle (the septal side, which is fixed, dilates little). The leaflets, now too short for this orifice and pulled towards the ventricle, no longer meet in the centre: blood flows back into the right atrium and the veins.",
+    details: [
+      "This is the most common form of tricuspid regurgitation. It accompanies enlargement of the right heart chambers: left-sided valve disease, pulmonary hypertension, long-standing atrial fibrillation.",
+      "It may cause swollen legs, an enlarged liver, fatigue, then venous congestion.",
+      "It is called severe when the regurgitant orifice reaches at least 40 mm². During left-sided heart surgery, a ring is placed on the tricuspid valve if its annulus measures at least 40 mm (or more than 21 mm/m²).",
+      "Treatments: diuretics, surgical annuloplasty ring, or catheter-based techniques for some patients.",
+    ],
+    chiffres: ['Annulus ≥ 40 mm', 'Regurgitant orifice ≥ 40 mm²'],
+  },
+};
