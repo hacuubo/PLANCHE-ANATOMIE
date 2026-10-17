@@ -55,19 +55,21 @@ export function buildAVView(heart, kind) {
   const DARK = [0.22, 0.05, 0.06];
   if (mitral) {
     F.push({ name: 'Auricule gauche', th: angleOf(W(1, 0.35, 0.55)), s: 0.42, rx: 0.55, ry: 0.36, depth: 0.5, type: 'pit' });
-    for (const [n, w, s] of [['LSPV', W(0.75, 0.3, -1), 0.72], ['LIPV', W(0.75, -0.35, -1), 0.48], ['RSPV', W(-0.6, 0.3, -1), 0.72], ['RIPV', W(-0.6, -0.35, -1), 0.48]]) {
-      F.push({ name: n, th: angleOf(w), s, rx: 0.5, ry: 0.42, depth: 0.55, type: 'pit' });
+    for (const [n, w, s] of [['LSPV', W(0.75, 0.3, -1), 0.62], ['LIPV', W(0.75, -0.35, -1), 0.45]]) F.push({ name: n, th: angleOf(w), s, rx: 0.5, ry: 0.42, depth: 0.55, type: 'pit' });
+    { // veines droites : entre le septum et la paroi postérieure (leur direction réelle est presque parallèle à l'axe mitral)
+      const tS = angleOf(septDir), k = wrapA(angleOf(W(0, 0, -1)) - tS);
+      F.push({ name: 'RSPV', th: tS + 0.35 * k, s: 0.62, rx: 0.5, ry: 0.42, depth: 0.55, type: 'pit' }, { name: 'RIPV', th: tS + 0.65 * k, s: 0.45, rx: 0.5, ry: 0.42, depth: 0.55, type: 'pit' });
     }
     // crête entre l'auricule et la veine pulmonaire supérieure gauche
     const a = F[0], b = F[1];
     for (let k = 1; k <= 5; k++) { const t = k / 6; F.push({ th: a.th + wrapA(b.th - a.th) * t, s: a.s + (b.s - a.s) * t, rx: 0.2, ry: 0.2, depth: -0.12, type: 'ridge' }); }
-    F.push({ name: 'Fosse ovale', th: angleOf(septDir), s: 0.55, rx: 0.6, ry: 0.45, depth: 0.1, type: 'fossa' });
+    F.push({ name: 'Fosse ovale', th: angleOf(septDir), s: 0.55, rx: 0.6, ry: 0.45, depth: 0.06, type: 'fossa', noLimbus: true });
   } else {
     const sB = septDir.clone().normalize().multiplyScalar(0.35);
-    F.push({ name: 'Veine cave supérieure', th: angleOf(W(0, 1, -0.35)), s: 0.72, rx: 0.85, ry: 0.7, depth: 0.6, type: 'pit' });
-    const ivc = { name: 'Veine cave inférieure', th: angleOf(W(0, -1, -0.3).add(sB)), s: 0.8, rx: 0.95, ry: 0.75, depth: 0.6, type: 'pit' };
+    F.push({ name: 'Veine cave supérieure', th: angleOf(W(0, 1, -0.35)), s: 0.6, rx: 0.85, ry: 0.7, depth: 0.6, type: 'pit' });
+    const ivc = { name: 'Veine cave inférieure', th: angleOf(W(0, -1, -0.3).add(sB)), s: 0.62, rx: 0.95, ry: 0.75, depth: 0.6, type: 'pit' };
     F.push(ivc);
-    F.push({ th: ivc.th, s: 0.6, rx: 0.9, ry: 0.12, depth: -0.12, type: 'ridge' }); // valvule d'Eustachi
+    F.push({ th: ivc.th, s: ivc.s - 0.18, rx: 0.9, ry: 0.12, depth: -0.12, type: 'ridge' }); // valvule d'Eustachi
     const tPS = Math.abs(wrapA(sep.t0 - postL.t1)) < 0.6 ? sep.t0 : sep.t1; // commissure postéro-septale
     F.push({ name: 'Sinus coronaire', th: tPS + 0.25 * Math.sign(wrapA(ivc.th - tPS)), s: 0.16, rx: 0.32, ry: 0.26, depth: 0.45, type: 'pit' });
     F.push({ name: 'Fosse ovale', th: angleOf(septDir) + 0.25 * Math.sign(wrapA(F[0].th - angleOf(septDir))), s: 0.6, rx: 0.75, ry: 0.6, depth: 0.12, type: 'fossa' });
@@ -83,23 +85,24 @@ export function buildAVView(heart, kind) {
       const g = Math.exp(-q);
       if (f.type === 'pit') { disp += f.depth * g; dark = Math.max(dark, smooth(0.3, 0.85, g)); }
       else if (f.type === 'ridge') disp += f.depth * g;
-      else if (f.type === 'fossa') { const rho = Math.sqrt(q); disp += f.depth * g - 0.1 * Math.exp(-(((rho - 1.15) / 0.25) ** 2)); pale = Math.max(pale, smooth(0.2, 0.7, g)); } // fosse et limbe
+      else if (f.type === 'fossa') { const rho = Math.sqrt(q); disp += f.depth * g - (f.noLimbus ? 0 : 0.1 * Math.exp(-(((rho - 1.15) / 0.25) ** 2))); pale = Math.max(pale, (f.noLimbus ? 0.5 : 1) * smooth(0.2, 0.7, g)); } // fosse et limbe
       else if (f.type === 'pouch') { disp += f.depth * g; trab = Math.max(trab, g); dark = Math.max(dark, 0.35 * smooth(0.5, 0.95, g)); }
     }
     if (!mitral) { // muscles pectinés de la paroi libre (et de l'auricule), crête terminale à leur limite postérieure
       const off = wrapA(th - tFree), win = (1 - smooth(1.2, 1.7, Math.abs(off))) * smooth(0.18, 0.32, s) * (1 - smooth(0.92, 1, s));
       // colonnes irrégulières : espacement, obliquité et épaisseur variables
-      const ph = off * 33 + 8.4 * s + 1.6 * Math.sin(off * 7 + s * 5) + 0.9 * Math.sin(off * 17 - s * 9);
-      const pect = Math.pow(Math.max(0, Math.sin(ph)), 5 + 3 * (0.5 + 0.5 * Math.sin(off * 5 + 2))) * Math.max(win, trab) * (0.7 + 0.3 * Math.sin(off * 11 + s * 13));
+      const ph = off * (26 + 6 * (1 - s)) + 8.4 * s + 1.6 * Math.sin(off * 7 + s * 5) + 0.9 * Math.sin(off * 17 - s * 9);
+      const pect = Math.pow(Math.max(0, Math.sin(ph)), 2 + 1.5 * (0.5 + 0.5 * Math.sin(off * 5 + 2))) * Math.max(win, trab) * (0.7 + 0.3 * Math.sin(off * 11 + s * 13));
       const crista = Math.exp(-(((Math.abs(off) - 1.35) / 0.1) ** 2)) * smooth(0.2, 0.35, s) * (1 - smooth(0.9, 1, s));
       disp -= 0.08 * pect + 0.16 * crista;
       trab = Math.max(trab, pect);
     }
+    if (disp > 0) disp *= 1 - 0.8 * smooth(0.85, 1, s); // près du bord coupé, les orifices ne traversent pas la tranche
     return { disp, dark, pale, trab };
   };
   const base = mitral ? [0.85, 0.64, 0.6] : [0.83, 0.58, 0.56];
   const atrium = (valve) => {
-    const nT = 180, nS = 46, pos = [], col = [], tis = [], idx = [];
+    const nT = mitral ? 180 : 360, nS = 46, pos = [], col = [], tis = [], idx = [];
     const Q = new THREE.Vector3(), P = new THREE.Vector3();
     const point = (th, s, extra, out) => {
       valve.annulus(th, Q);
@@ -121,12 +124,14 @@ export function buildAVView(heart, kind) {
       const ao = (0.55 + 0.45 * smooth(0, 0.6, s)) * (1 - 0.25 * w.trab) * (1 - 0.6 * w.dark);
       push(P, c, ao);
     }
-    for (let j = 0; j < nS; j++) for (let i = 0; i < nT; i++) { const a = j * (nT + 1) + i, b = a + 1, c2 = a + nT + 1, dd = c2 + 1; idx.push(a, c2, b, b, c2, dd); }
-    // paroi externe et bord coupé (épaisseur du muscle auriculaire)
-    const o0 = pos.length / 3;
-    for (let j = 0; j <= nS; j += nS) for (let i = 0; i <= nT; i++) { const th = (i / nT) * 2 * Math.PI, s = j / nS; point(th, s, WALL, P); push(P, [0.86, 0.6, 0.56], 0.9); }
-    const top0 = o0 + (nT + 1), inTop = nS * (nT + 1);
-    for (let i = 0; i < nT; i++) { const a = inTop + i, b = a + 1, c2 = top0 + i, dd = c2 + 1; idx.push(a, b, c2, b, dd, c2); }
+    for (let j = 0; j < nS; j++) for (let i = 0; i < nT; i++) { const a = j * (nT + 1) + i, b = a + 1, c2 = a + nT + 1, dd = c2 + 1; idx.push(a, b, c2, b, dd, c2); }
+    // tranche du bord coupé (épaisseur du muscle auriculaire) : sommets propres, couleur de muscle sectionné
+    const t0 = pos.length / 3;
+    for (const outer of [false, true]) for (let i = 0; i <= nT; i++) {
+      const th = (i / nT) * 2 * Math.PI, { r } = point(th, 1, 0, P);
+      point(th, 1, outer ? WALL : wallAt(th, 1, r).disp, P); push(P, [0.6, 0.27, 0.25], 0.85);
+    }
+    for (let i = 0; i < nT; i++) { const a = t0 + i, b = a + 1, c2 = t0 + nT + 1 + i, dd = c2 + 1; idx.push(a, b, c2, b, dd, c2); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('col', new THREE.BufferAttribute(new Uint8Array(col), 4, true));
@@ -152,10 +157,11 @@ export function buildAVView(heart, kind) {
     for (const h of v.heads) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 14), pilMat); s.scale.set(1, 1, 1.6); s.position.copy(h); s.lookAt(h.clone().add(A)); meshes.push(s); }
     for (const m of meshes) { m.visible = false; group.add(m); }
     const labels = [];
-    for (const f of F) if (f.name && !/PV$/.test(f.name)) labels.push(label(f.name, atr.at(f.th, f.s)));
+    for (const f of F) if (f.name && !/PV$/.test(f.name)) labels.push(label(f.name, atr.at(f.th, Math.min(f.s, 0.5), 0.6)));
     if (mitral) { // veines pulmonaires : une étiquette par côté
       const L = F.filter((f) => /^L.PV$/.test(f.name)), Rv = F.filter((f) => /^R.PV$/.test(f.name));
-      labels.push(label('Veines pulmonaires gauches', atr.at((L[0].th + L[1].th) / 2, 0.6, 0.8)), label('Veines pulmonaires droites', atr.at((Rv[0].th + Rv[1].th) / 2, 0.6, 0.8)));
+      const midA = (a, b) => a + wrapA(b - a) / 2;
+      labels.push(label('Veines pulmonaires gauches', atr.at(midA(L[0].th, L[1].th), 0.5, 0.8)), label('Veines pulmonaires droites', atr.at(midA(Rv[0].th, Rv[1].th), 0.5, 0.8)));
     }
     return { valve: v, meshes, labels, atr };
   };
@@ -183,7 +189,7 @@ export function buildAVView(heart, kind) {
       v.labels.push(leafLabel(v.valve, /Posterior/, uP(1 / 6), 'P1'), leafLabel(v.valve, /Posterior/, uP(5 / 6), 'P3'));
       v.labels.push(k === 'prolapsus' ? leafLabel(v.valve, /Posterior/, 0.5, 'P2 prolabé · cordage rompu', 0.95) : leafLabel(v.valve, /Posterior/, 0.5, 'P2'));
     }
-    extra.push(label('Aorte (en arrière)', variants.normale.atr.at(angleOf(up), 1, 0.2)));
+    extra.push(label('Aorte (en arrière)', variants.normale.atr.at(angleOf(up), 0.75, 0.4)));
   } else {
     const tSep = (sep.t0 + sep.t1) / 2;
     up = dirOf(tSep).projectOnPlane(A).normalize().negate(); // feuillet septal en bas (6 h)
@@ -206,7 +212,7 @@ export function buildAVView(heart, kind) {
     orient: mitral ? 'Vue depuis l’oreillette gauche · <b>aorte en haut</b>' : 'Vue depuis l’oreillette droite · <b>septum en bas</b>',
     group, variants,
     center: C.clone().addScaledVector(atrialSide, 0.6), axis: A.clone(),
-    camDir: atrialSide.clone(), focus: C.clone(), dist: mitral ? 13 : 14.5, up, // recul : on voit la paroi de l'oreillette ouverte
+    camDir: atrialSide.clone(), focus: C.clone(), dist: mitral ? 14 : 16, up, // recul : on voit la paroi de l'oreillette ouverte
     get variant() { return current; },
     setVariant(name) { current = name; dirty = true; view.setVisible(group.visible); },
     showLabels(on) { labelsOn = on; view.setVisible(group.visible); },
