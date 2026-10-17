@@ -4,7 +4,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildHeart, COL } from './heart.js';
 import { ContactShadows } from './contact-shadows.js';
-import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
+import { buildAorticView } from './aortic-view.js';
+import { STRUCTURES, GROUPES, ORDRE, INTRO, VALVE_AORTIQUE } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
 function luminance(hex) {
@@ -82,6 +83,11 @@ pivot.add(heart.root);
 scene.add(pivot);
 key.target.position.copy(CENTER);
 
+// Vue chirurgicale de la valve aortique (racine aortique, variantes normale / bicuspide / rétrécie)
+const aoView = buildAorticView(heart);
+scene.add(aoView.group);
+let aoOpen = false; // bascule Fermée / Ouverte (hors battement)
+
 // Ombres et « fantôme » de la partie retirée par la coupe (voile très léger qui garde la silhouette lisible).
 const ghostMats = [], ghosts = [];
 const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -140,6 +146,29 @@ const SURG_UP = VAO.center.clone().sub(VMI.center).projectOnPlane(VMI.axis).norm
 CUT_MODES.chirurgien = (() => { const c = -VMI.axis.dot(VMI.center); return { normal: VMI.axis.clone(), min: c - 2.5, max: c + 3, def: c + 0.4 }; })();
 // valves et cordages coupés plus loin que le muscle : entiers devant la tranche (vue chirurgien : feuillets fermés
 // bombés vers l'oreillette, jamais percés par le plan)
+CUT_MODES.aortique = { normal: new THREE.Vector3(0, 0, -1), min: 0, max: 1, def: 0.5 }; // vue dédiée, sans plan de coupe
+const isAoMode = () => state.coupe && state.modeCoupe === 'aortique';
+// Bascule entre le cœur et la vue de la valve aortique (cœur masqué, racine aortique montrée, fiche de la variante)
+function syncAorticView() {
+  const on = isAoMode();
+  heart.root.visible = !on;
+  aoView.setVisible(on);
+  document.getElementById('ao-tools').classList.toggle('hidden', !on);
+  document.getElementById('cut-depth-wrap').classList.toggle('hidden', on);
+  canvasWrap.classList.toggle('is-ao', on);
+  if (on) renderAorticFiche(); else if (document.getElementById('fiche').dataset.ao) renderFiche(state.selected);
+  renderer.shadowMap.needsUpdate = true;
+}
+function renderAorticFiche() {
+  const f = VALVE_AORTIQUE[aoView.variant], box = document.getElementById('fiche');
+  box.dataset.ao = '1';
+  box.innerHTML = `
+    <div class="fiche-head"><div><h2>${f.titre}</h2><div class="latin">${f.sousTitre}</div></div></div>
+    <p class="resume">${f.texte}</p>
+    <h3>Pour aller plus loin</h3><ul>${f.details.map((x) => `<li>${x}</li>`).join('')}</ul>
+    <div class="chiffres">${f.chiffres.map((c) => `<span>${c}</span>`).join('')}</div>
+    <p class="hint">Vue depuis l'aorte ouverte, chirurgien à droite du patient. Choisissez « Ouverte » ou lancez le battement pour voir l'orifice.</p>`;
+}
 const INTERIOR_OFF = { 'grand-axe': 0.6, 'cinq-cavites': 0.6, chirurgien: 1.5 };
 // Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; en vue chirurgien, mitrale fermée (systole) pour
 // montrer la ligne de coaptation et les festons, comme le chirurgien l'examine
@@ -153,14 +182,17 @@ function viewForCut(mode, onlyOriented = false) {
   if (mode === 'grand-axe') goDir(heart.cut4.normal);
   else if (mode === 'cinq-cavites') goDir(N5);
   else if (mode === 'chirurgien') goDir(VMI.axis.clone().negate(), { target: VMI.center, dist: 17, up: SURG_UP });
+  else if (mode === 'aortique') goDir(aoView.axis, { target: aoView.center, dist: 11.5 * Math.max(1, 0.95 / camera.aspect), up: aoView.up }); // écran en portrait : plus de recul
   else if (onlyOriented) { if (camera.up.y < 0.99) goView('anterieure'); }
   else if (mode === 'horizontale') goView('superieure');
   else goView('anterieure');
 }
 function chooseCut(mode) {
   document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === mode));
+  const wasAo = isAoMode();
   setCutMode(mode);
   if (state.coupe) viewForCut(mode);
+  if (wasAo !== isAoMode()) applyClipping(); // entrée ou sortie de la vue aortique
   restPose();
 }
 const stencilGroup = new THREE.Group();
@@ -240,13 +272,15 @@ function updateCapPlanes() {
 const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: false, coronaires: true, selected: null, hovered: null, vue: 'anterieure' };
 
 function applyClipping() {
-  const planes = state.coupe ? [cutPlane] : [];
+  const ao = isAoMode(), cut = state.coupe && !ao; // vue aortique : pas de plan de coupe
+  const planes = cut ? [cutPlane] : [];
   syncInterior();
-  heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (state.coupe ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
-  ghosts.forEach((g) => { g.visible = state.coupe && state.modeCoupe !== 'chirurgien'; }); // vue chirurgien : rien entre l'œil et la valve
-  heart.solids.forEach((s) => { s.stencil.visible = state.coupe; });
-  capGroups.forEach((cap) => { cap.visible = state.coupe; });
-  heart.cutOnly.forEach((m) => { m.visible = state.coupe; });
+  heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (cut ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
+  ghosts.forEach((g) => { g.visible = cut && state.modeCoupe !== 'chirurgien'; }); // vue chirurgien : rien entre l'œil et la valve
+  heart.solids.forEach((s) => { s.stencil.visible = cut; });
+  capGroups.forEach((cap) => { cap.visible = cut; });
+  heart.cutOnly.forEach((m) => { m.visible = cut; });
+  syncAorticView();
   canvasWrap.classList.toggle('is-cut', state.coupe);
   renderer.shadowMap.needsUpdate = true;
   syncGhost();
@@ -478,6 +512,7 @@ function select(id) {
     if (on) b.closest('details').open = true; // pas de défilement : la fiche doit rester lisible en haut du panneau
   });
   // vue chirurgien : seules les valves y sont visibles ; pour une autre structure de coupe, retour à la coupe 4 cavités
+  if (id && isAoMode()) chooseCut('grand-axe');
   if (id && STRUCTURES[id].coupe && state.modeCoupe === 'chirurgien' && !/^valve-(mitrale|tricuspide|aortique)$/.test(id)) chooseCut('grand-axe');
   if (id && STRUCTURES[id].coupe && !state.coupe) toggle('coupe', true);
   if (window.innerWidth < 900) document.getElementById('panel').classList.add('open');
@@ -574,6 +609,7 @@ function toggle(name, value) {
 
 function renderFiche(id) {
   const box = document.getElementById('fiche');
+  delete box.dataset.ao;
   if (!id) {
     box.innerHTML = `<h2>${INTRO.titre}</h2><p>${INTRO.texte}</p><p class="hint">${INTRO.conseil}</p>`;
     return;
@@ -619,6 +655,14 @@ function buildPanel() {
   });
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
+  document.querySelectorAll('[data-ao]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-ao]').forEach((x) => x.classList.toggle('active', x === b));
+    aoView.setVariant(b.dataset.ao); renderAorticFiche();
+  }));
+  document.querySelectorAll('[data-ao-phase]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-ao-phase]').forEach((x) => x.classList.toggle('active', x === b));
+    aoOpen = b.dataset.aoPhase === 'ouvert';
+  }));
   document.getElementById('cut-depth').addEventListener('input', (e) => { cutPlane.constant = parseFloat(e.target.value); renderer.shadowMap.needsUpdate = true; syncGhost(); updateCapPlanes(); });
   document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
@@ -693,6 +737,7 @@ function updateOrientation() {
   if (Math.abs(camRight.x) >= Math.abs(camRight.z)) txt = camRight.x > 0 ? '<b>D</b> ← patient → <b>G</b>' : '<b>G</b> ← patient → <b>D</b>';
   else txt = camRight.z > 0 ? '<b>Arrière</b> ← patient → <b>Avant</b>' : '<b>Avant</b> ← patient → <b>Arrière</b>';
   if (state.coupe && state.modeCoupe === 'chirurgien' && !camAnim) txt = 'Vue depuis l’oreillette gauche · <b>aorte en haut</b>';
+  if (isAoMode() && !camAnim) txt = 'Vue depuis l’aorte · chirurgien <b>à droite</b> du patient';
   if (txt !== orientTxt) { orientEl.innerHTML = txt; orientTxt = txt; }
 }
 
@@ -709,6 +754,11 @@ function animate() {
   if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
   else if (!beatIdle) { beatIdle = true; restPose(); }
   if (state.circulation) updateFlow(dt);
+  if (isAoMode()) {
+    const ph = (t % (60 / BPM)) / (60 / BPM);
+    const target = state.battement ? heart.cycle((ph + 0.02) % 1).sl : (aoOpen ? 1 : 0);
+    if (aoView.step(target, dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
+  }
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe)
   if (state.coupe && heart.stepValves(dt, t, state.battement || state.circulation) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   controls.update();
@@ -720,4 +770,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact };
+window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, aoView, chooseCut };

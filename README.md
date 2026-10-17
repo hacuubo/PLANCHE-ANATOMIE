@@ -37,6 +37,12 @@ une liste numérotée des structures, et une fiche explicative par structure.
   ≈ 50 %) et torsion, calculés dans le shader de sommets : tous les tissus, les surfaces de coupe et les ombres
   suivent le même mouvement. Le ventricule se vide pendant l'éjection et se remplit après l'ouverture des valves
   mitrale et tricuspide.
+- **Valve aortique** (vue du chirurgien, js/aortic-view.js) : racine aortique ouverte vue depuis l'aorte (chirurgien à
+  droite du patient), sinus de Valsalva et ostia coronaires, cuspides nommées. Trois variantes avec fiche :
+  **normale** (fermeture en Y, ouverture triangulaire), **bicuspidie type 1 L-R** (Sievers : cuspides coronaires
+  fusionnées, raphé partiellement calcifié, fermeture sur une ligne, ouverture en « bouche de poisson ») et **RAo serré
+  dégénératif** (cuspides épaissies, nodules calcaires de la face aortique à la base et sur la ligne de fermeture,
+  commissures libres, petit orifice). Bascule fermée / ouverte, animation avec le battement.
 - **Circulation** : parcours guidé du sang en 8 étapes (veines caves → oreillette droite → ventricule droit →
   poumons → veines pulmonaires → oreillette gauche → ventricule gauche → aorte), en coupe 4 cavités vue de face et
   d'en haut. Flèches animées dans le sens du sang (bleu = pauvre en oxygène, rouge = riche), valves dans la position
@@ -83,6 +89,7 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, trajets du sang, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
+| `js/aortic-view.js` | Vue chirurgicale de la valve aortique : racine aortique et variantes (normale, bicuspide, rétrécie) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), circulation guidée, étiquettes, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |

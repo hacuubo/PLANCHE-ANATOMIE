@@ -467,6 +467,8 @@ export async function buildHeart() {
     valve: () => interior(tissue(0xffffff, { envelope: true, valve: true, trans: 0.35, deformOn: false, sss: 0.25, rim: 0.12, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.09, bump: 1.1, sheen: 0.08, sheenColor: 0xfff2dc, sheenRoughness: 0.4, envMapIntensity: 0.55 })),
     cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.6, rim: 0.3, roughness: 0.26, clearcoat: 0.75, clearcoatRoughness: 0.1, bump: 0.03, sheen: 0.1 })),
     // piliers : plus clairs que l'endocarde trabéculé, pour se détacher de la paroi ; coupés comme le reste du muscle
+    // intima de la racine aortique (vue de la valve aortique) : couleur et occlusion par sommet
+    intima: () => tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.45, rim: 0.1, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.12, sheen: 0.1 }),
     papillaire: () => tissue(COL.papillaire, { deformK: 0.24, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
     coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.1, bump: 0.08, sss: 0.4, flowOpacity: 0.14 }),
@@ -668,7 +670,8 @@ export async function buildHeart() {
   cutOnly.forEach((m) => { m.visible = false; });
 
   return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
-    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint,
+    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves,
+    material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
     landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k) => addDeformTo(mat, deformU, k) };
 }

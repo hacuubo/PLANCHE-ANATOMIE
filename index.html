@@ -59,10 +59,22 @@
             <button data-cut="grand-axe" class="active" type="button" title="Coupe échographique apicale des quatre cavités">4 cavités</button>
             <button data-cut="cinq-cavites" type="button" title="Coupe 4 cavités basculée vers l'avant : chambre de chasse du ventricule gauche et valve aortique">5 cavités</button>
             <button data-cut="chirurgien" type="button" title="Petit axe de la valve mitrale vue depuis l'oreillette gauche, aorte en haut (vue du chirurgien, ETO 3D)">Vue chirurgien</button>
+            <button data-cut="aortique" type="button" title="Valve aortique vue par le chirurgien depuis l'aorte : normale, bicuspide ou rétrécie">Valve aortique</button>
             <button data-cut="frontale" type="button">Frontale</button>
             <button data-cut="horizontale" type="button">Horizontale</button>
           </div>
-          <label>Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label>
+          <label id="cut-depth-wrap">Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label>
+          <div id="ao-tools" class="ao-tools hidden">
+            <div class="seg" role="group" aria-label="Variante de la valve aortique">
+              <button data-ao="normale" class="active" type="button">Normale</button>
+              <button data-ao="bicuspide" type="button">Bicuspidie 1 L-R</button>
+              <button data-ao="rao" type="button">RAo serré dégénératif</button>
+            </div>
+            <div class="seg" role="group" aria-label="Position de la valve">
+              <button data-ao-phase="ferme" class="active" type="button">Fermée</button>
+              <button data-ao-phase="ouvert" type="button">Ouverte</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="bottombar">

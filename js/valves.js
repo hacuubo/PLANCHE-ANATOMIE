@@ -19,15 +19,15 @@
 import * as THREE from 'three';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
-const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+export const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+export const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
 
 /* ─────────── aspect et épaisseur (cm) ─────────── */
-const ENDO = [0.82, 0.52, 0.5];           // base rosée : continuité avec l'endocarde
-const CLAIRE = [0.92, 0.86, 0.75];         // zone claire : ivoire, mince et translucide
-const RUGUEUSE = [0.9, 0.8, 0.64];      // zone rugueuse : plus épaisse, plus jaune
-const NODULE = [0.94, 0.88, 0.74];
+export const ENDO = [0.82, 0.52, 0.5];           // base rosée : continuité avec l'endocarde
+export const CLAIRE = [0.92, 0.86, 0.75];         // zone claire : ivoire, mince et translucide
+export const RUGUEUSE = [0.9, 0.8, 0.64];      // zone rugueuse : plus épaisse, plus jaune
+export const NODULE = [0.94, 0.88, 0.74];
 // Feuillet auriculo-ventriculaire
 const shadeLeaflet = (u, v) => {
   let c = mix(ENDO, CLAIRE, smooth(0.02, 0.2, v));
@@ -41,7 +41,7 @@ const thickLeaflet = (u, v) => {
   return edge * (0.075 * (1 - smooth(0, 0.15, v)) + 0.045 + 0.065 * smooth(0.55, 0.85, v) - 0.02 * smooth(0.95, 1, v));
 };
 // Cuspide sigmoïde : poche plus sombre au fond, lunules minces de part et d'autre du nodule d'Arantius
-const nodule = (u, v) => Math.exp(-(((u - 0.5) / 0.07) ** 2) - (((v - 0.93) / 0.07) ** 2));
+export const nodule = (u, v) => Math.exp(-(((u - 0.5) / 0.07) ** 2) - (((v - 0.93) / 0.07) ** 2));
 const shadeCusp = (u, v) => {
   const belly = Math.sin(Math.PI * v) * Math.sin(Math.PI * u);
   let c = mix(CLAIRE, [0.88, 0.72, 0.6], belly * 0.35);
@@ -69,7 +69,7 @@ class Spring {
   snap(x) { this.x = x; this.v = 0; }
 }
 // Ouverture d'une valve : la base suit la consigne, le bord libre suit la base avec retard (ondulation en voile)
-class Opening {
+export class Opening {
   constructor(base, tip, x) { this.base = new Spring(...base, x); this.tip = new Spring(...tip, x); this.target = x; }
   step(dt) { this.base.step(this.target, dt); this.tip.step(this.base.x, dt); }
   snap(x) { this.target = x; this.base.snap(x); this.tip.snap(x); }
@@ -80,8 +80,10 @@ class Opening {
 /* ─────────── lame épaisse ─────────── */
 // Surface moyenne (u, v) recalculée à chaque image ; faces supérieure et inférieure décalées de ± épaisseur / 2 le long
 // de la normale, bord libre arrondi (rangée intermédiaire). Normales posées directement (pas de recalcul coûteux).
-class Shell {
-  constructor(nu, nv, material, shade, thick) {
+// bulge(u, v) (cm, facultatif) : relief ajouté sur la face supérieure seule (nodules calcaires de la face aortique) ;
+// les normales sont alors recalculées sur la géométrie.
+export class Shell {
+  constructor(nu, nv, material, shade, thick, bulge = null) {
     this.nu = nu; this.nv = nv;
     const W = nu + 1, G = W * (nv + 1), n = 2 * G + W;
     this.G = G;
@@ -99,6 +101,7 @@ class Shell {
     for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
       const k = j * W + i, u = i / nu, v = j / nv;
       this.th[k] = thick(u, v);
+      if (bulge) (this.bump ??= new Float32Array(G))[k] = bulge(u, v);
       put(k, u, v); put(G + k, u, v);
     }
     for (let i = 0; i <= nu; i++) put(2 * G + i, i / nu, 1);
@@ -159,10 +162,11 @@ class Shell {
       nrm[k * 3] = nx; nrm[k * 3 + 1] = ny; nrm[k * 3 + 2] = nz;
     }
     const P = this.mesh.geometry.attributes.position.array, N = this.mesh.geometry.attributes.normal.array;
+    const bump = this.bump;
     for (let k = 0; k < G; k++) {
-      const h = th[k] / 2;
+      const h = th[k] / 2, hb = h + (bump ? bump[k] : 0);
       for (let q = 0; q < 3; q++) {
-        P[k * 3 + q] = mid[k * 3 + q] + nrm[k * 3 + q] * h; N[k * 3 + q] = nrm[k * 3 + q];
+        P[k * 3 + q] = mid[k * 3 + q] + nrm[k * 3 + q] * hb; N[k * 3 + q] = nrm[k * 3 + q];
         P[(G + k) * 3 + q] = mid[k * 3 + q] - nrm[k * 3 + q] * h; N[(G + k) * 3 + q] = -nrm[k * 3 + q];
       }
     }
@@ -176,6 +180,7 @@ class Shell {
     }
     this.mesh.geometry.attributes.position.needsUpdate = true;
     this.mesh.geometry.attributes.normal.needsUpdate = true;
+    if (bump) this.mesh.geometry.computeVertexNormals(); // relief des nodules
     this.mesh.geometry.computeBoundingSphere();
   }
 }

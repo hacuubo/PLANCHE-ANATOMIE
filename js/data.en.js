@@ -310,3 +310,41 @@ export const INTRO = {
   texte: "The heart is a muscular pump about the size of a fist (roughly 12 cm tall, 250–350 g) housed in the middle of the chest, between the two lungs, behind the sternum and slightly to the left. It is enclosed in a double-walled sac, the pericardium. It has four chambers: two atria that receive blood and two ventricles that eject it. The right side sends blood to the lungs, the left side to the rest of the body.",
   conseil: "Tap a structure on the model, or pick it from the list, to display its explanation. Rotate the heart with your finger or the mouse; pinch to zoom.",
 };
+
+// Surgical view of the aortic valve (js/aortic-view.js): description of each variant
+export const VALVE_AORTIQUE = {
+  normale: {
+    titre: 'Normal aortic valve',
+    sousTitre: 'Surgeon’s view, from the aorta',
+    texte: "The aortic valve separates the left ventricle from the aorta. It has three thin, pliable cusps, named after the coronary arteries that arise just above them: right coronary, left coronary and non-coronary. Each sits in a bulge of the aortic root, the sinus of Valsalva.",
+    details: [
+      "With each heartbeat, the three cusps open into a wide triangle and let blood pass from the left ventricle into the aorta.",
+      "They then close in a “Y” shape, so that blood does not flow back into the heart.",
+      "The openings of the two coronary arteries, which supply the heart muscle, lie in the right and left sinuses.",
+    ],
+    chiffres: ['Valve area: 3–4 cm²', 'Annulus diameter: ≈ 2–2.5 cm'],
+  },
+  bicuspide: {
+    titre: 'Bicuspid aortic valve, type 1 L-R',
+    sousTitre: 'Fusion of the left and right coronary cusps',
+    texte: "The valve has only two functional cusps instead of three: since birth, the left and right coronary cusps have been fused into a single, larger cusp. Their line of fusion forms a ridge, the raphe. This is the most common congenital heart defect; the L-R form (type 1 of the Sievers classification) is by far the most frequent.",
+    details: [
+      "The valve opens like a “fish mouth” (an elongated orifice) instead of a wide triangle, and closes along a single line.",
+      "Over the years it may thicken and calcify, often first along the raphe, and become narrowed; it may also leak.",
+      "The ascending aorta may dilate: regular echocardiography is used to monitor the valve and the aorta.",
+      "Family screening may be offered, as bicuspid valves are sometimes inherited.",
+    ],
+    chiffres: ['1–2% of the population', 'L-R type: ≈ 3 in 4 bicuspid valves'],
+  },
+  rao: {
+    titre: 'Severe degenerative aortic stenosis',
+    sousTitre: 'Calcified tricuspid valve',
+    texte: "With age, the cusps of the aortic valve thicken and become loaded with calcium. Calcified nodules first appear at their base, on the side facing the aorta, then spread along the line of closure. The cusps remain separate, but having become stiff, they open only to a small orifice: the heart has to work harder to eject blood.",
+    details: [
+      "Stenosis is called severe when the valve area is less than 1 cm², with a fast jet of blood (over 4 m/s) and a mean pressure gradient above 40 mmHg on echocardiography.",
+      "It may cause breathlessness on exertion, chest pain or fainting spells.",
+      "Treatment is valve replacement, either by surgery or by a catheter-based procedure (TAVI), decided by the heart team.",
+    ],
+    chiffres: ['Valve area < 1 cm²', 'Peak velocity > 4 m/s', 'Mean gradient > 40 mmHg'],
+  },
+};
