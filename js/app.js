@@ -156,7 +156,13 @@ function syncAorticView() {
   document.getElementById('ao-tools').classList.toggle('hidden', !on);
   document.getElementById('cut-depth-wrap').classList.toggle('hidden', on);
   canvasWrap.classList.toggle('is-ao', on);
+  if (on && state.selected) { // la sélection du cœur (mode focus) ne doit pas griser la vue
+    state.selected = null; heart.setHighlight(null); refreshLabels();
+    document.querySelectorAll('.struct-btn.active').forEach((b) => b.classList.remove('active'));
+  }
   if (on) renderAorticFiche(); else if (document.getElementById('fiche').dataset.ao) renderFiche(state.selected);
+  if (on) document.querySelector('[data-cut="aortique"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  flowOffset();
   renderer.shadowMap.needsUpdate = true;
 }
 function renderAorticFiche() {
@@ -446,7 +452,11 @@ const flowView = (mode = 'grand-axe') => {
 // le cœur est remonté au-dessus du panneau des étapes en décalant la projection (la cible reste au centre du cœur)
 function flowOffset() {
   const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-  if (state.circulation && w && h) camera.setViewOffset(w, h, 0, (flowUI.offsetHeight + 16) / 2, w, h); else camera.clearViewOffset();
+  if (state.circulation && w && h) camera.setViewOffset(w, h, 0, (flowUI.offsetHeight + 16) / 2, w, h);
+  else if (isAoMode() && w && h) { // vue aortique : valve centrée sous le panneau des réglages
+    const top = document.querySelector('.tools').getBoundingClientRect().bottom - canvasWrap.getBoundingClientRect().top;
+    camera.setViewOffset(w, h, 0, -Math.max(0, top) / 2, w, h);
+  } else camera.clearViewOffset();
 }
 function setCirculation(on) {
   flowGroup.visible = on;
@@ -541,12 +551,12 @@ labelRenderer.domElement.addEventListener('pointerup', (e) => {
   if (!downPos) return;
   const moved = Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]);
   downPos = null;
-  if (moved > 6) return;
+  if (moved > 6 || isAoMode()) return; // vue aortique : la fiche de la variante reste affichée
   const hit = pick(e);
   select(hit ? hit.id : null);
 });
 labelRenderer.domElement.addEventListener('pointermove', (e) => {
-  if (e.pointerType === 'touch') return;
+  if (e.pointerType === 'touch' || isAoMode()) return;
   const hit = pick(e);
   const id = hit ? hit.id : null;
   if (id !== state.hovered) { state.hovered = id; refreshLabels(); }
@@ -658,6 +668,7 @@ function buildPanel() {
   document.querySelectorAll('[data-ao]').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('[data-ao]').forEach((x) => x.classList.toggle('active', x === b));
     aoView.setVariant(b.dataset.ao); renderAorticFiche();
+    renderer.shadowMap.needsUpdate = true;
   }));
   document.querySelectorAll('[data-ao-phase]').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('[data-ao-phase]').forEach((x) => x.classList.toggle('active', x === b));
@@ -751,7 +762,7 @@ function animate() {
   const t = clock.elapsedTime;
   if (camAnim) stepCamAnim(dt);
   // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
-  if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
+  if (state.battement && !isAoMode()) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
   else if (!beatIdle) { beatIdle = true; restPose(); }
   if (state.circulation) updateFlow(dt);
   if (isAoMode()) {
@@ -760,7 +771,7 @@ function animate() {
     if (aoView.step(target, dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   }
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe)
-  if (state.coupe && heart.stepValves(dt, t, state.battement || state.circulation) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
+  if (state.coupe && !isAoMode() && heart.stepValves(dt, t, state.battement || state.circulation) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   controls.update();
   if ((frame & 7) === 0) updateOrientation();
   if ((frame++ & 3) === 0) occludeLabels();

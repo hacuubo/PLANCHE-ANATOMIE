@@ -319,7 +319,7 @@ export const VALVE_AORTIQUE = {
       "Puis elles se referment en dessinant un « Y » : le sang ne revient pas vers le cœur.",
       "Les orifices des deux artères coronaires, qui nourrissent le muscle cardiaque, s'ouvrent dans les sinus droit et gauche.",
     ],
-    chiffres: ['Surface d’ouverture : 3 à 4 cm²', 'Diamètre de l’anneau : ≈ 2 à 2,5 cm'],
+    chiffres: ['Surface d’ouverture : 3 à 4 cm²', 'Trois cuspides, trois sinus'],
   },
   bicuspide: {
     titre: 'Bicuspidie aortique type 1 L-R',
@@ -329,7 +329,7 @@ export const VALVE_AORTIQUE = {
       "La valve s'ouvre en « bouche de poisson » (orifice allongé) au lieu d'un grand triangle, et se ferme sur une seule ligne.",
       "Avec les années, elle peut s'épaissir et se calcifier, souvent d'abord le long du raphé, et se rétrécir ; elle peut aussi fuir.",
       "L'aorte ascendante peut se dilater : une échographie régulière permet de surveiller la valve et l'aorte.",
-      "Un avis familial peut être proposé, car la bicuspidie est parfois héréditaire.",
+      "La bicuspidie est parfois héréditaire : une échographie peut être proposée aux proches parents (parents, frères et sœurs, enfants).",
     ],
     chiffres: ['1 à 2 % de la population', 'Type L-R : ≈ 3 bicuspidies sur 4'],
   },
@@ -338,10 +338,10 @@ export const VALVE_AORTIQUE = {
     sousTitre: 'Valve tricuspide calcifiée',
     texte: "Avec l'âge, les cuspides de la valve aortique s'épaississent et se chargent de calcium. Les nodules calcaires apparaissent d'abord à leur base, sur la face tournée vers l'aorte, puis gagnent la ligne de fermeture. Les cuspides restent séparées, mais devenues rigides, elles ne s'ouvrent plus qu'en un petit orifice : le cœur doit forcer pour éjecter le sang.",
     details: [
-      "Le rétrécissement est dit serré quand la surface d'ouverture est inférieure à 1 cm², avec un jet de sang rapide (plus de 4 m/s) et un gradient de pression moyen supérieur à 40 mmHg à l'échographie.",
+      "Le rétrécissement est dit serré quand la surface d'ouverture est inférieure à 1 cm² ; le plus souvent, le jet de sang atteint au moins 4 m/s et le gradient de pression moyen au moins 40 mmHg à l'échographie.",
       "Il peut entraîner un essoufflement à l'effort, des douleurs dans la poitrine ou des malaises.",
       "Le traitement est le remplacement de la valve, par chirurgie ou par voie percutanée (TAVI), décidé par l'équipe cardiologique.",
     ],
-    chiffres: ['Surface < 1 cm²', 'Vitesse max > 4 m/s', 'Gradient moyen > 40 mmHg'],
+    chiffres: ['Surface < 1 cm²', 'Vitesse max ≥ 4 m/s', 'Gradient moyen ≥ 40 mmHg'],
   },
 };

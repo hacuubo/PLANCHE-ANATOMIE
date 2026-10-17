@@ -322,7 +322,7 @@ export const VALVE_AORTIQUE = {
       "They then close in a “Y” shape, so that blood does not flow back into the heart.",
       "The openings of the two coronary arteries, which supply the heart muscle, lie in the right and left sinuses.",
     ],
-    chiffres: ['Valve area: 3–4 cm²', 'Annulus diameter: ≈ 2–2.5 cm'],
+    chiffres: ['Valve area: 3–4 cm²', 'Three cusps, three sinuses'],
   },
   bicuspide: {
     titre: 'Bicuspid aortic valve, type 1 L-R',
@@ -332,7 +332,7 @@ export const VALVE_AORTIQUE = {
       "The valve opens like a “fish mouth” (an elongated orifice) instead of a wide triangle, and closes along a single line.",
       "Over the years it may thicken and calcify, often first along the raphe, and become narrowed; it may also leak.",
       "The ascending aorta may dilate: regular echocardiography is used to monitor the valve and the aorta.",
-      "Family screening may be offered, as bicuspid valves are sometimes inherited.",
+      "Bicuspid valves are sometimes inherited: an echocardiogram may be offered to close relatives (parents, siblings, children).",
     ],
     chiffres: ['1–2% of the population', 'L-R type: ≈ 3 in 4 bicuspid valves'],
   },
@@ -341,10 +341,10 @@ export const VALVE_AORTIQUE = {
     sousTitre: 'Calcified tricuspid valve',
     texte: "With age, the cusps of the aortic valve thicken and become loaded with calcium. Calcified nodules first appear at their base, on the side facing the aorta, then spread along the line of closure. The cusps remain separate, but having become stiff, they open only to a small orifice: the heart has to work harder to eject blood.",
     details: [
-      "Stenosis is called severe when the valve area is less than 1 cm², with a fast jet of blood (over 4 m/s) and a mean pressure gradient above 40 mmHg on echocardiography.",
+      "Stenosis is called severe when the valve area is less than 1 cm²; in most cases the jet of blood reaches at least 4 m/s and the mean pressure gradient at least 40 mmHg on echocardiography.",
       "It may cause breathlessness on exertion, chest pain or fainting spells.",
       "Treatment is valve replacement, either by surgery or by a catheter-based procedure (TAVI), decided by the heart team.",
     ],
-    chiffres: ['Valve area < 1 cm²', 'Peak velocity > 4 m/s', 'Mean gradient > 40 mmHg'],
+    chiffres: ['Valve area < 1 cm²', 'Peak velocity ≥ 4 m/s', 'Mean gradient ≥ 40 mmHg'],
   },
 };

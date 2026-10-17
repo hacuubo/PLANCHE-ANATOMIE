@@ -173,6 +173,7 @@ function patchShader(sh) {
         float f1 = vnoise(vec3(vPar.x * 70.0, vPar.y * 4.0, 0.5));
         float f2 = vnoise(vec3(vPar.x * 150.0 + 7.0, vPar.y * 7.0, 3.0));
         float fib = mix(smoothstep(0.28, 0.72, 0.6 * f1 + 0.4 * f2), 0.5, lodF); // contraste étiré : faisceaux nets
+        fib = mix(fib, 0.5, smoothstep(0.18, 0.3, vPar.z)); // calcaire épais : plus de fibres visibles
         float rough = smoothstep(0.6, 0.9, vPar.y);
         float crimp = mix(0.5 + 0.5 * sin(vPar.y * 110.0 + 5.0 * vnoise(vec3(vPar.x * 12.0, 1.0, 2.0))), 0.5, lodC);
         float nod = vnoise(vec3(vPar.x * 28.0, vPar.y * 20.0, 9.0));

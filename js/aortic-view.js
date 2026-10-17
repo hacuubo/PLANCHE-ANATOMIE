@@ -21,6 +21,9 @@ const gauss = (x, s) => Math.exp(-((x / s) ** 2));
 // petit générateur pseudo-aléatoire reproductible (même valve à chaque chargement)
 const rng = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 
+// Matériaux de la vue : uniformes de mise en retrait (mode focus) et de sélection propres, avant toute compilation
+const isolate = (m) => { const u = m.userData.uniforms; if (u) { u.uFocus = { value: 0 }; u.uSel = { value: -2 }; } return m; };
+
 export function buildAorticView(heart) {
   const d = heart.valveData['valve-aortique'];
   const C = V(d.center), A = V(d.axis).normalize(), E1 = V(d.e1), E2 = V(d.e2);
@@ -33,8 +36,10 @@ export function buildAorticView(heart) {
   const group = new THREE.Group();
   group.visible = false;
 
+  const ostiumLabels = [];
   /* ── racine aortique : sinus de Valsalva, jonction sino-tubulaire, chambre de chasse ── */
-  const HS = Hc * 1.15, HT = Hc * 1.5, HB = -0.9;
+  const HS = Hc * 1.15, HT = HS, HB = -0.9; // bord coupé à la jonction sino-tubulaire
+  const FLARE = Math.tan(0.6); // aorte ouverte et écartée : les sinus et les ostia restent visibles d'en haut
   const sectors = [cR, cL, cN];
   const lobe = (th) => { // 0 aux commissures, 1 au milieu d'un sinus
     for (const s of sectors) { const t = ((th - s.t0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI), span = s.t1 - s.t0; if (t <= span) return Math.sin(Math.PI * t / span); }
@@ -42,8 +47,9 @@ export function buildAorticView(heart) {
   };
   const rootR = (th, h) => {
     if (h < 0) return R * (0.93 + 0.07 * smooth(HB, 0, h));
-    if (h > HS) return R * 0.98;
-    return R * (1 + 0.2 * Math.sin(Math.PI * h / HS) * lobe(th) - 0.02 * smooth(0.6 * HS, HS, h));
+    const l = lobe(th);
+    if (h <= HS / 2) return R * (1 + 0.2 * Math.sin(Math.PI * h / HS) * l);
+    return R * (1 + 0.2 * l) + l * FLARE * (h - HS / 2); // pas de surplomb au-dessus des sinus
   };
   {
     const nT = 132, nH = 46, wall = 0.2;
@@ -81,7 +87,7 @@ export function buildAorticView(heart) {
     g.setAttribute('tis', new THREE.BufferAttribute(new Uint8Array(tis), 4, true));
     g.setIndex(idx);
     g.computeVertexNormals();
-    const root = new THREE.Mesh(g, heart.material('vue-aortique', 'intima'));
+    const root = new THREE.Mesh(g, isolate(heart.material('vue-aortique', 'intima')));
     root.castShadow = true; root.receiveShadow = true;
     group.add(root);
     // fond : cavité du ventricule gauche dans l'ombre, vue à travers la valve ouverte
@@ -90,20 +96,22 @@ export function buildAorticView(heart) {
     floor.lookAt(floor.position.clone().add(A));
     group.add(floor);
     // ostia des artères coronaires (sinus droit et gauche), juste sous la jonction sino-tubulaire
-    const rimMat = new THREE.MeshPhysicalMaterial({ color: 0xe8cdc2, roughness: 0.4, clearcoat: 0.5 });
-    for (const s of [cR, cL]) {
-      const th = (s.t0 + s.t1) / 2, h = Hc * 0.92, n = dir(th);
-      const p = C.clone().addScaledVector(n, rootR(th, h) - 0.015).addScaledVector(A, h);
-      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.15, 32), new THREE.MeshBasicMaterial({ color: 0x2a0b0e }));
+    const rimMat = new THREE.MeshPhysicalMaterial({ color: 0xd99a92, roughness: 0.45, clearcoat: 0.5 });
+    for (const [s, name] of [[cR, 'Ostium coronaire droit'], [cL, 'Ostium coronaire gauche']]) {
+      const th = (s.t0 + s.t1) / 2, h = Hc * 0.92, n = dir(th).addScaledVector(A, -FLARE).normalize(); // normale de la paroi évasée
+      const p = C.clone().addScaledVector(dir(th), rootR(th, h)).addScaledVector(n, -0.015).addScaledVector(A, h);
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.2, 32), new THREE.MeshBasicMaterial({ color: 0x2a0b0e }));
       hole.position.copy(p); hole.lookAt(p.clone().sub(n));
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.035, 12, 40), rimMat);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.04, 12, 40), rimMat);
       rim.position.copy(p); rim.lookAt(p.clone().sub(n));
       group.add(hole, rim);
+      ostiumLabels.push([p.clone().addScaledVector(A, 0.35), name]);
     }
   }
 
   /* ── cuspides ── */
   const valveMat = heart.material('vue-aortique', 'valve');
+  isolate(valveMat);
   const tD = new THREE.Vector3(), Hp = new THREE.Vector3(), Fc = new THREE.Vector3(), Fo = new THREE.Vector3(), Q0 = new THREE.Vector3(), Q1 = new THREE.Vector3(), M = new THREE.Vector3(), U = new THREE.Vector3(), Wv = new THREE.Vector3();
   // spec : t0, t1 (angles des commissures), raphe (u du raphé, facultatif), chord (fermeture sur une ligne : bicuspidie),
   // shade, thick, bulge. Bord libre ouvert : tricuspide → triangle à côtés bombés entre les commissures (orifice
@@ -219,18 +227,20 @@ export function buildAorticView(heart) {
       };
       const shade = (u, v) => {
         const k = Math.min(1, calc(u, v) / 0.12);
-        let c = mix([0.86, 0.75, 0.57], [0.94, 0.92, 0.86], k);              // cuspide fibreuse jaunâtre → calcaire crayeux
+        let c = mix([0.88, 0.8, 0.66], [0.95, 0.94, 0.9], k);                 // cuspide fibreuse → calcaire crayeux
         c = mix(c, ENDO, 1 - smooth(0, 0.08, v));
-        const ao = 0.6 + 0.4 * (1 - Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * 0.5) - 0.25 * k * (1 - k) * 4 * 0.5;
+        const foot = Math.min(1, calc(u, v) / 0.03) * (1 - k);              // pied des nodules : ombre de contact
+        const ao = 0.62 + 0.38 * (1 - Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * 0.5) - 0.3 * foot;
         return [...c, ao];
       };
-      return makeCusp({ t0: s.t0, t1: s.t1, shade, thick: (u, v) => 0.11 + 0.03 * (1 - smooth(0, 0.2, v)), bulge: calc });
+      return makeCusp({ t0: s.t0, t1: s.t1, shade, thick: (u, v) => 0.11 + 0.03 * (1 - smooth(0, 0.2, v)) + calc(u, v), bulge: (u, v) => 0.5 * calc(u, v) });
     });
     variants.rao = {
       max: 0.18, wob: 0, cusps: shells,
       labels: [labelAt(mid(cR), 'Coronaire droite (R)'), labelAt(mid(cL), 'Coronaire gauche (L)'), labelAt(mid(cN), 'Non coronaire (N)')],
     };
   }
+  const commonLabels = ostiumLabels.map(([p, t]) => label(t, p));
   for (const v of Object.values(variants)) {
     v.op = new Opening([14, 0.75], [9, 0.65], 0);
     for (const c of v.cusps) { c.shell.mesh.visible = false; group.add(c.shell.mesh); }
@@ -254,6 +264,7 @@ export function buildAorticView(heart) {
         for (const c of v.cusps) c.shell.mesh.visible = on && k === current;
         for (const l of v.labels) l.visible = on && k === current;
       }
+      for (const l of commonLabels) l.visible = on;
       dirty = true;
     },
     // open : 0 fermée → 1 ouverture maximale de la variante
