@@ -60,7 +60,7 @@ button { font: inherit; color: inherit; }
 .only-mobile { display: none; }
 
 /* ── disposition ── */
-.layout { position: relative; z-index: 1; height: calc(100% - var(--topbar)); display: grid; grid-template-columns: 1fr clamp(300px, 32vw, 380px); }
+.layout { position: relative; z-index: 1; height: calc(100% - var(--topbar)); display: grid; grid-template-columns: 1fr; }
 /* fond de studio : dégradé gris-bleu très clair, comme en animation médicale (le modèle s'en détache par contre-jour) */
 .scene { position: relative; overflow: hidden; cursor: grab;
   background: radial-gradient(75% 70% at 45% 42%, #fbfcfd 0%, #e2e8ef 45%, #c4ced9 100%); }
@@ -234,3 +234,9 @@ button { font: inherit; color: inherit; }
   .cut-tools { max-width: 100%; }
   .fg-text { font-size: 14px; }
 }
+
+/* ── modèle visuel : plein écran, sans panneau, sans texte ni repère ── */
+.panel, #panel-toggle, .bottombar { display: none !important; }
+.flow-guide .fg-live, .flow-guide .fg-note { display: none; }
+.flow-guide { width: auto; padding: 6px 10px; }
+.flow-guide .fg-ctrl { margin-top: 0; }

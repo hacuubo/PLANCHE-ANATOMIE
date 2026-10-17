@@ -649,7 +649,7 @@ function refreshLabels() {
   for (const id in labels) {
     const L = labels[id];
     // étiquette flottante : structure sélectionnée ou survolée
-    L.obj.visible = state.selected === id || state.hovered === id;
+    L.obj.visible = false; // modèle visuel : pas de nom affiché
     L.el.classList.toggle('selected', state.selected === id);
     L.el.classList.toggle('hover', state.hovered === id && state.selected !== id);
   }
