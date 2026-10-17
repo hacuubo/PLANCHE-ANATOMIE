@@ -87,7 +87,7 @@ key.target.position.copy(CENTER);
 // Vues chirurgicales des valves (gros plan : aortique, mitrale, tricuspide ; normale et pathologique)
 const VALVE_VIEWS = { aortique: buildAorticView(heart), mitrale: buildAVView(heart, 'mitrale'), tricuspide: buildAVView(heart, 'tricuspide') };
 const VALVE_FICHES = { aortique: VALVE_AORTIQUE, mitrale: VALVE_MITRALE, tricuspide: VALVE_TRICUSPIDE };
-for (const v of Object.values(VALVE_VIEWS)) scene.add(v.group);
+for (const v of Object.values(VALVE_VIEWS)) { scene.add(v.group); v.showLabels(false); } // pas d'étiquettes sur les valves
 
 // Ombres et « fantôme » de la partie retirée par la coupe (voile très léger qui garde la silhouette lisible).
 const ghostMats = [], ghosts = [];
@@ -244,7 +244,7 @@ function updateCapPlanes() {
   });
 }
 
-const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: false, coronaires: true, selected: null, hovered: null, vue: 'anterieure', valve: null };
+const state = { coupe: false, modeCoupe: 'grand-axe', circulation: false, battement: true, coronaires: true, selected: null, hovered: null, vue: 'anterieure', valve: null };
 
 function applyClipping() {
   const cut = state.coupe;
@@ -431,6 +431,7 @@ function setCirculation(on) {
   flowUI.classList.toggle('hidden', !on);
   canvasWrap.classList.toggle('is-flow', on);
   if (on) {
+    flow.beat = state.battement;
     if (state.battement) toggle('battement', false);
     flow.prev = { coupe: state.coupe, mode: state.modeCoupe };
     flow.pose = { atr: 0, ven: 0, av: 0.9, sl: 0 };
@@ -442,6 +443,7 @@ function setCirculation(on) {
     flowOffset();
   } else {
     flowOffset();
+    if (flow.beat) toggle('battement', true);
     restPose();
     heart.setHighlight(state.selected);
     if (flow.prev) { if (flow.prev.mode !== state.modeCoupe) chooseCut(flow.prev.mode); if (!flow.prev.coupe && state.coupe) toggle('coupe', false); }
@@ -455,6 +457,7 @@ function setCirculation(on) {
 //   2. la caméra plonge vers la valve en pivotant jusqu'à la vue chirurgicale, pendant que le cœur s'efface et que le
 //      gros plan (valve, paroi, repères) apparaît.
 // D'une valve à l'autre : retour au cœur translucide, rotation vers la nouvelle valve, puis plongée.
+let valvePanel = false; // panneau du choix des valves ouvert (sans valve choisie : la vue ne bouge pas)
 let valveOpen = false, lastValve = 'aortique', trans = null, markerOn = false, markerFade = 1;
 const viewMats = new Set();
 for (const v of Object.values(VALVE_VIEWS)) v.group.traverse((o) => { if (o.material) viewMats.add(o.material); });
@@ -494,7 +497,7 @@ marker.renderOrder = 950; marker.layers.set(FLOW_LAYER); marker.visible = false;
 scene.add(marker);
 const markerLabel = (() => { const el = document.createElement('div'); el.className = 'ao-label marker'; const o = new CSS2DObject(el); o.visible = false; scene.add(o); return o; })();
 function setMarker(v) {
-  markerOn = !!v; markerFade = 1; marker.visible = markerOn; markerLabel.visible = markerOn;
+  markerOn = !!v; markerFade = 1; marker.visible = markerOn; markerLabel.visible = false; // l'anneau seul désigne la valve
   if (!v) return;
   marker.position.copy(v.focus); marker.lookAt(v.focus.clone().add(v.camDir));
   markerLabel.element.textContent = v.title;
@@ -520,6 +523,7 @@ const easeIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 let pendingAction = null; // action demandée pendant une transition : exécutée à la fin
 function runSteps(steps, done) {
+  steps.forEach((s) => { s.dur *= 2; }); // zoom lent : le patient suit où l'on va
   if (reduced.matches) steps.forEach((s) => { s.dur *= 0.35; }); // mouvement réduit : transitions brèves
   camAnim = null; trans = { steps, i: 0, t: 0, done }; controls.enabled = false; startStep();
 }
@@ -559,7 +563,7 @@ function goValve(key, after) {
     dur: 1.1, to: () => ctxCam(V0),
     onStart: () => { heart.root.visible = true; showHeartValve(V0, true); V0.showLabels(false); fadeHeart(0, V0.heartValveId); },
     onUpdate: (e) => { fadeHeart(0.28 * e, V0.heartValveId); setOpacity(viewSet(V0), 1 - smooth01(0, 0.6, e)); },
-    onEnd: () => { V0.setVisible(false); setOpacity(viewSet(V0), 1); V0.showLabels(true); setMarker(V1 ? null : V0); },
+    onEnd: () => { V0.setVisible(false); setOpacity(viewSet(V0), 1); setMarker(V1 ? null : V0); },
   });
   if (V1) {
     if (V0) steps.push({ // d'une valve à l'autre, autour du cœur translucide
@@ -579,11 +583,11 @@ function goValve(key, after) {
       onUpdate: (e) => {
         fadeHeart(0.28 * (1 - smooth01(0.3, 0.85, e)), V1.heartValveId);
         setOpacity(viewSet(V1), smooth01(0.35, 0.9, e));
-        markerFade = 1 - smooth01(0, 0.45, e); markerLabel.visible = e < 0.45;
+        markerFade = 1 - smooth01(0, 0.45, e);
       },
       onEnd: () => {
         heart.root.visible = false; showHeartValve(V1, false); fadeHeart(1); setMarker(null);
-        setOpacity(viewSet(V1), 1); V1.showLabels(true); flowOffset();
+        setOpacity(viewSet(V1), 1); flowOffset();
       },
     });
   } else steps.push({ // retour au cœur entier, de face
@@ -596,21 +600,24 @@ function goValve(key, after) {
 const smooth01 = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // Interface : bouton « Valves », panneau (valve, variante, position), fiche de la variante
 function syncValveUI() {
-  const v = state.valve && VALVE_VIEWS[state.valve];
-  document.getElementById('valve-tools').classList.toggle('hidden', !v);
+  const v = state.valve && VALVE_VIEWS[state.valve], open = !!v || valvePanel;
+  document.getElementById('valve-tools').classList.toggle('hidden', !open);
+  document.getElementById('valve-variants').classList.toggle('hidden', !v);
+  document.querySelector('[data-vphase]').parentElement.classList.toggle('hidden', !v);
   const btn = document.querySelector('[data-toggle="valves"]');
-  btn.classList.toggle('on', !!v); btn.setAttribute('aria-pressed', String(!!v));
+  btn.classList.toggle('on', open); btn.setAttribute('aria-pressed', String(open));
   canvasWrap.classList.toggle('is-valve', !!v);
   document.querySelectorAll('[data-valve]').forEach((b) => b.classList.toggle('active', b.dataset.valve === state.valve));
   if (v) {
     const seg = document.getElementById('valve-variants');
     seg.innerHTML = v.variantList.map(([k, l]) => `<button type="button" data-variant="${k}" class="${k === v.variant ? 'active' : ''}">${l}</button>`).join('');
-    seg.querySelectorAll('[data-variant]').forEach((b) => b.addEventListener('click', () => { v.setVariant(b.dataset.variant); if (!trans) v.showLabels(true); syncValveUI(); renderer.shadowMap.needsUpdate = true; }));
+    seg.querySelectorAll('[data-variant]').forEach((b) => b.addEventListener('click', () => { v.setVariant(b.dataset.variant); syncValveUI(); renderer.shadowMap.needsUpdate = true; }));
     renderValveFiche(v);
   } else if (document.getElementById('fiche').dataset.ao) renderFiche(state.selected);
   flowOffset();
 }
 function renderValveFiche(v) {
+  return; // modèle visuel : pas de fiche
   const f = VALVE_FICHES[v.key][v.variant], box = document.getElementById('fiche');
   box.dataset.ao = '1';
   box.innerHTML = `
@@ -667,7 +674,6 @@ function select(id) {
   if (id && state.valve) { goValve(null, () => select(id)); return; } // retour au cœur, puis sélection
   if (id && STRUCTURES[id].coupe && state.modeCoupe === 'chirurgien' && !/^valve-(mitrale|tricuspide|aortique)$/.test(id)) chooseCut('grand-axe');
   if (id && STRUCTURES[id].coupe && !state.coupe) toggle('coupe', true);
-  if (window.innerWidth < 900) document.getElementById('panel').classList.add('open');
 }
 
 /* ─────────── picking ─────────── */
@@ -748,13 +754,14 @@ function goView(name, instant = false) {
 
 function toggle(name, value) {
   if (trans && name !== 'battement' && name !== 'coronaires') { pendingAction = () => toggle(name, value); return; }
-  if (name === 'valves') { goValve(state.valve ? null : lastValve); return; }
+  if (name === 'valves') { if (state.valve) { valvePanel = false; goValve(null); } else { valvePanel = !valvePanel; syncValveUI(); } return; }
   if ((name === 'coupe' || name === 'circulation') && state.valve) { goValve(null, () => toggle(name, value)); return; }
   if (name === 'coupe' && state.circulation && value === undefined) { flow.prev = { coupe: true, mode: state.modeCoupe }; toggle('circulation', false); return; }
   state[name] = value ?? !state[name];
   renderer.shadowMap.needsUpdate = true;
   const btn = document.querySelector(`[data-toggle="${name}"]`);
   if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
+  if (name === 'battement') { const t = document.querySelector('.beat-txt'); if (t) t.textContent = state.battement ? 'Pause' : 'Battement'; }
   if (name === 'battement' && state.battement && state.circulation) toggle('circulation', false);
   if (name === 'coupe') restPose();
   if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
@@ -765,6 +772,7 @@ function toggle(name, value) {
 function renderFiche(id) {
   const box = document.getElementById('fiche');
   delete box.dataset.ao;
+  box.innerHTML = ''; box.hidden = true; return; // modèle visuel : pas de texte explicatif
   if (!id) {
     box.innerHTML = `<h2>${INTRO.titre}</h2><p>${INTRO.texte}</p><p class="hint">${INTRO.conseil}</p>`;
     return;
@@ -820,7 +828,8 @@ function buildPanel() {
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   renderFiche(null);
   // états initiaux (le battement est désactivé par défaut : le patient voit d'abord une planche)
-  ['coronaires'].forEach((n) => { const b = document.querySelector(`[data-toggle="${n}"]`); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); });
+  // battement automatique dès l'ouverture (bouton Pause pour l'arrêter)
+  { const b = document.querySelector('[data-toggle="battement"]'); b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
 }
 buildPanel();
 setCutMode('grand-axe'); // coupe par défaut : plan du grand axe, montre VD en croissant, VG, septum et oreillettes

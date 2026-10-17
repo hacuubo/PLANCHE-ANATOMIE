@@ -37,7 +37,10 @@ une liste numérotée des structures, et une fiche explicative par structure.
   ≈ 50 %) et torsion, calculés dans le shader de sommets : tous les tissus, les surfaces de coupe et les ombres
   suivent le même mouvement. Le ventricule se vide pendant l'éjection et se remplit après l'ouverture des valves
   mitrale et tricuspide.
-- **Valves** (gros plans chirurgicaux, js/aortic-view.js et js/av-views.js) : bouton « Valves », choix de la valve,
+- **Modèle visuel** : pas de texte explicatif ni de légende (seul un petit repère d'orientation reste) ; coronaires
+  toujours affichées ; battement automatique dès l'ouverture, bouton « Pause ».
+- **Valves** (gros plans chirurgicaux, js/aortic-view.js et js/av-views.js) : le bouton « Valves » ouvre le choix de la
+  valve sans bouger la vue ; le clic sur le nom de la valve l'entoure d'un anneau et lance le zoom (≈ 6 s). Choix
   de la variante et de la position (fermée / ouverte), animation avec le battement, fiche par variante.
   **Zoom de repérage** : la caméra montre d'abord le cœur translucide avec la valve à sa place, entourée et nommée,
   puis plonge vers elle jusqu'à la vue chirurgicale ; d'une valve à l'autre, elle ressort et tourne autour du cœur.

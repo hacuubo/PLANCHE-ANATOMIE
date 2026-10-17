@@ -141,7 +141,13 @@ button { font: inherit; color: inherit; }
 .label .num { background: var(--card) !important; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); font-family: var(--sans); width: 20px; height: 20px; font-size: 11.5px; }
 
 /* ── vues des valves ── */
-.scene.is-valve .legend-item, .scene.is-valve .legend-sep { display: none; }
+/* barre basse réduite au repère d'orientation */
+.bottombar { left: auto; right: 14px; width: auto; }
+/* bouton du battement : pause pendant l'animation, lecture à l'arrêt */
+.beat-btn .ic-play { display: none; fill: currentColor; stroke: none; }
+.beat-btn:not(.on) .ic-play { display: inline; }
+.beat-btn:not(.on) .ic-pause { display: none; }
+.tool.option.beat-btn.on::before { content: none; }
 .ao-label.marker { font-weight: 600; border-color: var(--ink); }
 .ao-label {
   font-size: 13px; color: var(--ink); white-space: nowrap; pointer-events: none;
