@@ -7,7 +7,7 @@
 // et déformation du battement compris (une passe toute faite redessinerait la scène sans coupe ni battement).
 // Normales reconstruites depuis la profondeur, échantillonnage en spirale (demi-résolution), flou bilatéral à la
 // recomposition, puis tonalité et espace de couleur de sortie identiques au rendu direct.
-// Les éléments d'interface 3D (flèches de la circulation, calque 1) sont dessinés après, sans ombrage.
+// Les éléments d'interface 3D éventuels (calque 1) sont dessinés après, sans ombrage.
 import * as THREE from 'three';
 
 // Triangle plein écran (sans dépendance aux modules d'exemples de three)
@@ -145,7 +145,10 @@ export class ContactShadows {
     this.aoQuad.render(renderer);
     renderer.setRenderTarget(null);
     this.composeQuad.render(renderer);
-    // calque d'interface (flèches) : par-dessus, sans ombrage ni nouvel effacement
+    // calque d'interface : par-dessus, sans ombrage ni nouvel effacement (rien à dessiner : passe sautée)
+    let any = false;
+    scene.traverseVisible((o) => { if (!any && o.isMesh && o.layers.isEnabled(this.overlayLayer) && !o.layers.isEnabled(0)) any = true; });
+    if (!any) return;
     const auto = renderer.autoClear;
     renderer.autoClear = false;
     camera.layers.set(this.overlayLayer);

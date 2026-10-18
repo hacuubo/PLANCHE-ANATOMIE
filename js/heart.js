@@ -8,7 +8,7 @@
 //     visibles comme sur les planches de référence ;
 //   - cavités et lumière des vaisseaux en solides fermés (surfaces de coupe), carte 3D de la paroi (tranches) ;
 //   - pièces réelles : coronaires et veines du cœur, feuillets valvulaires avec leurs cordages, muscles papillaires ;
-//   - repères : axe du cœur, système de conduction placé dans le septum réel, trajets du sang, ancres d'étiquettes.
+//   - repères : axe du cœur, système de conduction placé dans le septum réel, ancres d'étiquettes.
 // Rendu « tissu vivant » : fibres musculaires, film humide, translucidité, occlusion ambiante cuite.
 import * as THREE from 'three';
 import { buildValves } from './valves.js';
@@ -105,6 +105,8 @@ vec3 perturbN(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) {
 //   uDDil : dilatation de l'anneau tricuspide et des cavités voisines (vue « anneau dilaté »), autour de uDTc / uDTa,
 //        le versant septal (uDTs) restant fixe.
 export const K_ENDO = 0.38, K_EPI = 0.10;
+// sinus coronaire masqué à moins de CS_CLIP cm de l'endocarde, du côté de l'oreillette (shader et orifice)
+const CS_CLIP = 0.2;
 export const GLSL_DEFORM = /* glsl */`
 uniform vec3 uDB; uniform vec3 uDA; uniform float uDL; uniform vec4 uDAV; uniform float uDApx; uniform vec3 uDRV;
 uniform vec2 uDR; uniform float uDLg; uniform vec2 uDTw; uniform vec2 uDAt; uniform float uDRes;
@@ -192,6 +194,14 @@ bool inRoot(vec3 p, float grow) {
   }
   return false;
 }
+// fond de la lumière artérielle, fermée à la base des cuspides : retiré, on voit le ventricule à travers la valve
+bool inRootFloor(vec3 p) {
+  for (int i = 0; i < 2; i++) {
+    vec3 q = p - uHoleC[i].xyz; float al = dot(q, uHoleA[i].xyz);
+    if (al > -1.5 && al < 0.15 && length(q - uHoleA[i].xyz * al) < uHoleC[i].w * 0.9) return true;
+  }
+  return false;
+}
 `;
 const cutDiscard = (test) => `#include <clipping_planes_fragment>\n  if (uCutOn > 0.5 && ${test}) discard;`;
 // Ajoute la déformation à un matériau quelconque (stencil des coupes, fantôme) : uniformes partagés + raideur k.
@@ -229,9 +239,7 @@ function patchShader(sh) {
       #ifdef VALVE
       attribute vec3 vparam; varying vec3 vPar;
       #endif
-      #ifdef CAVCLIP
-      varying float vInCav;
-      #endif`)
+      `)
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       vObj = position;
       #ifdef VALVE
@@ -242,17 +250,11 @@ function patchShader(sh) {
       #else
       vCol = vec3(1.0); vTis = uTis; vSid = -10.0;
       #endif
-      #ifdef CAVCLIP
-      { // dans une cavité : profond sous l'épicarde (r) et du côté du sang (g nul)
-        vec4 wc = wallAt((modelMatrix * vec4(position, 1.0)).xyz);
-        vInCav = (1.0 - smoothstep(0.01, 0.04, wc.g * 2.55)) * smoothstep(0.2, 0.35, wc.r * 2.55);
-      }
-      #endif
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#ifdef CAVCLIP\nvarying float vInCav;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif`)
-    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  if (vInCav > 0.5) discard;\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vCutW, 0.4)) discard;\n  #endif')
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#ifdef CAVCLIP\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj)) discard;\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -574,7 +576,7 @@ export async function buildHeart() {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, roots = false, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, flowOpacity, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, roots = false, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -593,7 +595,6 @@ export async function buildHeart() {
     m.customProgramCacheKey = () => (valve ? 'tissu-valve' : envelope ? 'tissu-enveloppe' : cavClip ? 'tissu-cavite' : roots ? 'tissu-racine' : 'tissu');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
-    if (flowOpacity !== undefined) m.userData.flowOpacity = flowOpacity;
     materials.push(m); tissueMats.push(m);
     return m;
   };
@@ -608,9 +609,9 @@ export async function buildHeart() {
     intima: () => tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.45, rim: 0.1, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.12, sheen: 0.1 }),
     papillaire: () => tissue(COL.papillaire, { deformK: K_ENDO, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
-    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a, flowOpacity: 0.14 }),
+    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
     // sinus coronaire : la pièce BodyParts3D se prolonge dans l'oreillette droite ; masquée au-delà de son orifice
-    coroV: (id) => tissue(COL.veineCard, { cavClip: id === 'sinus-coronaire', tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff, flowOpacity: 0.14 }),
+    coroV: (id) => tissue(COL.veineCard, { cavClip: id === 'sinus-coronaire', tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff }),
   };
   const matFor = (id, preset) => {
     const key = `${id}|${preset}`;
@@ -621,7 +622,7 @@ export async function buildHeart() {
   const register = (id, mesh) => { mesh.userData.id = id; root.add(mesh); reg(id).meshes.push(mesh); return mesh; };
 
   /* ── Enveloppe continue ── */
-  const envMat = tissue(0xffffff, { envelope: true, flowOpacity: 0.28, rim: 0.45 });
+  const envMat = tissue(0xffffff, { envelope: true, rim: 0.45 });
   const envelope = new THREE.Mesh(geos.enveloppe.geometry, envMat);
   envelope.userData.envelope = true;
   envelope.castShadow = true; envelope.receiveShadow = true;
@@ -649,7 +650,7 @@ export async function buildHeart() {
   }
   // intima des racines aortique et pulmonaire : paroi interne visible quand une coupe ouvre la racine
   {
-    const m = new THREE.Mesh(geos['lumiere-artere'].geometry, tissue(0xecd2c4, { roots: true, side: THREE.BackSide, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.1, sss: 0.45, rim: 0.1 }));
+    const m = new THREE.Mesh(geos['lumiere-artere'].geometry, tissue(0xdba4a0, { roots: true, side: THREE.BackSide, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.1, sss: 0.45, rim: 0.1 }));
     m.receiveShadow = true;
     root.add(m); cutOnly.push(m);
   }
@@ -716,19 +717,64 @@ export async function buildHeart() {
     deformU.uDLA.value.copy(acc['oreillette-gauche'][0]).multiplyScalar(1 / Math.max(1, acc['oreillette-gauche'][1]));
   }
   // même déformation que GLSL_DEFORM, côté processeur (valves, cordages) ; carte de la paroi lue comme par le GPU
-  const wallB = (() => {
+  // canal ch de la carte (0 profondeur sous l'épicarde, 1 distance à l'endocarde, 2 fraction transmurale, 3 tissu)
+  const wallCh = (() => {
     if (!wall) return null;
     const D = wall.texture.image.data, [nx, ny, nz] = [wall.n.x, wall.n.y, wall.n.z], mn = wall.min, st = wall.step;
-    const at = (i, j, k) => D[((Math.min(nz - 1, Math.max(0, k)) * ny + Math.min(ny - 1, Math.max(0, j))) * nx + Math.min(nx - 1, Math.max(0, i))) * 4 + 2] / 255;
-    return (p) => {
+    let c = 2;
+    const at = (i, j, k) => D[((Math.min(nz - 1, Math.max(0, k)) * ny + Math.min(ny - 1, Math.max(0, j))) * nx + Math.min(nx - 1, Math.max(0, i))) * 4 + c] / 255;
+    return (p, ch, out = 0.5) => {
+      c = ch;
       const fx = (p.x - mn.x) / st, fy = (p.y - mn.y) / st, fz = (p.z - mn.z) / st; // voxel i au point min + i·pas
-      if (fx < -0.5 || fy < -0.5 || fz < -0.5 || fx > nx - 0.5 || fy > ny - 0.5 || fz > nz - 0.5) return 0.5;
+      if (fx < -0.5 || fy < -0.5 || fz < -0.5 || fx > nx - 0.5 || fy > ny - 0.5 || fz > nz - 0.5) return out;
       const i = Math.floor(fx), j = Math.floor(fy), k = Math.floor(fz), u = fx - i, v = fy - j, w = fz - k;
       const L = (a, b, t) => a + (b - a) * t;
       return L(L(L(at(i, j, k), at(i + 1, j, k), u), L(at(i, j + 1, k), at(i + 1, j + 1, k), u), v),
         L(L(at(i, j, k + 1), at(i + 1, j, k + 1), u), L(at(i, j + 1, k + 1), at(i + 1, j + 1, k + 1), u), v), w);
     };
   })();
+  const wallB = wallCh && ((p) => wallCh(p, 2));
+  // Orifice du sinus coronaire dans l'oreillette droite : la pièce BodyParts3D, masquée dans la cavité (CAVCLIP), y
+  // laisse un orifice ovale de ≈ 8 mm (8,1 × 7,7 mm, n = 100), bordé en bas par la valvule de Thébésius (86 % des
+  // cœurs), entre l'orifice de la veine cave inférieure et l'anneau tricuspide (base du triangle de Koch). Placé là
+  // où le vaisseau franchit l'endocarde, face à la cavité.
+  if (wallCh && registry['sinus-coronaire']) {
+    const ins = [], outs = [], p = new THREE.Vector3();
+    for (const m of registry['sinus-coronaire'].meshes) {
+      const pa = m.geometry.attributes.position;
+      for (let k = 0; k < pa.count; k++) {
+        p.fromBufferAttribute(pa, k);
+        const g = wallCh(p, 1, 1) * 2.55, r = wallCh(p, 0, 0) * 2.55;
+        if (g < CS_CLIP && r > 0.02) ins.push(p.clone()); else if (g > CS_CLIP + 0.06) outs.push(p.clone());
+      }
+    }
+    // sommets intérieurs les plus proches de la partie extérieure (le maillage est grossier : ≈ 3 mm entre sommets)
+    const dOut = ins.map((q) => Math.min(...outs.map((o) => o.distanceTo(q))));
+    const dMin = Math.min(...dOut), rim = ins.filter((q, k) => dOut[k] < dMin + 0.3);
+    if (rim.length >= 2 && dMin < 0.8) {
+      const O = rim.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / rim.length);
+      // normale : vers la cavité (la distance à l'endocarde décroît)
+      const e = 0.15, gr = (dx, dy, dz) => wallCh(new THREE.Vector3(O.x + dx, O.y + dy, O.z + dz), 1, 1);
+      const nrm = new THREE.Vector3(gr(-e, 0, 0) - gr(e, 0, 0), gr(0, -e, 0) - gr(0, e, 0), gr(0, 0, -e) - gr(0, 0, e)).normalize();
+      const os = new THREE.Group();
+      const hole = new THREE.Mesh(new THREE.CircleGeometry(0.4, 40), tissue(0x3a1215, { deformK: K_EPI, roughness: 0.6, sss: 0.1, rim: 0, bump: 0 }));
+      hole.scale.set(1, 0.95, 1);
+      const valve = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 10, 40, Math.PI), tissue(0xd6a19c, { deformK: K_EPI, roughness: 0.4, clearcoat: 0.5, bump: 0.1 }));
+      valve.rotation.z = Math.PI; // demi-anneau : la valvule borde la moitié inférieure de l'orifice
+      os.add(hole, valve);
+      // posé sur l'endocarde : on avance vers la cavité jusqu'à la surface (distance à l'endocarde nulle), + 0,8 mm
+      let t = 0; while (t < 1.5 && wallCh(new THREE.Vector3().copy(O).addScaledVector(nrm, t), 1, 1) * 2.55 > 0.005) t += 0.02;
+      os.position.copy(O).addScaledVector(nrm, t + 0.08);
+      os.lookAt(O.clone().add(nrm));
+      hole.userData.id = valve.userData.id = 'sinus-coronaire'; hole.userData.ostium = valve.userData.ostium = true;
+      for (const m of [hole, valve]) Object.assign(m.material, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      reg('sinus-coronaire').meshes.push(hole, valve);
+      // la partie masquée du sinus ne projette pas d'ombre dans l'oreillette
+      for (const m of registry['sinus-coronaire'].meshes) if (!m.userData.ostium) m.castShadow = false;
+      root.add(os);
+      cutOnly.push(hole, valve);
+    }
+  }
   const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const tq = new THREE.Vector3(), tr = new THREE.Vector3(), tc = new THREE.Vector3(), tp = new THREE.Vector3();
   // k : raideur de repli quand la carte de la paroi est absente
@@ -837,7 +883,7 @@ export async function buildHeart() {
       get av() { return this.mv; }, get sl() { return this.ao; },
     };
   };
-  // Pose du cœur. Forme complète : celle de cycle() ; forme simple (circulation guidée, vues figées) :
+  // Pose du cœur. Forme complète : celle de cycle() ; forme simple (vues figées) :
   // { atr, ven, av, sl } — contraction auriculaire, ventriculaire, ouverture des valves AV et sigmoïdes.
   // Les valves reçoivent une consigne d'ouverture ; leur mouvement (ressort amorti, retard du bord libre, vibration)
   // est avancé à chaque image par stepValves.
@@ -854,7 +900,7 @@ export async function buildHeart() {
     for (const [id, v2] of Object.entries(shown)) { const [k1, k2] = VALVE_KEY[id]; v2.setTarget(c[k1] ?? c[k2] ?? 0); }
     return c;
   };
-  // dt (s), time (s), live : cœur en mouvement (battement, circulation) → vibration des bords libres. Renvoie vrai si
+  // dt (s), time (s), live : cœur qui bat → vibration des bords libres. Renvoie vrai si
   // une valve bouge encore.
   const stepValves = (dt, time, live) => {
     let moving = false;
@@ -883,6 +929,14 @@ export async function buildHeart() {
   const node = (id, p, r) => {
     const m = register(id, new THREE.Mesh(ellipsoid(r, r * 0.75, r * 0.55), matFor(id, 'conduction')));
     m.position.copy(v3(p));
+    // nœud enfoui sous l'endocarde (nœud AV : sommet du triangle de Koch) : s'il affleure dans une cavité, il est
+    // repoussé dans la paroi, le long de la pente de la distance à l'endocarde
+    if (wallCh && id === 'noeud-av') for (let it = 0; it < 12 && wallCh(m.position, 1, 1) * 2.55 < r * 0.8; it++) {
+      const e = 0.1, P0 = m.position, g = (dx, dy, dz) => wallCh(new THREE.Vector3(P0.x + dx, P0.y + dy, P0.z + dz), 1, 1);
+      const dir = new THREE.Vector3(g(e, 0, 0) - g(-e, 0, 0), g(0, e, 0) - g(0, -e, 0), g(0, 0, e) - g(0, 0, -e));
+      if (dir.lengthSq() < 1e-10) break;
+      m.position.addScaledVector(dir.normalize(), 0.05);
+    }
     cutOnly.push(m);
     solids.push({ mesh: m, hole: false, cap: 'conduction', k: 0.12 });
   };
@@ -894,12 +948,11 @@ export async function buildHeart() {
     solids.push({ mesh: m, hole: false, cap: 'conduction', k: 0.12 });
   }
 
-  const flowPaths = header.flowPaths.map((f) => ({ color: f.color, speed: f.speed, points: f.points.map(v3) }));
 
   // Résolution du clic : structure portée par l'enveloppe (attribut du maillage simplifié) ou par la pièce touchée.
   const pickId = (mesh, worldPoint, face) => (mesh.userData.proxy ? ids[proxySid[face.a]] : mesh.userData.sid ? ids[mesh.userData.sid[face.a]] : mesh.userData.id);
   // Surbrillance : par indice de structure pour l'enveloppe et les cavités, par matériau pour les autres pièces.
-  // focus : met le reste en retrait (sélection) ; sans focus, la structure est seulement éclairée (circulation)
+  // focus : met le reste en retrait (sélection) ; sans focus, la structure est seulement éclairée
   const setHighlight = (id, { focus = true } = {}) => {
     selUniform.value = id ? ids.indexOf(id) : -1;
     tissueMats.forEach((m) => { m.userData.uniforms.uHi.value = 0; });
@@ -916,7 +969,7 @@ export async function buildHeart() {
 
   cutOnly.forEach((m) => { m.visible = false; });
 
-  return { root, registry, materials, solids, cutOnly, flowPaths, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
+  return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation,
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)

@@ -16,23 +16,20 @@ une liste numérotée des structures, et une fiche explicative par structure.
   recalculés en solides fermés (surfaces de coupe sans éclats).
 - **Coronaires** comme sur les planches de référence : sillons dégagés de leur graisse, artères en rouge et veines en
   bleu, troncs remis au calibre des atlas (tronc commun ≈ 4,5 mm, IVA proximale et coronaire droite ≈ 3,5 mm, branches
-  ≈ 2,4 mm, sinus coronaire ≈ 6 mm), calibre qui diminue vers la périphérie ; le myocarde reconstruit est creusé
-  sous chaque vaisseau, visible sur toute sa longueur (jamais interrompu). Visibles : coronaire droite, branche du
+  ≈ 2,4 mm, sinus coronaire ≈ 6 mm), calibre qui diminue vers la périphérie ; débarrassés de la graisse
+  sous-épicardique, les vaisseaux reposent dans un sillon évasé du myocarde, enchâssés à mi-hauteur, visibles sur toute
+  leur longueur (jamais interrompus) et sans fente de part et d'autre. Visibles : coronaire droite, branche du
   conus, branches ventriculaires et marginales, IVP (interventriculaire postérieure) ; tronc commun, IVA et
   diagonales, circonflexe ; grande veine du cœur, veine interventriculaire antérieure, veine moyenne, petites veines,
-  sinus coronaire (masqué au-delà de son orifice dans l'oreillette droite).
+  sinus coronaire, qui s'ouvre dans l'oreillette droite par un orifice de ≈ 8 mm bordé de la valvule de Thébésius.
 - **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques en relief procédural, film humide satiné, translucidité, liseré lumineux,
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
 - **Coupe** (profondeur réglable) : **5 cavités** (coupe courbe : plan 5 cavités par la pointe et la valve aortique,
   creusé en pente douce autour des valves mitrale et tricuspide jusqu'au plan 4 cavités, si bien que les trois valves
-  sont coupées en leur milieu, à ≈ 2 mm près ; la valve pulmonaire, en avant de l'aorte, n'y figure pas), **4 valves**
-  (base du cœur vue d'en haut, l'avant en haut de l'écran : chaque valve coupée dans son plan — mitrale et tricuspide
-  à l'anneau, oreillettes retirées jusqu'à lui ; aortique et pulmonaire perpendiculairement à leur axe, cuspides vues
-  de dessus), **vue
-  chirurgien** (petit axe de la mitrale comme en ETO 3D : oreillettes retirées au-dessus de l'anneau, valve vue
-  depuis l'oreillette gauche, aorte à 12 h, mitrale fermée au repos pour montrer la coaptation), **frontale** (plan
-  frontal à peine incliné pour contenir l'axe de la racine aortique, placé au centre de la valve aortique : cuspides
-  coupées en leur milieu, voie d'éjection et aorte ascendante dans le même plan) et horizontale. Quand une coupe passe
+  sont coupées en leur milieu, à ≈ 2 mm près ; la valve pulmonaire, en avant de l'aorte, n'y figure pas) et
+  **frontale** (plan frontal à peine incliné pour contenir l'axe de la racine aortique, placé au centre de la valve
+  aortique : cuspides coupées en leur milieu, voie d'éjection et aorte ascendante dans le même plan). Les vues de face
+  des valves sont dans « Valves ». Quand une coupe passe
   par la racine aortique ou pulmonaire, celle-ci est ouverte (intima et cuspides visibles) au lieu d'un aplat de sang. **Tranches** (js/cut-surface.js) : muscle rouge sectionné, fibres en hélice dont l'angle tourne dans
   l'épaisseur (cloison comprise, de sa face gauche à sa face droite) (stries ou points selon leur orientation dans la tranche), cloisons entre faisceaux, endocarde nacré,
   épicarde et couche sous-épicardique, paroi des oreillettes, paroi crème des gros vaisseaux ; profondeur lue dans
@@ -40,7 +37,8 @@ une liste numérotée des structures, et une fiche explicative par structure.
   cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
   tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
-  les deux piliers qui encadrent ses commissures), coaptation mitrale en « sourire » et tricuspide en Y, cuspides
+  les deux piliers qui encadrent ses commissures), coaptation mitrale en « sourire » et tricuspide en Y ; ouverts, les
+  feuillets forment un entonnoir plus étroit que l'anneau (orifice de 4 à 6 cm² pour un anneau de 7 à 10 cm²) ; cuspides
   aortiques et pulmonaires en poche fermées en Y. **Tissu** : lames épaisses (0,4 à 1,2 mm) à bord libre arrondi,
   base fibreuse rosée, zone claire mince et translucide, zone rugueuse épaissie ; lunules et nodule d'Arantius des
   sigmoïdes ; fibres de collagène radiales, ondulations du bord et lumière traversant les zones minces dessinées
@@ -66,23 +64,24 @@ une liste numérotée des structures, et une fiche explicative par structure.
   mouvement ; valves et cordages côté processeur, à l'identique.
 - **Modèle visuel** : plein écran, sans panneau, texte, légende, nom de structure ni repère d'orientation ; coronaires
   toujours affichées ; battement automatique dès l'ouverture, bouton « Pause ».
-- **Valves** (vues chirurgicales tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : le bouton
-  « Valves » ouvre le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la
-  vue en cours : la caméra plonge vers la valve pendant que la coupe descend jusqu'au-dessus de l'anneau (oreillette
-  ou aorte retirées). Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui.
-  Choix de la variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend
-  et remonte avec la base. Au retour, la vue et la coupe de départ sont rétablies.
-  - **Aortique** (depuis l'aorte, coupe au-dessus de la jonction sino-tubulaire, chirurgien à droite du patient) :
-    normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif.
-  - **Mitrale** (depuis l'oreillette gauche, aorte à 12 h, auricule gauche à gauche) : normale (A1-A3, P1-P3),
+- **Valves** (vues de face tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : le bouton « Valves » ouvre
+  le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la vue en cours : la
+  caméra plonge vers la valve pendant que la coupe descend. Deux côtés, comme en échocardiographie 3D (ASE/EAE,
+  Lang 2012) : **C** (chirurgical) depuis l'oreillette ou l'aorte, cœur coupé juste au-dessus de l'anneau ou de la
+  jonction sino-tubulaire ; **V** (ventriculaire) depuis le ventricule, cœur coupé à mi-ventricule (piliers, cordages,
+  face ventriculaire des feuillets) ou dans la chambre de chasse. Même orientation des deux côtés (image en miroir) :
+  aorte à 12 h pour la mitrale, feuillet septal à 6 h pour la tricuspide, cuspide coronaire droite à 6 h pour
+  l'aortique. Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui. Choix de la
+  variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend et remonte
+  avec la base. Au retour, la vue et la coupe de départ sont rétablies.
+  - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif. Ouvertes, les cuspides restent à
+    distance de la paroi des sinus (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ;
+    à travers l'orifice, on voit la chambre de chasse et le ventricule.
+  - **Mitrale** (aorte à 12 h, auricule gauche à gauche en vue C) : normale (A1-A3, P1-P3),
     insuffisance par prolapsus de P2 avec rupture de cordage (segment flottant, cordages rompus, brèche de coaptation).
-  - **Tricuspide** (depuis l'oreillette droite, feuillet septal en bas) : normale, insuffisance fonctionnelle par
+  - **Tricuspide** (feuillet septal en bas) : normale, insuffisance fonctionnelle par
     dilatation de l'anneau (anneau, oreillette et ventricule droits élargis sur la paroi libre par la déformation du
     cœur, feuillets attirés vers le ventricule, défaut de coaptation central).
-- **Circulation** : parcours guidé du sang en 8 étapes (veines caves → oreillette droite → ventricule droit →
-  poumons → veines pulmonaires → oreillette gauche → ventricule gauche → aorte), en coupe 5 cavités vue de face et
-  d'en haut. Flèches animées dans le sens du sang (bleu = pauvre en oxygène, rouge = riche), valves dans la position
-  de chaque étape, texte simple, lecture automatique ou pas à pas.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
@@ -121,14 +120,14 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | Fichier | Rôle |
 | --- | --- |
 | `index.html` | Page, barre d'outils, panneau |
-| `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, circulation guidée, panneau mobile en tiroir) |
+| `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, panneau mobile en tiroir) |
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
-| `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, trajets du sang, clic et surbrillance |
+| `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
-| `js/av-views.js` | Vues chirurgicales des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
-| `js/aortic-view.js` | Vue chirurgicale de la valve aortique dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie) |
+| `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
+| `js/aortic-view.js` | Vues C et V de la valve aortique dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée |
-| `js/app.js` | Scène, coupes (clipping + capuchons stencil), circulation guidée, étiquettes, interface |
+| `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves, étiquettes, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
 | `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves |

@@ -1,6 +1,7 @@
-// Vue chirurgicale de la valve aortique, tirée du cœur lui-même : le cœur est coupé au-dessus de la jonction
-// sino-tubulaire, perpendiculairement à l'axe de la racine, et regardé depuis l'aorte (aortotomie, chirurgien à droite du
-// patient). Les variantes pathologiques remplacent la valve du cœur à sa place (heart.useValve) et battent avec lui.
+// Vues de la valve aortique, tirées du cœur lui-même, coupé perpendiculairement à l'axe de la racine : C (chirurgicale),
+// depuis l'aorte, coupe au-dessus de la jonction sino-tubulaire (aortotomie) ; V (ventriculaire), depuis la chambre de
+// chasse du VG. Cuspide coronaire droite à 6 h dans les deux cas (convention ASE/EAE, Lang 2012). Les variantes
+// pathologiques remplacent la valve du cœur à sa place (heart.useValve) et battent avec lui.
 //   - normale : la valve du cœur — trois cuspides fines (coronaire droite R, coronaire gauche L, non coronaire N),
 //     fermeture en Y, ouverture triangulaire large ;
 //   - bicuspidie de type 1 L-R (classification de Sievers, ≈ 75-80 % des bicuspidies) : cuspides coronaires droite
@@ -94,7 +95,7 @@ export function buildAorticView(heart) {
       Fc.lerp(Fo, open);
       out.copy(Hp).lerp(Fc, v);
       const b = Math.sin(Math.PI * v) * belly(u);
-      out.addScaledVector(A, -0.3 * Hc * b * (1 - open)).addScaledVector(tD, 0.12 * R * b * open);
+      out.addScaledVector(A, -0.3 * Hc * b * (1 - open)).addScaledVector(tD, 0.06 * R * b * open); // ventre vers le sinus, sans toucher la paroi
       return out;
     };
     const shell = new Shell(44, 28, valveMat, spec.shade, spec.thick, spec.bulge ?? null);
@@ -175,12 +176,21 @@ export function buildAorticView(heart) {
   const view = {
     key: 'aortique', title: 'Valve aortique', heartValveId: id, phase: 'sl',
     variantList: [['normale', 'Normale'], ['bicuspide', 'Bicuspidie L-R'], ['rao', 'Rétrécissement serré']],
-    orient: 'Vue depuis l’aorte · chirurgien <b>à droite</b> du patient',
-    // caméra côté aorte, dans l'axe de la racine ; coupe : on garde le côté ventriculaire, au-dessus de la jonction
-    // sino-tubulaire (sinus de Valsalva et cuspides entiers)
-    camDir: A.clone(), center: C.clone().addScaledVector(A, Hc * 0.5), dist: 10,
-    up: new THREE.Vector3(1, 0, 0).projectOnPlane(A).normalize(), // côté gauche du patient en haut de l'image
-    cut: { normal: A.clone().negate(), def: A.dot(C) + Hc * 1.35 },
+    // C (chirurgicale) : caméra côté aorte, dans l'axe de la racine ; on garde le côté ventriculaire, la coupe passe
+    //   au-dessus de la jonction sino-tubulaire (sinus de Valsalva et cuspides entiers) ;
+    // V (ventriculaire) : caméra dans la chambre de chasse du VG, regard vers l'aorte ; on garde le côté aortique, la
+    //   coupe passe 1 cm sous la valve, au-dessus des piliers : face ventriculaire des cuspides, sinus vus à travers la
+    //   valve ouverte. Valves voisines (mitrale) coupées près du plan pour ne pas masquer la chambre de chasse.
+    sides: (() => {
+      // convention ASE/EAE (Lang 2012) : cuspide coronaire droite à 6 h, du côté aortique comme du côté ventriculaire
+      const up = dir((cR.t0 + cR.t1) / 2).projectOnPlane(A).normalize().negate();
+      return {
+        C: { camDir: A.clone(), center: C.clone().addScaledVector(A, Hc * 0.5), dist: 10, up, cut: { normal: A.clone().negate(), def: A.dot(C) + Hc * 1.35 }, interior: 1.5,
+          orient: 'Vue depuis l’aorte · <b>cuspide coronaire droite en bas</b>' },
+        V: { camDir: A.clone().negate(), center: C.clone().addScaledVector(A, Hc * 0.2), dist: 10, up, cut: { normal: A.clone(), def: -A.dot(C) + 1.0 }, interior: 0.3,
+          orient: 'Vue depuis la chambre de chasse du VG · <b>cuspide coronaire droite en bas</b>' },
+      };
+    })(),
     get variant() { return current; },
     setVariant(name) { current = name; if (view.active) view.activate(true); },
     active: false,

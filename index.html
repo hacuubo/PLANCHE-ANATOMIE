@@ -60,8 +60,7 @@
         <div class="toolbar" role="toolbar" aria-label="Affichage">
           <span class="tool-group" aria-label="Modes">
             <button class="tool mode" data-toggle="coupe" type="button" aria-pressed="false" title="Ouvrir le cœur pour voir les cavités"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="11.5" r="2"/><circle cx="4.5" cy="4.5" r="2"/><path d="M6 6l8 7M6 10l8-7"/></svg>Coupe</button>
-            <button class="tool mode" data-toggle="valves" type="button" aria-pressed="false" title="Voir chaque valve en gros plan, comme le chirurgien : normale ou malade"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 8V2.2M8 8l5 2.9M8 8l-5 2.9"/></svg>Valves</button>
-            <button class="tool mode" data-toggle="circulation" type="button" aria-pressed="false" title="Suivre le trajet du sang, étape par étape"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 2v3h-3"/></svg>Circulation</button>
+            <button class="tool mode" data-toggle="valves" type="button" aria-pressed="false" title="Voir chaque valve en gros plan, côté chirurgien ou côté ventricule : normale ou malade"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 8V2.2M8 8l5 2.9M8 8l-5 2.9"/></svg>Valves</button>
           </span>
           <span class="tool-sep" aria-hidden="true"></span>
           <span class="tool-group" aria-label="Options">
@@ -71,10 +70,7 @@
         <div id="cut-tools" class="cut-tools hidden">
           <div class="seg">
             <button data-cut="cinq-cavites" class="active" type="button" title="Coupe 5 cavités passant par le centre des valves tricuspide, mitrale et aortique">5 cavités</button>
-            <button data-cut="valves" type="button" title="Base du cœur coupée à plat, oreillettes retirées : les quatre valves vues d’en haut">4 valves</button>
-            <button data-cut="chirurgien" type="button" title="Petit axe de la valve mitrale vue depuis l'oreillette gauche, aorte en haut (vue du chirurgien, ETO 3D)">Vue chirurgien</button>
-            <button data-cut="frontale" type="button">Frontale</button>
-            <button data-cut="horizontale" type="button">Horizontale</button>
+            <button data-cut="frontale" type="button" title="Coupe frontale passant par le centre et l'axe de la valve aortique">Frontale</button>
           </div>
           <label id="cut-depth-wrap">Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label>
         </div>
@@ -83,6 +79,10 @@
             <button data-valve="aortique" type="button">Aortique</button>
             <button data-valve="mitrale" type="button">Mitrale</button>
             <button data-valve="tricuspide" type="button">Tricuspide</button>
+          </div>
+          <div class="seg" role="group" aria-label="Côté d'observation">
+            <button data-vside="C" class="active" type="button" title="Vue chirurgicale : depuis l'oreillette (ou l'aorte), comme le chirurgien">C</button>
+            <button data-vside="V" type="button" title="Vue ventriculaire : depuis l'intérieur du ventricule, du côté opposé">V</button>
           </div>
           <div class="seg" id="valve-variants" role="group" aria-label="Variante"></div>
           <div class="seg" role="group" aria-label="Position de la valve">

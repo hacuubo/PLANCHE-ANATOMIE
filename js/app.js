@@ -118,13 +118,11 @@ const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
 // comme sur les planches et en animation médicale, au lieu d'une section plate. Les piliers sont coupés avec le muscle.
 const interiorPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 2.0);
 function syncInterior() {
-  // vue chirurgien (décalage 1,5 cm) : si l'on enfonce la coupe sous l'anneau, valves et cordages sont coupés avec le muscle
-  const off = state.modeCoupe === 'chirurgien' && cutPlane.constant < CUT_MODES.chirurgien.def - 0.05 ? 0.15 : interiorOff;
-  interiorPlane.normal.copy(cutPlane.normal); interiorPlane.constant = cutPlane.constant + off;
+  interiorPlane.normal.copy(cutPlane.normal); interiorPlane.constant = cutPlane.constant + interiorOff;
   heart.cutUniforms.uCutOffI.value = interiorOff;
 }
-let interiorOff = 0.6; // 0,6 cm en coupes 5 cavités et frontale, 1,5 cm en vue chirurgien, 0 dans les autres coupes (setCutMode)
-let curved = false;    // coupe courbe active (5 cavités, 4 valves)
+let interiorOff = 0.6; // 0,6 cm en coupes 5 cavités et frontale, 1,5 cm dans les vues des valves (setCutMode)
+let curved = false;    // coupe courbe active (5 cavités)
 // partie retirée par la coupe (en tenant compte du décalage des structures intérieures)
 const isCutAway = (h) => {
   if (!state.coupe) return false;
@@ -134,7 +132,6 @@ const isCutAway = (h) => {
 };
 const CUT_MODES = {
   frontale: { normal: new THREE.Vector3(0, 0, -1), min: -6, max: 6, def: 0.2 },
-  horizontale: { normal: new THREE.Vector3(0, -1, 0), min: -5, max: 9, def: 0.0 },
 };
 // Repères échographiques (heart.landmarks) : pointe, centres et axes des valves
 const LM = heart.landmarks, VMI = LM.valves['valve-mitrale'], VTR = LM.valves['valve-tricuspide'], VAO = LM.valves['valve-aortique'], VPU = LM.valves['valve-pulmonaire'];
@@ -150,7 +147,7 @@ const LM = heart.landmarks, VMI = LM.valves['valve-mitrale'], VTR = LM.valves['v
 // mitrale et de la tricuspide (leurs feuillets antérieurs seulement). La tranche suit donc ce plan et se creuse en
 // pente douce autour des deux valves auriculo-ventriculaires jusqu'au plan 4 cavités (pointe, mitrale, tricuspide) :
 // les trois valves sont coupées en leur milieu (à ≈ 2 mm près), feuillets de profil, avec les cinq cavités ouvertes.
-// La valve pulmonaire, en avant de l'aorte, n'y figure pas : voir la coupe « 4 valves ».
+// La valve pulmonaire, en avant de l'aorte, n'y figure pas.
 // Surface : z = h(x, y) dans le repère de l'écran de la coupe (x à droite, y vers la base, z vers l'observateur) ;
 // h mêle le plan de fond et des plans locaux autour de chaque valve (poids exp(−(d/σ)^e)) : voir cutU dans heart.js.
 function buildCurve({ V, fond, locaux, S, up }) {
@@ -186,63 +183,26 @@ const CURVE_5C = (() => {
 })();
 let CURVE = buildCurve(CURVE_5C);
 CUT_MODES['cinq-cavites'] = { curved: CURVE_5C, min: -3, max: 3, def: 0 };
-// « 4 valves » : la base du cœur vue d'en haut, comme sur les planches classiques — pulmonaire en avant, aortique au
-// centre, mitrale et tricuspide de part et d'autre. Surface de fond : plan au plus près des centres des quatre valves
-// (à moins de 4 mm de chacun) ; autour de chaque valve, la tranche suit son propre plan : anneau des valves mitrale et
-// tricuspide (oreillettes retirées jusqu'à l'anneau, feuillets entiers dessous), plan perpendiculaire à l'axe des
-// valves aortique et pulmonaire en leur milieu (sinus et trois cuspides vus de dessus).
-const VALVE_PLANE = (() => {
-  const pts = [VTR.center, VMI.center, VAO.center, VPU.center];
-  const c = pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
-  // normale : plus petite direction de dispersion (itération de puissance inverse sur la covariance)
-  const m = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  for (const p of pts) { const d = p.clone().sub(c).toArray(); for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m[i][j] += d[i] * d[j]; }
-  let n = new THREE.Vector3(...[0, 1, 2].map((i) => m[i][0] + m[i][1] + m[i][2])).cross(new THREE.Vector3(m[0][0], m[1][0], m[2][0])).normalize();
-  for (let k = 0; k < 40; k++) { // normale = vecteur propre de plus petite valeur propre : n ← (M − λmax·I)·n répété
-    const tr = m[0][0] + m[1][1] + m[2][2];
-    const v = n.toArray(), r = [0, 1, 2].map((i) => m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2] - tr * v[i]);
-    n.set(...r).normalize();
-  }
-  if (n.dot(LM.base.clone().sub(LM.apex)) < 0) n.negate(); // vers les oreillettes (côté retiré)
-  return { normal: n, center: c };
-})();
-const CURVE_4V = (() => {
-  const n = VALVE_PLANE.normal, c = VALVE_PLANE.center, t = new THREE.Vector3(1, 0, 0).projectOnPlane(n).normalize();
-  const V = n.clone().add(new THREE.Vector3(0, 0, 0.2)).normalize(); // d'en haut, un peu de face
-  return { V, up: new THREE.Vector3(0, 0, 1), fond: [c, c.clone().add(t), c.clone().add(new THREE.Vector3().crossVectors(n, t))],
-    locaux: [[VMI.center, VMI.axis], [VTR.center, VTR.axis], [VAO.center, VAO.axis], [VPU.center, VPU.axis]], S: [1.6, 4, 100] };
-})();
-CUT_MODES.valves = { curved: CURVE_4V, min: -3, max: 3, def: 0 };
-// « Vue chirurgien » (ETO 3D, petit axe de la mitrale) : oreillettes retirées au-dessus de l'anneau mitral, valve vue
-// de face depuis l'oreillette gauche, aorte à 12 h. On garde le côté ventriculaire : axe · (p − centre) ≥ −profondeur.
-const SURG_UP = VAO.center.clone().sub(VMI.center).projectOnPlane(VMI.axis).normalize();
-CUT_MODES.chirurgien = (() => { const c = -VMI.axis.dot(VMI.center); return { normal: VMI.axis.clone(), min: c - 2.5, max: c + 3, def: c + 0.4 }; })();
-// valves et cordages coupés plus loin que le muscle : entiers devant la tranche (vue chirurgien : feuillets fermés
-// bombés vers l'oreillette, jamais percés par le plan)
-const INTERIOR_OFF = { 'cinq-cavites': 0.6, frontale: 0.6, valves: 1.5, chirurgien: 1.5 };
-// coupes vues de dessus (valves) : pas de voile de la partie retirée entre l'œil et les valves
-const NO_GHOST = new Set(['chirurgien', 'valves']);
+// valves et cordages coupés plus loin que le muscle : entiers devant la tranche (vues des valves : feuillets fermés
+// bombés vers l'oreillette, jamais percés par le plan ; voir plus bas)
+const INTERIOR_OFF = { 'cinq-cavites': 0.6, frontale: 0.6 };
+// vues des valves : pas de voile de la partie retirée entre l'œil et la valve (complété plus bas)
+const NO_GHOST = new Set();
 // direction de l'observateur pour une coupe (côté retiré)
 const cutViewDir = (mode = state.modeCoupe) => (CUT_MODES[mode].curved ? CUT_MODES[mode].curved.V.clone() : cutPlane.normal.clone().negate());
-// Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; en vue chirurgien, mitrale fermée (systole) pour
-// montrer la ligne de coaptation et les festons, comme le chirurgien l'examine
+// Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; vue d'une valve : position choisie
 function restPose() {
-  if (state.circulation || state.battement) return;
+  if (state.battement) return;
   const v = state.valve && VALVE_VIEWS[state.valve];
   // vue d'une valve, cœur arrêté : position choisie (ouverte ou fermée) pour la valve regardée
   if (v) { heart.setPose({ atr: 0, ven: 0, av: v.phase === 'av' && valveOpen ? 1 : 0, sl: v.phase === 'sl' && valveOpen ? 1 : 0 }); if (!trans) valveCut(v, 0); }
-  else if (state.coupe && state.modeCoupe === 'chirurgien') heart.setPose({ atr: 0, ven: 0, av: 0, sl: 0 }); else heart.setBeat(null);
+  else heart.setBeat(null);
   renderer.shadowMap.needsUpdate = true;
 }
 // Cadrage de chaque coupe (onlyOriented : à l'ouverture de la coupe, seules les coupes « échographiques » déplacent la caméra)
 function viewForCut(mode, onlyOriented = false) {
   if (mode === 'cinq-cavites') goDir(CURVE.V, { up: CURVE.Y, dist: viewDistance() * 0.72 }); // cœur plus grand : la coupe se lit mieux
-  else if (mode === 'valves') { // vue d'en haut, légèrement de face, l'avant (valve pulmonaire) en haut de l'écran
-    goDir(CURVE.V, { target: VALVE_PLANE.center.clone().addScaledVector(CURVE.Y, 1.5), dist: 24, up: CURVE.Y }); // cible remontée : le cœur passe sous le panneau des coupes
-  }
-  else if (mode === 'chirurgien') goDir(VMI.axis.clone().negate(), { target: VMI.center, dist: 17, up: SURG_UP });
   else if (onlyOriented) { if (camera.up.y < 0.99) goView('anterieure'); }
-  else if (mode === 'horizontale') goView('superieure');
   else goView('anterieure');
 }
 function chooseCut(mode) {
@@ -309,7 +269,12 @@ function withRootHoles(mat) {
   mat.customProgramCacheKey = () => key() + '|racines';
   return mat;
 }
-const STENCIL_CAP = { stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp };
+// Compteur de stencil centré sur 128 : solides +1, creux −1. La tranche n'est posée que si le compte est positif ;
+// là où deux creux se chevauchent (cavité du VG et lumière aortique dans la chambre de chasse), le compte tombe sous
+// zéro, ce qui, sur 8 bits et centré sur 0, aurait donné 255 et une tranche de muscle en plein sang.
+const STENCIL_BASE = 128;
+renderer.state.buffers.stencil.setClear(STENCIL_BASE);
+const STENCIL_CAP = { stencilWrite: true, stencilRef: STENCIL_BASE, stencilFunc: THREE.LessStencilFunc, stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp };
 const orderByCap = new Map();
 let orderCursor = 100;
 heart.solids.forEach((s) => {
@@ -346,7 +311,7 @@ function updateCapPlanes() {
   });
 }
 
-const state = { coupe: false, modeCoupe: 'cinq-cavites', circulation: false, battement: true, coronaires: true, selected: null, hovered: null, vue: 'anterieure', valve: null };
+const state = { coupe: false, modeCoupe: 'cinq-cavites', battement: true, coronaires: true, selected: null, hovered: null, vue: 'anterieure', valve: null };
 
 function applyClipping() {
   const cut = state.coupe, flat = cut && !curved;
@@ -359,7 +324,7 @@ function applyClipping() {
   ghosts.forEach((g) => { g.visible = cut && !NO_GHOST.has(state.modeCoupe); }); // vue de dessus : rien entre l'œil et les valves
   heart.solids.forEach((s) => { s.stencil.visible = cut; });
   capGroups.forEach(([f, c]) => { f.visible = flat; c.visible = cut && curved; });
-  heart.cutOnly.forEach((m) => { m.visible = cut; });
+  heart.cutOnly.forEach((m) => { m.visible = cut && (!m.userData.ostium || state.coronaires); }); // orifice du sinus : avec les coronaires
   heart.showValves(cut);
   canvasWrap.classList.toggle('is-cut', state.coupe);
   renderer.shadowMap.needsUpdate = true;
@@ -393,174 +358,15 @@ function localAnterior() { const v = new THREE.Vector3(); heart.matrixLocal.extr
 // Le plan est exprimé dans le repère monde ; le cœur est translaté de -CENTER dans le pivot puis de +CENTER : net nul.
 function cutPlaneOffset() { return 0; }
 
-/* ─────────── circulation guidée : le trajet du sang, étape par étape ─────────── */
-// Trajets du générateur (heart.flowPaths) : 0 VCS → OD → VD → tronc pulmonaire → APD, 1 VCI → … → APG,
-// 2 et 3 veines pulmonaires droites / gauches → OG → VG → aorte descendante, 4 aorte → tronc brachio-céphalique.
-// Chaque étape en reprend une portion [trajet, premier point, dernier point], avec des flèches qui avancent dans le sens
-// du sang ; les valves prennent la position de l'étape. Coupe par étape (par défaut 5 cavités) : la voie d'éjection
-// du ventricule droit est en avant de cette coupe, on la montre en coupe frontale, pour que les flèches restent dans la
-// bonne cavité à l'écran.
-const FLOW_STEPS = [
-  { titre: 'Le sang revient du corps', texte: "Le sang pauvre en oxygène revient de tout le corps par les veines caves supérieure et inférieure. Il remplit l'oreillette droite.",
-    seg: [[0, 0, 2], [1, 0, 2]], focus: 'oreillette-droite', pose: { atr: 0, ven: 0, av: 0, sl: 0 } },
-  { titre: "De l'oreillette au ventricule droit", texte: "Le ventricule droit se relâche : la valve tricuspide s'ouvre et le sang de l'oreillette droite descend dans le ventricule. À la fin, l'oreillette se contracte pour achever de le remplir.",
-    seg: [[0, 2, 6]], focus: 'valve-tricuspide', pose: { atr: 0.4, ven: 0, av: 1, sl: 0 } },
-  { titre: 'Le ventricule droit éjecte le sang', texte: "Le ventricule droit se contracte : la valve tricuspide se ferme, la valve pulmonaire s'ouvre et le sang part dans le tronc pulmonaire.",
-    seg: [[0, 6, 9]], focus: 'ventricule-droit', pose: { atr: 0, ven: 1, av: 0, sl: 1 }, coupe: ['frontale', 2.0] },
-  { titre: 'Vers les poumons', texte: "Les artères pulmonaires droite et gauche conduisent le sang aux poumons. Il y rejette le gaz carbonique et se charge en oxygène.",
-    seg: [[0, 9, 12], [1, 9, 11]], focus: 'tronc-pulmonaire', pose: { atr: 0, ven: 0.2, av: 0.9, sl: 0 }, coupe: ['frontale', 2.0] },
-  { titre: 'Le sang revient des poumons', texte: "Le sang, maintenant riche en oxygène, revient des poumons par les quatre veines pulmonaires. Il remplit l'oreillette gauche.",
-    seg: [[2, 0, 2], [3, 0, 2]], focus: 'oreillette-gauche', pose: { atr: 0, ven: 0, av: 0, sl: 0 } },
-  { titre: "De l'oreillette au ventricule gauche", texte: "Le ventricule gauche se relâche : la valve mitrale s'ouvre et le sang de l'oreillette gauche descend dans le ventricule. À la fin, l'oreillette se contracte pour achever de le remplir.",
-    seg: [[2, 2, 4]], focus: 'valve-mitrale', pose: { atr: 0.4, ven: 0, av: 1, sl: 0 } },
-  { titre: 'Le ventricule gauche éjecte le sang', texte: "Le ventricule gauche, le plus puissant, se contracte : la valve mitrale se ferme, la valve aortique s'ouvre et le sang est propulsé dans l'aorte.",
-    seg: [[2, 4, 6]], focus: 'ventricule-gauche', pose: { atr: 0, ven: 1, av: 0, sl: 1 }, coupe: ['cinq-cavites'] },
-  { titre: 'Vers tout le corps', texte: "L'aorte distribue le sang riche en oxygène à tout le corps : la tête et les bras par les branches de la crosse, le reste du corps par l'aorte descendante.",
-    seg: [[2, 6, 10], [4, 2, 4]], focus: 'aorte', pose: { atr: 0, ven: 0.2, av: 0.9, sl: 0 }, coupe: ['cinq-cavites'] },
-];
-const FLOW_NOTE = 'En réalité, les deux moitiés du cœur se contractent en même temps ; on les suit ici l’une après l’autre.';
-// lecture automatique : le temps de lire le texte (≈ 2,5 mots par seconde), au moins 9 s
-const stepDur = (st) => Math.max(9, st.texte.split(/\s+/).length / 2.5 + (st === FLOW_STEPS[0] || st === FLOW_STEPS[4] ? 4 : 0));
-const flowGroup = new THREE.Group();
-flowGroup.visible = false;
-heart.root.add(flowGroup);
-const FLOW_LAYER = 1; // calque d'interface : dessiné après les ombres de contact, sans ombrage
-const overlayMat = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false });
-// Chaque portion : couloir translucide (le trajet) et flèches qui avancent dessus
-const flowSteps = FLOW_STEPS.map((st) => ({
-  ...st,
-  segs: st.seg.map(([pi, a, b]) => {
-    const path = heart.flowPaths[pi];
-    const curve = new THREE.CatmullRomCurve3(path.points.slice(a, b + 1), false, 'centripetal', 0.5);
-    const len = curve.getLength();
-    const lane = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(12, Math.round(len * 6)), 0.2, 10, false), overlayMat(path.color, 0.3));
-    lane.renderOrder = 899;
-    lane.layers.set(FLOW_LAYER);
-    lane.visible = false;
-    flowGroup.add(lane);
-    return { curve, len, color: new THREE.Color(path.color), lane };
-  }),
-}));
-// Flèches : chevrons plats tournés vers l'observateur et orientés selon le trajet vu à l'écran (un trajet qui fuit
-// vers l'observateur reste lisible), doublés d'un liseré clair pour se détacher des tissus
-const MAX_ARROWS = 96;
-const arrowShape = new THREE.Shape([new THREE.Vector2(0.5, 0), new THREE.Vector2(-0.38, 0.4), new THREE.Vector2(-0.16, 0), new THREE.Vector2(-0.38, -0.4)]);
-const arrowGeo = new THREE.ShapeGeometry(arrowShape);
-const arrowEdge = new THREE.InstancedMesh(arrowGeo, overlayMat(0xfffdf9, 0.95), MAX_ARROWS);
-const arrows = new THREE.InstancedMesh(arrowGeo, overlayMat(0xffffff, 1), MAX_ARROWS);
-arrowEdge.renderOrder = 901; arrows.renderOrder = 902;
-for (const m of [arrowEdge, arrows]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.layers.set(FLOW_LAYER); flowGroup.add(m); }
-const flow = { step: 0, time: 0, playing: true, pose: { atr: 0, ven: 0, av: 0.9, sl: 0 }, prev: null };
-const fM = new THREE.Matrix4(), fP = new THREE.Vector3(), fT = new THREE.Vector3(), fQ = new THREE.Quaternion(), fS = new THREE.Vector3(), fA = new THREE.Vector3(), fB = new THREE.Vector3(), fR = new THREE.Quaternion(), Z_AXIS = new THREE.Vector3(0, 0, 1);
-function updateFlow(dt) {
-  dt = Math.min(dt, 0.1); // onglet revenu au premier plan : pas de saut d'étapes
-  flow.time += dt;
-  if (flow.playing && flow.time > stepDur(FLOW_STEPS[flow.step])) showStep((flow.step + 1) % flowSteps.length);
-  const st = flowSteps[flow.step];
-  let n = 0;
-  for (const s of st.segs) {
-    const gap = 1.3, count = Math.max(2, Math.floor(s.len / gap));
-    for (let k = 0; k < count && n < MAX_ARROWS; k++, n++) {
-      const d = (k * gap + flow.time * 2.4) % (count * gap);
-      const u = Math.min(1, d / s.len);
-      s.curve.getPointAt(u, fP); s.curve.getTangentAt(u, fT);
-      const fade = Math.min(1, d / 0.5, Math.max(0, (s.len - d) / 0.5));
-      // direction du trajet à l'écran
-      fA.copy(fP).project(camera); fB.copy(fP).addScaledVector(fT, 0.3).project(camera);
-      const ang = Math.atan2(fB.y - fA.y, (fB.x - fA.x) * camera.aspect);
-      fQ.copy(camera.quaternion).multiply(fR.setFromAxisAngle(Z_AXIS, ang));
-      fM.compose(fP, fQ, fS.setScalar(0.85 * fade)); arrows.setMatrixAt(n, fM); arrows.setColorAt(n, s.color);
-      fM.compose(fP, fQ, fS.setScalar(0.85 * fade * 1.3)); arrowEdge.setMatrixAt(n, fM);
-    }
-  }
-  arrows.count = arrowEdge.count = n;
-  arrows.instanceMatrix.needsUpdate = arrowEdge.instanceMatrix.needsUpdate = true;
-  if (arrows.instanceColor) arrows.instanceColor.needsUpdate = true;
-  // la pose du cœur rejoint celle de l'étape en douceur
-  const k = 1 - Math.exp(-dt * 4);
-  let moved = 0;
-  for (const key of ['atr', 'ven', 'av', 'sl']) {
-    // une valve ne s'ouvre que lorsque l'autre est (presque) fermée
-    if (key === 'sl' && st.pose.sl > flow.pose.sl && flow.pose.av > 0.15) continue;
-    if (key === 'av' && st.pose.av > flow.pose.av && flow.pose.sl > 0.15) continue;
-    const dv = (st.pose[key] - flow.pose[key]) * k; flow.pose[key] += dv; moved += Math.abs(dv);
-  }
-  if (moved > 1e-4) { heart.setPose(flow.pose); if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
-}
-function showStep(i) {
-  flow.step = i; flow.time = 0;
-  flowSteps.forEach((st, j) => st.segs.forEach((s) => {
-    s.lane.visible = j <= i;
-    s.lane.material.opacity = j === i ? 0.32 : 0.12; // déjà parcouru : trace pâle
-  }));
-  const st = flowSteps[i];
-  const [mode, depth] = st.coupe ?? ['cinq-cavites'];
-  if (mode !== state.modeCoupe || (depth !== undefined && Math.abs(cutPlane.constant - depth) > 1e-3)) {
-    document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === mode));
-    setCutMode(mode, depth);
-    flowView(mode);
-  }
-  flowUI.querySelector('.fg-note').hidden = !(i === 0 || i === 4);
-  flowUI.querySelector('.fg-num').textContent = `${i + 1} / ${flowSteps.length}`;
-  flowUI.querySelector('.fg-title').textContent = st.titre;
-  flowUI.querySelector('.fg-text').textContent = st.texte;
-  flowUI.querySelectorAll('.fg-dots i').forEach((d, j) => d.classList.toggle('on', j === i));
-  if (!state.selected) heart.setHighlight(st.focus, { focus: false });
-  if (state.circulation) flowOffset(); // hauteur du panneau variable selon le texte
-}
-// Panneau des étapes (au-dessus de la légende)
-const flowUI = document.createElement('div');
-flowUI.className = 'flow-guide hidden';
-flowUI.setAttribute('role', 'region');
-flowUI.setAttribute('aria-label', 'Trajet du sang, étape par étape');
-flowUI.innerHTML = `<div class="fg-live" aria-live="off"><div class="fg-head"><span class="fg-num"></span><b class="fg-title"></b></div>
-  <p class="fg-text"></p></div><p class="fg-note">${FLOW_NOTE}</p>
-  <div class="fg-ctrl"><button type="button" class="fg-prev" aria-label="Étape précédente">‹</button>
-  <span class="fg-dots" aria-hidden="true">${flowSteps.map(() => '<i></i>').join('')}</span>
-  <button type="button" class="fg-play" aria-label="Pause">❚❚</button><button type="button" class="fg-next" aria-label="Étape suivante">›</button></div>`;
-canvasWrap.appendChild(flowUI);
-// lecteurs d'écran : étape annoncée quand on avance pas à pas, pas pendant la lecture automatique
-const setPlaying = (on) => { flow.playing = on; const b = flowUI.querySelector('.fg-play'); b.textContent = on ? '❚❚' : '▶'; b.setAttribute('aria-label', on ? 'Pause' : 'Lecture'); flowUI.querySelector('.fg-live').setAttribute('aria-live', on ? 'off' : 'polite'); };
-flowUI.querySelector('.fg-prev').addEventListener('click', () => { setPlaying(false); showStep((flow.step + flowSteps.length - 1) % flowSteps.length); });
-flowUI.querySelector('.fg-next').addEventListener('click', () => { setPlaying(false); showStep((flow.step + 1) % flowSteps.length); });
-flowUI.querySelector('.fg-play').addEventListener('click', () => setPlaying(!flow.playing));
-// cadrage : coupe vue de face et d'en haut (la coupe 5 cavités est presque horizontale ; vu de face, les veines caves et
-// l'aorte gardent leur longueur à l'écran) ; coupe frontale vue de face
-const flowView = (mode = 'cinq-cavites') => {
-  const n = mode === 'frontale' ? new THREE.Vector3(0, 0, 1) : cutViewDir(mode).add(new THREE.Vector3(0, 0, 0.9));
-  goDir(n, { dist: viewDistance() * 0.92 });
-};
-// le cœur est remonté au-dessus du panneau des étapes en décalant la projection (la cible reste au centre du cœur)
-function flowOffset() {
+// Calque d'interface (dessiné après les ombres de contact, sans ombrage)
+const OVERLAY_LAYER = 1;
+// vues des valves : valve centrée sous le panneau des réglages (projection décalée, la cible reste sur la valve)
+function viewOffset() {
   const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-  if (state.circulation && w && h) camera.setViewOffset(w, h, 0, (flowUI.offsetHeight + 16) / 2, w, h);
-  else if (state.valve && w && h) { // vues des valves : valve centrée sous le panneau des réglages
+  if (state.valve && w && h) {
     const top = document.querySelector('.tools').getBoundingClientRect().bottom - canvasWrap.getBoundingClientRect().top;
     camera.setViewOffset(w, h, 0, -Math.max(0, top) / 2, w, h);
   } else camera.clearViewOffset();
-}
-function setCirculation(on) {
-  flowGroup.visible = on;
-  flowUI.classList.toggle('hidden', !on);
-  canvasWrap.classList.toggle('is-flow', on);
-  if (on) {
-    flow.beat = state.battement;
-    if (state.battement) toggle('battement', false);
-    flow.prev = { coupe: state.coupe, mode: state.modeCoupe };
-    flow.pose = { atr: 0, ven: 0, av: 0.9, sl: 0 };
-    if (state.modeCoupe !== 'cinq-cavites') chooseCut('cinq-cavites');
-    if (!state.coupe) toggle('coupe', true);
-    flowView();
-    setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);
-    showStep(0);
-    flowOffset();
-  } else {
-    flowOffset();
-    if (flow.beat) toggle('battement', true);
-    restPose();
-    heart.setHighlight(state.selected);
-    if (flow.prev) { if (flow.prev.mode !== state.modeCoupe) chooseCut(flow.prev.mode); if (!flow.prev.coupe && state.coupe) toggle('coupe', false); }
-  }
 }
 
 /* ─────────── vues des valves : zoom dans le cœur ─────────── */
@@ -571,16 +377,19 @@ function setCirculation(on) {
 // redescend sur la nouvelle valve. Au retour, la caméra revient à la vue de départ et la coupe d'origine est rétablie.
 let valvePanel = false; // panneau du choix des valves ouvert (sans valve choisie : la vue ne bouge pas)
 let valveOpen = false, trans = null, beforeValve = null;
-for (const v of Object.values(VALVE_VIEWS)) {
-  const mode = `v-${v.key}`;
-  CUT_MODES[mode] = { normal: v.cut.normal, min: v.cut.def - 8, max: v.cut.def + 16, def: v.cut.def };
-  INTERIOR_OFF[mode] = 1.5; NO_GHOST.add(mode);
+// Côté d'observation : C (chirurgical, depuis l'oreillette ou l'aorte) ou V (ventriculaire, côté opposé)
+let valveSide = 'C';
+const sideOf = (v, side = valveSide) => v.sides[side];
+for (const v of Object.values(VALVE_VIEWS)) for (const [side, sd] of Object.entries(v.sides)) {
+  const mode = `v-${v.key}-${side}`;
+  CUT_MODES[mode] = { normal: sd.cut.normal, min: sd.cut.def - 8, max: sd.cut.def + 16, def: sd.cut.def };
+  INTERIOR_OFF[mode] = sd.interior; NO_GHOST.add(mode);
 }
 const FAR = 15; // coupe repoussée hors du cœur (rien n'est retiré)
 // états de caméra : cible, direction (de la cible vers l'œil), distance, verticale
 const camSt = () => { const off = camera.position.clone().sub(controls.target); return { target: controls.target.clone(), dir: off.clone().normalize(), dist: off.length(), up: camera.up.clone() }; };
 const portrait = () => Math.max(1, 0.95 / camera.aspect);
-const closeCam = (v) => ({ target: v.center.clone(), dir: v.camDir.clone(), dist: v.dist * portrait(), up: v.up.clone() });
+const closeCam = (v, side = valveSide) => { const sd = sideOf(v, side); return { target: sd.center.clone(), dir: sd.camDir.clone(), dist: sd.dist * portrait(), up: sd.up.clone() }; };
 const _q = new THREE.Quaternion(), _qi = new THREE.Quaternion(), _d = new THREE.Vector3(), _u = new THREE.Vector3();
 function applyCam(a, b, e) {
   controls.target.lerpVectors(a.target, b.target, e);
@@ -595,9 +404,11 @@ const easeIO = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2
 const smooth01 = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 let pendingAction = null; // action demandée pendant une transition : exécutée à la fin
+const debug = { transScale: 1 };
 function runSteps(steps, done) {
   steps.forEach((s) => { s.dur *= 2; }); // zoom lent : le patient suit où l'on va
   if (reduced.matches) steps.forEach((s) => { s.dur *= 0.35; }); // mouvement réduit : transitions brèves
+  steps.forEach((s) => { s.dur *= debug.transScale; }); // tests pilotés : transitions accélérées
   camAnim = null; trans = { steps, i: 0, t: 0, done }; controls.enabled = false; startStep();
 }
 function startStep() { const s = trans.steps[trans.i]; s.from = camSt(); s.onStart?.(); }
@@ -622,9 +433,10 @@ function stepTrans(dt) {
 // Coupe d'une vue de valve, à la profondeur def + off (off = FAR : rien n'est retiré). Elle suit la valve pendant le
 // battement (la base descend de 13 à 23 mm en systole) : profondeur recalculée sur le centre déformé de la valve.
 const _vc = new THREE.Vector3();
-function valveCut(v, off) {
-  heart.deformPoint(_vc.copy(v.center));
-  const depth = v.cut.def + off - v.cut.normal.dot(_vc.sub(v.center)), mode = `v-${v.key}`;
+function valveCut(v, off, side = valveSide) {
+  const sd = sideOf(v, side);
+  heart.deformPoint(_vc.copy(sd.center));
+  const depth = sd.cut.def + off - sd.cut.normal.dot(_vc.sub(sd.center)), mode = `v-${v.key}-${side}`;
   const wasOn = state.coupe, wasCurved = curved;
   state.coupe = true;
   if (state.modeCoupe !== mode) setCutMode(mode, depth); else setCutDepth(depth);
@@ -639,8 +451,7 @@ function goValve(key, after) {
   if (from === key) { after?.(); return; }
   // vue de départ : celle où l'on se trouve (ou celle vers laquelle la caméra se dirigeait)
   const startCam = () => (camAnim ? { target: camAnim.tTo.clone(), dir: camAnim.to.clone().sub(camAnim.tTo).normalize(), dist: camAnim.to.distanceTo(camAnim.tTo), up: camAnim.uTo.clone() } : camSt());
-  if (!from) beforeValve = { cam: startCam(), coupe: state.circulation ? flow.prev?.coupe ?? false : state.coupe, mode: state.circulation ? flow.prev?.mode ?? state.modeCoupe : state.modeCoupe, depth: parseFloat(document.getElementById('cut-depth').value) };
-  if (state.circulation) toggle('circulation', false);
+  if (!from) beforeValve = { cam: startCam(), coupe: state.coupe, mode: state.modeCoupe, depth: parseFloat(document.getElementById('cut-depth').value) };
   if (state.selected) { state.selected = null; heart.setHighlight(null); document.querySelectorAll('.struct-btn.active').forEach((b) => b.classList.remove('active')); }
   if (!key) valvePanel = false;
   state.valve = key;
@@ -657,13 +468,13 @@ function goValve(key, after) {
         if (V1.dilation) heart.setDilation(V1.dilation * smooth01(0.55, 0.95, e));
         valveCut(V1, FAR * (1 - smooth01(0.55, 0.95, e)));
       },
-      onEnd: () => flowOffset(),
+      onEnd: () => viewOffset(),
     });
   } else if (V1) steps.push({ // plongée vers la valve, la coupe descend jusqu'au-dessus de l'anneau
     dur: 1.6, to: () => closeCam(V1),
     onStart: () => { V1.activate(true); valveCut(V1, FAR); restPose(); },
     onUpdate: (e) => { if (V1.dilation) heart.setDilation(V1.dilation * smooth01(0.3, 0.9, e)); valveCut(V1, FAR * (1 - smooth01(0.05, 0.75, e))); },
-    onEnd: () => flowOffset(),
+    onEnd: () => viewOffset(),
   });
   else {
     const b = beforeValve, d0 = V0.dilation ?? 0;
@@ -691,12 +502,28 @@ function goValve(key, after) {
   }
   runSteps(steps, () => { syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true; after?.(); });
 }
-// Interface : bouton « Valves », panneau (valve, variante, position)
+// Change de côté (C ↔ V) : la coupe remonte, la caméra fait le tour de la valve par le côté, la coupe redescend
+function setValveSide(side) {
+  if (trans) { pendingAction = () => setValveSide(side); return; }
+  if (side === valveSide) return;
+  const v = state.valve && VALVE_VIEWS[state.valve], from = valveSide;
+  valveSide = side;
+  syncValveUI();
+  if (!v) return;
+  const a = sideOf(v, from), mid = () => ({ target: a.center.clone().lerp(sideOf(v, side).center, 0.5), dir: new THREE.Vector3().crossVectors(a.up, a.camDir).normalize(), dist: a.dist * 1.9 * portrait(), up: a.up.clone() });
+  runSteps([
+    { dur: 1.0, to: mid, onUpdate: (e) => valveCut(v, FAR * smooth01(0, 0.8, e), from) },
+    { dur: 1.2, to: () => closeCam(v), onUpdate: (e) => valveCut(v, FAR * (1 - smooth01(0.2, 0.95, e))), onEnd: () => viewOffset() },
+  ], () => { restPose(); renderer.shadowMap.needsUpdate = true; });
+}
+// Interface : bouton « Valves », panneau (valve, côté, variante, position)
 function syncValveUI() {
   const v = state.valve && VALVE_VIEWS[state.valve], open = !!v || valvePanel;
   document.getElementById('valve-tools').classList.toggle('hidden', !open);
   document.getElementById('valve-variants').classList.toggle('hidden', !v);
   document.querySelector('[data-vphase]').parentElement.classList.toggle('hidden', !v);
+  document.querySelector('[data-vside]').parentElement.classList.toggle('hidden', !v);
+  document.querySelectorAll('[data-vside]').forEach((b) => { b.classList.toggle('active', b.dataset.vside === valveSide); b.setAttribute('aria-pressed', String(b.dataset.vside === valveSide)); });
   const btn = document.querySelector('[data-toggle="valves"]');
   btn.classList.toggle('on', open); btn.setAttribute('aria-pressed', String(open));
   canvasWrap.classList.toggle('is-valve', !!v);
@@ -706,7 +533,7 @@ function syncValveUI() {
     seg.innerHTML = v.variantList.map(([k, l]) => `<button type="button" data-variant="${k}" class="${k === v.variant ? 'active' : ''}">${l}</button>`).join('');
     seg.querySelectorAll('[data-variant]').forEach((b) => b.addEventListener('click', () => { v.setVariant(b.dataset.variant); syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true; }));
   }
-  flowOffset();
+  viewOffset();
 }
 
 /* ─────────── étiquettes ─────────── */
@@ -738,7 +565,7 @@ function refreshLabels() {
 
 /* ─────────── sélection / surbrillance ─────────── */
 // La surbrillance (éclaircissement + liseré lumineux) est calculée dans le shader des tissus (voir heart.js).
-function highlight(id) { if (!id && state.circulation) heart.setHighlight(flowSteps[flow.step].focus, { focus: false }); else heart.setHighlight(id); }
+function highlight(id) { heart.setHighlight(id); }
 function select(id) {
   if (id && !STRUCTURES[id]) id = null; // pièce sans fiche
   state.selected = id;
@@ -750,10 +577,8 @@ function select(id) {
     b.classList.toggle('active', on);
     if (on) b.closest('details').open = true; // pas de défilement : la fiche doit rester lisible en haut du panneau
   });
-  // vue chirurgien : seules les valves y sont visibles ; pour une autre structure de coupe, retour à la coupe 5 cavités
   if (trans) { pendingAction = () => select(id); return; }
   if (id && state.valve) { goValve(null, () => select(id)); return; } // retour au cœur, puis sélection
-  if (id && STRUCTURES[id].coupe && state.modeCoupe === 'chirurgien' && !/^valve-(mitrale|tricuspide|aortique)$/.test(id)) chooseCut('cinq-cavites');
   if (id && STRUCTURES[id].coupe && !state.coupe) toggle('coupe', true);
 }
 
@@ -836,18 +661,15 @@ function goView(name, instant = false) {
 function toggle(name, value) {
   if (trans && name !== 'battement' && name !== 'coronaires') { pendingAction = () => toggle(name, value); return; }
   if (name === 'valves') { if (state.valve) { valvePanel = false; goValve(null); } else { valvePanel = !valvePanel; syncValveUI(); } return; }
-  if ((name === 'coupe' || name === 'circulation') && state.valve) { goValve(null, () => toggle(name, value)); return; }
-  if (name === 'coupe' && state.circulation && value === undefined) { flow.prev = { coupe: true, mode: state.modeCoupe }; toggle('circulation', false); return; }
+  if (name === 'coupe' && state.valve) { goValve(null, () => toggle(name, value)); return; }
   state[name] = value ?? !state[name];
   renderer.shadowMap.needsUpdate = true;
   const btn = document.querySelector(`[data-toggle="${name}"]`);
   if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
   if (name === 'battement') { const t = document.querySelector('.beat-txt'); if (t) t.textContent = state.battement ? 'Pause' : 'Battement'; }
-  if (name === 'battement' && state.battement && state.circulation) toggle('circulation', false);
   if (name === 'coupe') restPose();
   if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
-  if (name === 'circulation') setCirculation(state.circulation);
-  if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires; })); }
+  if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires && (!m.userData.ostium || state.coupe); })); }
 }
 
 function renderFiche(id) {
@@ -900,6 +722,7 @@ function buildPanel() {
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
   document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => goValve(b.dataset.valve)));
+  document.querySelectorAll('[data-vside]').forEach((b) => b.addEventListener('click', () => setValveSide(b.dataset.vside)));
   document.querySelectorAll('[data-vphase]').forEach((b) => b.addEventListener('click', () => {
     document.querySelectorAll('[data-vphase]').forEach((x) => x.classList.toggle('active', x === b));
     valveOpen = b.dataset.vphase === 'ouvert';
@@ -934,11 +757,11 @@ function resize() {
   if (!w || !h) return; // scène pas encore disposée (onglet masqué) : on attendra l'événement resize
   camera.aspect = w / h;
   controls.maxDistance = Math.max(60, viewDistance() * 1.1); // téléphone en portrait : le cadrage peut dépasser 60 cm
-  flowOffset(); camera.updateProjectionMatrix();
+  viewOffset(); camera.updateProjectionMatrix();
   renderer.setSize(w, h); labelRenderer.setSize(w, h); contact.setSize(w, h);
 }
 // Ombres de contact (occlusion ambiante en espace écran, js/contact-shadows.js)
-const contact = new ContactShadows(renderer, scene, camera, { overlayLayer: FLOW_LAYER });
+const contact = new ContactShadows(renderer, scene, camera, { overlayLayer: OVERLAY_LAYER });
 window.addEventListener('resize', resize);
 if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvasWrap);
 resize();
@@ -979,8 +802,7 @@ function updateOrientation() {
   let txt;
   if (Math.abs(camRight.x) >= Math.abs(camRight.z)) txt = camRight.x > 0 ? '<b>D</b> ← patient → <b>G</b>' : '<b>G</b> ← patient → <b>D</b>';
   else txt = camRight.z > 0 ? '<b>Arrière</b> ← patient → <b>Avant</b>' : '<b>Avant</b> ← patient → <b>Arrière</b>';
-  if (state.coupe && state.modeCoupe === 'chirurgien' && !camAnim) txt = 'Vue depuis l’oreillette gauche · <b>aorte en haut</b>';
-  if (state.valve && !trans) txt = VALVE_VIEWS[state.valve].orient;
+  if (state.valve && !trans) txt = sideOf(VALVE_VIEWS[state.valve]).orient;
   if (txt !== orientTxt) { orientEl.innerHTML = txt; orientTxt = txt; }
 }
 
@@ -996,11 +818,10 @@ function animate() {
   // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
   if (state.battement) { heart.setBeat((t % (60 / BPM)) / (60 / BPM)); beatIdle = false; if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true; }
   else if (!beatIdle) { beatIdle = true; restPose(); }
-  if (state.circulation) updateFlow(dt);
   if (trans) stepTrans(dt); // zoom vers une valve
   else if (state.valve && state.battement) valveCut(VALVE_VIEWS[state.valve], 0); // la coupe suit la valve qui bat
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe et dans les vues des valves)
-  if (state.coupe && heart.stepValves(dt, t, state.battement || state.circulation) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
+  if (state.coupe && heart.stepValves(dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   controls.update();
   if ((frame & 7) === 0) updateOrientation();
   if ((frame++ & 3) === 0) occludeLabels();
@@ -1010,4 +831,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
+window.__planche = { debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };

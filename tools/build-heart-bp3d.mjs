@@ -1,5 +1,7 @@
 // Génère assets/heart.bin à partir des maillages BodyParts3D (licence CC BY 4.0) :
 //   node tools/build-heart-bp3d.mjs <dossier partof_BP3D_4.0_obj_99> [--pas 0.12] [--apercu <fichier.json>]
+//   essais du myocarde autour des vaisseaux : [--profil x,y,z] [--sigma 1.1] [--veines] [--creux 0.6] [--pas-creux 0.075]
+//   [--evase 0.5] [--flou-wlv 2]
 // Données : https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html (partof_BP3D_4.0_obj_99.zip, 62 Mo).
 // « BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International ».
 //
@@ -21,6 +23,10 @@ if (!DIR || !fs.existsSync(DIR)) { console.error('Usage : node tools/build-heart
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const H = parseFloat(opt('--pas', '0.12'));
 const APERCU = opt('--apercu', null);
+// réglages du myocarde autour des vaisseaux (essais : --profil x,y,z affiche la surface autour d'un point et s'arrête)
+const SIGMA = parseFloat(opt('--sigma', '1.1')), AVEC_VEINES = args.includes('--veines');
+const CREUX = parseFloat(opt('--creux', '0.6')), PAS_CREUX = parseFloat(opt('--pas-creux', '0.075')), EVASE = parseFloat(opt('--evase', '0.5'));
+const PROFIL = opt('--profil', null), FLOU_WLV = parseFloat(opt('--flou-wlv', '2'));
 const T0 = Date.now();
 const log = (...a) => console.log(`[${((Date.now() - T0) / 1000).toFixed(0).padStart(4)} s]`, ...a);
 const v3 = { sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], mul: (a, s) => [a[0] * s, a[1] * s, a[2] * s], dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], len: (a) => Math.hypot(a[0], a[1], a[2]), cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] };
@@ -128,12 +134,22 @@ const VALVES = {
 };
 for (const [id, v] of Object.entries(VALVES)) log('valve', id, 'rayon', (v.radii ? v.radii.map((r) => r.toFixed(2)).join(' × ') : v.radius.toFixed(2)), v.leaflets ? `${v.leaflets.length} feuillets, ${v.papillaries.length} piliers` : `${v.cusps.length} cuspides`);
 const AVM = VALVES['valve-mitrale'], AVT = VALVES['valve-tricuspide'];
-// Orifice auriculo-ventriculaire : cylindre de rayon 0,85 × anneau, de 0,6 cm côté oreillette à 1,2 cm côté ventricule.
-// Les cavités BodyParts3D de l'oreillette et du ventricule ne se touchent pas toujours à l'anneau : sans lui, la coupe
-// montrerait une cloison de muscle entre oreillette et ventricule.
-const orifice = (v) => { const Rm = (v.radii[0] + v.radii[1]) / 2; return (x, y, z) => {
-  const q = v3.sub([x, y, z], v.center), al = v3.dot(q, v.axis), r = v3.len(v3.sub(q, v3.mul(v.axis, al)));
-  return Math.max(r - 0.85 * Rm, Math.abs(al - 0.3) - 0.9); }; };
+// Orifice auriculo-ventriculaire : l'anneau des feuillets lui-même (ellipse et selle de js/valves.js, 0,5 mm en dedans),
+// de 2,2 cm côté oreillette (cône au-delà de 0,6 cm) à 1,2 cm côté ventricule. Les cavités BodyParts3D de l'oreillette et du ventricule ne se
+// touchent pas toujours à l'anneau : sans lui, la coupe montrerait une cloison de muscle entre oreillette et ventricule.
+// (Un cylindre plus étroit que l'anneau laissait, sur le versant septal de la tricuspide, un rebord crénelé du plancher
+// de l'oreillette en surplomb de la base des feuillets, qui apparaissait par plaques sous lui.)
+const orifice = (v) => {
+  const [ra, rb] = v.radii, ant = v.leaflets.find((l) => /Anterior/.test(l.name)), tA = (ant.t0 + ant.t1) / 2;
+  return (x, y, z) => {
+    const q = v3.sub([x, y, z], v.center), al = v3.dot(q, v.axis), pr = v3.sub(q, v3.mul(v.axis, al)), r = v3.len(pr);
+    const th = Math.atan2(v3.dot(pr, v.e2), v3.dot(pr, v.e1)), rA = Math.hypot(ra * Math.cos(th), rb * Math.sin(th)), hA = -v.saddle * Math.cos(2 * (th - tA));
+    // côté oreillette, prolongé jusqu'à 2,2 cm en cône (vestibule) : là où le fond de l'oreillette BodyParts3D est plus
+    // haut que 6 mm au-dessus de l'anneau (commissures mitrales), il restait une pellicule percée au ras des feuillets
+    const up = hA - al; // hauteur au-dessus de l'anneau, côté oreillette
+    return Math.max(r - (rA - 0.05 - 0.5 * Math.max(0, up - 0.6)), al - hA - 1.2, up - 2.2);
+  };
+};
 const ORI = [orifice(AVM), orifice(AVT)];
 // Base du cœur : pas de muscle ventriculaire au-dessus des valves (cylindres le long de la racine aortique, du tronc
 // pulmonaire et vers les oreillettes) ; seules les parois artérielles et auriculaires y restent.
@@ -163,8 +179,9 @@ const LIG = (() => {
 const ligSDF = tubeSDF(LIG, 0.17);
 
 /* ─────────── 3. myocarde ventriculaire : épaisseur calée sur les coronaires ─────────── */
-// Distance aux cavités ventriculaires, lissée : union douce VG/VD (pas de pli au septum) puis flou gaussien 3D
-// (la surface externe ne recopie pas les creux laissés par les piliers dans le maillage des cavités).
+// Distance aux cavités ventriculaires, lissée : union douce VG/VD (rayon 2 cm : le sillon interventriculaire reste
+// peu profond, sans creux parallèle à l'IVA du côté du VG) puis flou gaussien 3D de 4 mm (la surface externe ne recopie
+// pas les creux laissés par les piliers ni le relief de la cavité sous les parois minces).
 // wLV = 1 près du VG, 0 près du VD (épaisseur minimale différente pour chaque ventricule).
 const VG0 = (() => {
   const v = 0.2, mn = [0, 1, 2].map((k) => Math.min(S.VG.bmin[k], S.VD.bmin[k]) - 2.6), mx = [0, 1, 2].map((k) => Math.max(S.VG.bmax[k], S.VD.bmax[k]) + 2.6);
@@ -173,7 +190,7 @@ const VG0 = (() => {
   for (let k = 0; k < n[2]; k++) for (let j = 0; j < n[1]; j++) for (let i = 0; i < n[0]; i++) {
     const x = mn[0] + i * v, y = mn[1] + j * v, z = mn[2] + k * v;
     const l = S.VG.query(x, y, z, 3), r = S.VD.query(x, y, z, 3), id = (k * n[1] + j) * n[0] + i;
-    gd[id] = smin(l, r, 1.0); gw[id] = 1 / (1 + Math.exp(-(r - l) / 0.4));
+    gd[id] = smin(l, r, 2.0); gw[id] = 1 / (1 + Math.exp(-(r - l) / 0.4));
   }
   const blur = (g, sigma) => {
     const R = Math.ceil(2.5 * sigma), w = []; for (let d = -R; d <= R; d++) w.push(Math.exp(-(d * d) / (2 * sigma * sigma)));
@@ -187,7 +204,7 @@ const VG0 = (() => {
       }
     }
   };
-  blur(gd, 1.5); blur(gw, 2);
+  blur(gd, 2.0); blur(gw, FLOU_WLV);
   const sample = (g) => (x, y, z) => {
     const fx = (x - mn[0]) / v, fy = (y - mn[1]) / v, fz = (z - mn[2]) / v;
     if (fx < 0 || fy < 0 || fz < 0 || fx >= n[0] - 1 || fy >= n[1] - 1 || fz >= n[2] - 1) return null;
@@ -211,12 +228,12 @@ const cluster = (meshes, size) => {
   return [...acc.values()].map((a) => [a[0] / a[3], a[1] / a[3], a[2] / a[3]]);
 };
 // surface épicardique ≈ 0,2 cm sous l'axe des artères : les vaisseaux restent en relief, enchâssés à moitié
-const samples = cluster(Object.values(raw.coronaire), 0.3).map((p) => [...p, dV(...p) - 0.2]).filter((s) => s[3] > -0.05 && s[3] < 2.4);
+const samples = cluster([...Object.values(raw.coronaire), ...(AVEC_VEINES ? Object.values(raw.veine) : [])], 0.3).map((p) => [...p, dV(...p) - 0.2]).filter((s) => s[3] > -0.05 && s[3] < 2.4);
 const tMed = samples.map((s) => s[3]).sort((a, b) => a - b)[samples.length >> 1];
 const sCloud = new PointCloud(samples, 0.8);
 const thickRaw = (x, y, z) => {
   let sw = 0, st = 0;
-  for (const [i, d] of sCloud.within(x, y, z, 3)) { const w = Math.exp(-((d / 1.1) ** 2)); sw += w; st += w * samples[i][3]; }
+  for (const [i, d] of sCloud.within(x, y, z, 3)) { const w = Math.exp(-((d / SIGMA) ** 2)); sw += w; st += w * samples[i][3]; }
   return Math.min(1.6, Math.max(0.35, sw > 1e-3 ? (st + 0.02 * tMed) / (sw + 0.02) : tMed));
 };
 const grid3 = (mn, mx, v, fn) => {
@@ -275,17 +292,24 @@ function tubeMesh(pts, rFn, radial = 10) {
 }
 
 /* ─────────── 5. enveloppe ─────────── */
-// Vaisseaux du cœur (gonflés) : le myocarde reconstruit ne doit jamais les recouvrir. On creuse le myocarde dans le
-// volume du vaisseau balayé vers l'extérieur (jusqu'à 6 mm) : chaque vaisseau repose au fond d'un sillon ouvert,
-// visible sur toute sa longueur (une artère interrompue se lirait comme une artère bouchée).
+// Vaisseaux du cœur (gonflés) : le myocarde reconstruit ne doit jamais les recouvrir (une artère interrompue se lirait
+// comme une artère bouchée). Débarrassés de la graisse sous-épicardique comme sur les planches, les troncs reposent dans
+// le sillon interventriculaire ou auriculo-ventriculaire, enchâssés à mi-hauteur. On creuse donc le myocarde dans le
+// volume du vaisseau balayé vers l'extérieur (jusqu'à 6 mm), mais en sillon évasé (demi-largeur r + h/2 à la
+// hauteur h au-dessus de l'axe) : la paroi rejoint le vaisseau à son équateur (jeu ≤ 0,3 mm) et s'ouvre en pente. Les
+// tranchées à parois verticales de la version précédente laissaient de part et d'autre des vaisseaux (IVA surtout)
+// des fentes sombres, lues comme du vide.
 const coroAll = mergeMeshes([...Object.values(raw.coronaire), ...Object.values(raw.veine)]);
 const coroSDF = sdf(coroAll);
+// Distance non signée : le signe du champ réunissant tous les vaisseaux vient d'un remplissage de voxels de 2,5 mm,
+// qui classe « dans un vaisseau » les poches fermées entre vaisseaux voisins (IVA, veine, diagonale) ; creusées, elles
+// laissaient un vide sous les vaisseaux. Le balayage vers l'intérieur suffit à savoir si un vaisseau est dessous.
 const groove = (x, y, z) => {
-  const d0 = coroSDF.query(x, y, z, 1.2);
+  const d0 = Math.abs(coroSDF.query(x, y, z, 1.2));
   if (d0 > 1.0) return d0;
   const g = gradOf(dV, [x, y, z]); // vers l'extérieur du ventricule (nul hors de la grille)
   let d = d0;
-  for (const k of [0.15, 0.3, 0.45, 0.6]) d = Math.min(d, coroSDF.query(x - g[0] * k, y - g[1] * k, z - g[2] * k, 1.2));
+  for (let k = PAS_CREUX; k <= CREUX + 1e-6; k += PAS_CREUX) d = Math.min(d, Math.abs(coroSDF.query(x - g[0] * k, y - g[1] * k, z - g[2] * k, 1.2)) - EVASE * k);
   return d;
 };
 const TRIM = {
@@ -325,7 +349,8 @@ const cavRaw = (x, y, z) => Math.min(cavLeft(x, y, z), cavRight(x, y, z));
 // au-delà de l'anneau (tricuspide surtout, en avant et contre le septum) ; vu de l'oreillette, une fente s'ouvrait alors
 // entre la base des feuillets et la paroi. Pour chaque direction autour de l'anneau paramétrique (js/valves.js), on
 // cherche la paroi la plus proche (pente de −45° à +60° par rapport au plan de l'anneau) et on tend une lame de tissu
-// de 3 mm de l'anneau à cette paroi : l'oreillette rejoint la base des feuillets sans laisser voir le ventricule.
+// de 3 mm de l'anneau à cette paroi, large d'au moins 4 mm sur tout le tour : l'oreillette rejoint la base des feuillets
+// sans laisser voir le ventricule.
 function junctionShelf(v, cav) {
   const N = 144, C = v.center, A = v.axis, [ra, rb] = v.radii;
   const tAnt = (() => { const l = v.leaflets.find((x) => /Anterior/.test(x.name)); return (l.t0 + l.t1) / 2; })();
@@ -346,7 +371,11 @@ function junctionShelf(v, cav) {
         if (t < 2.5 && (!best || t < best[0])) best = [t, dr, dh];
       }
     }
-    ends.push(best ? [s[0] + best[1] * best[0], s[1] + best[2] * best[0], 1] : [s[0], s[1], 0]);
+    // au moins 4 mm de tissu autour de la charnière, tout le tour (jonction et anneau fibreux) : là où l'oreillette et
+    // le ventricule ne sont séparés que d'une pellicule, l'extraction la perçait et l'on voyait le ventricule sous l'anneau
+    const e = best ? [s[0] + best[1] * best[0], s[1] + best[2] * best[0]] : [s[0], s[1]];
+    if (Math.hypot(e[0] - s[0], e[1] - s[1]) < 0.4) { e[0] = s[0] + 0.4; e[1] = s[1]; }
+    ends.push([e[0], e[1], 1]);
   }
   // lissage circulaire des extrémités (pas de lame en dents de scie quand la pente optimale change)
   const sm = ends.map((_, i) => { const o = [0, 0, 0]; for (let k = -4; k <= 4; k++) { const e = ends[(i + k + N) % N]; for (let q = 0; q < 3; q++) o[q] += e[q] / 9; } return o; });
@@ -360,15 +389,26 @@ function junctionShelf(v, cav) {
     const i0 = Math.floor(f) % N, i1 = (i0 + 1) % N, u = f - Math.floor(f);
     const L = (k) => table[i0][k].map((x0, j) => x0 + (table[i1][k][j] - x0) * u);
     const s = L('s'), e = L('e'), on = table[i0].on + (table[i1].on - table[i0].on) * u;
-    if (on < 0.05) return 1e9;
+    // épaisseur constante (3 mm) : amincie vers ses bords, la lame devenait une pellicule trouée par l'extraction
+    if (on < 0.3) return 1e9;
     // prolongée de 2,5 mm dans la paroi ; segment (s → e) dans le demi-plan (rayon, hauteur) de la direction θ
     const dx = e[0] - s[0], dy = e[1] - s[1], l = Math.hypot(dx, dy) || 1, ex = e[0] + (dx / l) * 0.25, ey = e[1] + (dy / l) * 0.25;
     const vx = ex - s[0], vy = ey - s[1], t = Math.min(1, Math.max(0, ((r - s[0]) * vx + (al - s[1]) * vy) / (vx * vx + vy * vy)));
-    return Math.hypot(r - s[0] - vx * t, al - s[1] - vy * t) - 0.15 * Math.min(1, on * 2);
+    return Math.hypot(r - s[0] - vx * t, al - s[1] - vy * t) - 0.15;
   };
 }
 const SHELF_M = junctionShelf(AVM, cavLeft), SHELF_T = junctionShelf(AVT, cavRight);
 const cavField = (x, y, z) => Math.min(Math.max(cavLeft(x, y, z), -SHELF_M(x, y, z)), Math.max(cavRight(x, y, z), -SHELF_T(x, y, z)));
+if (PROFIL) { // essai : hauteur de la surface (mm, le long de la normale) sur ±1,6 cm autour du point, puis arrêt
+  const c = PROFIL.split(',').map(Number), g = gradOf(dV, c), u = v3.norm(v3.cross(g, Math.abs(g[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0])), w = v3.cross(g, u);
+  const rows = [];
+  for (let j = -8; j <= 8; j += 2) { const row = [];
+    for (let i = -8; i <= 8; i++) { const b = v3.add(c, v3.add(v3.mul(u, i * 0.2), v3.mul(w, j * 0.2))); let h = 2.4;
+      for (; h > -2; h -= 0.02) { const q = v3.add(b, v3.mul(g, h)); if (core(...q).myo <= 0) break; }
+      row.push(String(Math.round(h * 10)).padStart(4)); }
+    rows.push(row.join('')); }
+  console.log(rows.join(String.fromCharCode(10))); process.exit(0);
+}
 const field = (x, y, z) => {
   const c = core(x, y, z).all;
   let f = c;
@@ -412,7 +452,11 @@ const proxy = extract(field, ENV_B, 0.3, 2);
 log('maillage de clic :', proxy.verts.length, 'sommets');
 
 /* ─────────── 6. cavités et lumières (solides de coupe) ─────────── */
-const cavities = extract(cavField, { min: [-6, -6.5, -6.5], max: [6.5, 5.5, 5] }, 0.1, 4);
+// fermé au bord de la boîte : l'oreillette droite et la veine cave supérieure la dépassent (y > 5,5) ; un maillage
+// ouvert fausse le comptage du stencil (tranche de muscle en plein sang dans les vues qui regardent à travers)
+const CAV_B = { min: [-6, -6.5, -6.5], max: [6.5, 5.5, 5] };
+const closedIn = (fn, B, h) => (x, y, z) => Math.max(fn(x, y, z), 1.5 * h - Math.min(x - B.min[0], B.max[0] - x, y - B.min[1], B.max[1] - y, z - B.min[2], B.max[2] - z));
+const cavities = extract(closedIn(cavField, CAV_B, 0.1), CAV_B, 0.1, 4);
 log('cavités :', cavities.verts.length, 'sommets');
 { // contrôle : chaque point des cavités (1 mm vers l'intérieur) est dans l'enveloppe
   let ok = 0; cavities.verts.forEach((p, i) => { const n = cavities.normals[i]; if (field(p[0] - n[0] * 0.1, p[1] - n[1] * 0.1, p[2] - n[2] * 0.1) < 0) ok++; });
@@ -512,7 +556,7 @@ log('attributs et occlusion ambiante calculés');
 
 /* ─────────── 8 ter. repères des valves : calculés en section 1 (VALVES) ─────────── */
 
-/* ─────────── 9. conduction, trajets du sang, ancres ─────────── */
+/* ─────────── 9. conduction, ancres ─────────── */
 // Septum interventriculaire : surface médiane entre les deux cavités (|dVG − dVD| ≈ 0), à plusieurs niveaux de l'axe
 const septum = [];
 for (const f of [0.05, 0.14, 0.27, 0.42, 0.56, 0.7]) {
@@ -542,34 +586,7 @@ const conduction = {
   brancheG: septumS.map((p) => toward(p, S.VG, 0.08)),
   brancheD: [septumS[0], toward(septumS[1], S.VD, 0.08), toward(septumS[2], S.VD, 0.08), toward(septumS[3], S.VD, 0.08), papAnt],
 };
-// trajets du sang : centres des cavités, des valves et des vaisseaux
-const top = (m, n = 0.6) => { const p = verts(m); const t = Math.max(...p.map((q) => q[1])); return meanOf(p.filter((q) => q[1] > t - n)); };
-const end = (m, f) => { const p = verts(m); const best = extreme(p, f); return meanOf(p.filter((q) => v3.dist(q, best) < 0.9)); };
 const vg = cen(cav['ventricule-gauche']), vd = cen(cav['ventricule-droit']), ogC = cen(cav['oreillette-gauche']);
-const lvLow = v3.add(BASE, v3.mul(AXIS, 0.6 * v3.dist(BASE, lvApexIn)));
-const rvLow = v3.add(vd, v3.mul(AXIS, 1.2));
-const ptTop = top(ves['tronc-pulmonaire'], 0.8);
-const rpaEnd = end(ves['artere-pulmonaire-droite'], (p) => -p[0]), lpaEnd = end(ves['artere-pulmonaire-gauche'], (p) => p[0]);
-const asc = cen(named(/^Ascending aorta$/)), arch = top(ves.aorte, 0.8);
-const descLow = [O[0] + 2.2, -7.6, verts(ves.aorte).filter((p) => p[1] < -6).reduce((a, p) => a + p[2], 0) / Math.max(1, verts(ves.aorte).filter((p) => p[1] < -6).length)];
-const descMid = meanOf(verts(ves.aorte).filter((p) => p[1] > 1 && p[1] < 3 && p[2] < -2.5));
-const svcTop = meanOf(svc.filter((p) => p[1] > Math.max(...svc.map((q) => q[1])) - 0.8)), svcLowC = meanOf(svcLow);
-const ivc = verts(ves['veine-cave-inferieure']); const ivcLow = meanOf(ivc.filter((p) => p[1] < -5.5 && p[1] > -6.5)), ivcTop = meanOf(ivc.filter((p) => p[1] > Math.max(...ivc.map((q) => q[1])) - 0.8));
-const pv = verts(ves['veines-pulmonaires']); const pvR = meanOf(pv.filter((p) => p[0] < -2.5)), pvL = meanOf(pv.filter((p) => p[0] > 3.8));
-const descTop = meanOf(verts(ves.aorte).filter((p) => p[1] > 6 && p[1] < 7 && p[2] < -2.5));
-// le sang entre par la valve, descend vers la pointe puis remonte vers la chambre de chasse
-const lerp = (a, b, t) => v3.add(a, v3.mul(v3.sub(b, a), t));
-const rvIn = v3.add(vd, v3.mul(AXIS, 0.8)), rvot = lerp(vd, pulmo, 0.6), lvot = lerp(lvLow, aortic, 0.55);
-const rpaMid = cen(ves['artere-pulmonaire-droite']), lpaMid = cen(ves['artere-pulmonaire-gauche']);
-const pvNear = (pt) => { const near = pv.filter((p) => v3.dist(p, pt) < 1.6); return near.length ? meanOf(near) : pt; };
-const pvRin = pvNear(lerp(pvR, ogC, 0.55)), pvLin = pvNear(lerp(pvL, ogC, 0.55));
-const flowPaths = [
-  { color: 0x43589f, speed: 0.11, points: [svcTop, svcLowC, odC, lerp(odC, tricus, 0.6), tricus, rvIn, vd, rvot, pulmo, ptTop, lerp(ptTop, rpaMid, 0.5), rpaMid, rpaEnd] },
-  { color: 0x43589f, speed: 0.11, points: [ivcLow, ivcTop, odC, lerp(odC, tricus, 0.6), tricus, rvIn, vd, rvot, pulmo, ptTop, lpaMid, lpaEnd] },
-  { color: 0xc43a33, speed: 0.12, points: [pvR, pvRin, ogC, mitral, lvLow, lvot, aortic, asc, arch, descTop, descMid, descLow] },
-  { color: 0xc43a33, speed: 0.12, points: [pvL, pvLin, ogC, mitral, lvLow, lvot, aortic, asc, arch, descTop, descMid, descLow] },
-  { color: 0xc43a33, speed: 0.12, points: [aortic, asc, O, J, (() => { const t = top(named(/^Right common carotid artery$/), 0.6); return [t[0], Math.min(t[1], 13.3), t[2]]; })()] },
-];
 // ancres des étiquettes : point de la structure le mieux exposé vers l'extérieur (et un peu vers l'avant)
 const HEART_C = meanOf([vg, vd, odC, ogC]);
 // Règle : parmi les points tournés vers l'avant (vue antérieure de la planche), celui qui est au centre de la
@@ -675,7 +692,6 @@ const header = {
   frame: { base: R3(BASE), axis: R3(AXIS), u: R3(Uf), v: R3(Vf), apex: R3(APEX), cut4: R3(N4) },
   anchors: Object.fromEntries(Object.entries(anchors).map(([k, p]) => [k, R3(p)])),
   conduction: Object.fromEntries(Object.entries(conduction).map(([k, l]) => [k, l.map(R3)])),
-  flowPaths: flowPaths.map((f) => ({ ...f, points: f.points.map(R3) })),
   valves: JSON.parse(JSON.stringify(VALVES, (k, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v))),
 };
 const hb = Buffer.from(JSON.stringify(header), 'utf8'); const hpad = (4 - (hb.length % 4)) % 4;

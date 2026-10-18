@@ -282,8 +282,10 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       dir(th, tmpD);
       // ouvert : le feuillet pend dans le ventricule, légèrement rentré vers le centre
       // voile : ventre bombé vers la paroi au milieu du feuillet, bord libre recourbé vers l'axe, ondulations souples
-      const sail = R * (0.13 * Math.sin(Math.PI * v) * Math.pow(Math.sin(Math.PI * u), 0.7) + 0.025 * Math.sin(3 * Math.PI * u + 2 * v) * v);
-      const inw = R * (0.1 * v + 0.12 * v * v + 0.08 * smooth(0.75, 1, v));
+      // entonnoir : orifice ouvert plus étroit que l'anneau ; pas de ventre au-delà de l'anneau près de la charnière
+      // (il traversait le plancher de l'oreillette), voile seulement dans la moitié distale
+      const sail = R * (0.13 * Math.sin(Math.PI * v) * Math.pow(Math.sin(Math.PI * u), 0.7) * smooth(0.35, 0.8, v) + 0.025 * Math.sin(3 * Math.PI * u + 2 * v) * v * v);
+      const inw = R * (0.22 * v * v + 0.08 * smooth(0.75, 1, v)); // longe la paroi près de la charnière, puis converge
       const ox = tmpA.x + A.x * v * h * 0.95 + tmpD.x * (sail - inw);
       const oy = tmpA.y + A.y * v * h * 0.95 + tmpD.y * (sail - inw);
       const oz = tmpA.z + A.z * v * h * 0.95 + tmpD.z * (sail - inw);
@@ -484,12 +486,14 @@ function slValve(id, d, cuspMat) {
       const s = u < 0.5 ? 1 - 2 * u : 2 * u - 1;
       Fc.copy(C).addScaledVector(A, Hc * (0.8 + 0.06 * (1 - s))).addScaledVector(u < 0.5 ? t0D : t1D, R * 0.98 * s);
       // bord libre ouvert : plaqué contre la paroi de la racine
-      Fo.copy(C).addScaledVector(tD, R * 0.84).addScaledVector(A, Hc * 1.02);
+      // ouverte : bord libre à ≈ 0,76 R (surface libre 41 % plus petite que l'anneau, Lansac 2019), à distance de la paroi
+      // du sinus (tourbillons des sinus de Valsalva, Bellhouse 1969) : jamais plaqué contre elle
+      Fo.copy(C).addScaledVector(tD, R * 0.76).addScaledVector(A, Hc * 1.02);
       const F = Fc.lerp(Fo, open);
       out.copy(Hp).lerp(F, v);
       // ventre de la poche : vers le ventricule quand elle est fermée (remplie de sang), vers le sinus quand elle s'ouvre
       const bulge = Math.sin(Math.PI * v) * Math.sin(Math.PI * u);
-      out.addScaledVector(A, -0.32 * Hc * bulge * (1 - open)).addScaledVector(tD, 0.12 * R * bulge * open);
+      out.addScaledVector(A, -0.32 * Hc * bulge * (1 - open)).addScaledVector(tD, 0.06 * R * bulge * open);
       return out;
     };
     shell.cache(point);
