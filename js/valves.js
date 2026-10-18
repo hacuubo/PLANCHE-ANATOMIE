@@ -13,7 +13,8 @@
 // ouvertes, ils pendent dans le ventricule ; fermées, ils bombent vers l'oreillette et s'accolent sur la ligne de
 // coaptation (en « sourire » pour la mitrale, en Y pour la tricuspide). Cordages tendineux en trois ordres : un tronc
 // depuis la tête de chaque pilier, des branches, puis de fins cordages évasés à leur insertion sur le bord libre ;
-// cordages de 2e ordre sur la face ventriculaire. Inextensibles : tendus valve fermée, ils s'incurvent quand elle s'ouvre.
+// cordages de 2e ordre sur la face ventriculaire. Inextensibles : tendus valve fermée, ils s'incurvent quand elle s'ouvre,
+// toujours sous les feuillets : vus de l'oreillette, ils n'apparaissent qu'à travers l'orifice.
 // Valves sigmoïdes (aortique, pulmonaire) : trois cuspides en poche ; fermées, leurs bords libres se rejoignent en Y
 // au centre ; ouvertes, elles se plaquent contre la paroi de la racine.
 import * as THREE from 'three';
@@ -333,8 +334,8 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
     return g;
   });
   const nCh = G.reduce((s, g) => s + 1 + g.clusters.length + g.marg.length + g.sec.length + 2 * g.rupt.length, 0);
-  // chaque cordage est dessiné en 3 tronçons : droit quand il est tendu, courbé quand il est détendu
-  const cords = new Cords(nCh * 3, cordMat);
+  // chaque cordage est dessiné en CS tronçons : droit quand il est tendu, courbé quand il est détendu
+  const CS = 5, cords = new Cords(nCh * CS, cordMat);
   // xf(point, raideur) : déformation du cycle cardiaque (heart.js) ; feuillets portés par l'anneau, têtes des piliers
   // entraînées par la paroi ventriculaire (même raideur que les piliers)
   const mean = (pts) => pts.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
@@ -369,7 +370,7 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
         const out1 = dir(g.lf.L.t0 + g.lf.span * g.rupt[k][0], tmpM);
         const e = p.clone().addScaledVector(A, -0.6 * s).addScaledVector(out1, 0.3).addScaledVector(lineDirR, 0.15 * Math.sin(6 * tNow + 2.3 * k) + 0.12 * (k - 1));
         const m = p.clone().lerp(e, 0.5).addScaledVector(out1, 0.12).addScaledVector(lineDirR, 0.06 * Math.sin(6 * tNow + 1.1 + 2.3 * k));
-        out.push([p, m, 0.026, 0.019, 0.019], [m, e, 0.019, 0.013, 0.013]);
+        out.push([p, m, 0.026, 0.019, 0.019, true], [m, e, 0.019, 0.013, 0.013, true]); // libres : pas tenus sous le feuillet
       });
     }
     return out;
@@ -378,6 +379,41 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
   const rest = rawChords(() => 0, null).map(([a, b]) => a.distanceTo(b));
   const ctl = new THREE.Vector3(), mid = new THREE.Vector3(), sd = new THREE.Vector3();
   const bez = (a, c, b, t, out) => out.copy(a).multiplyScalar((1 - t) * (1 - t)).addScaledVector(c, 2 * t * (1 - t)).addScaledVector(b, t * t);
+  // Les cordages restent sous les feuillets (côté ventricule) : vus depuis l'oreillette, ils n'apparaissent qu'à travers
+  // l'orifice, jamais par-dessus la face auriculaire d'un feuillet. Chaque point d'un cordage est comparé, dans le
+  // demi-plan (rayon, profondeur) de sa direction autour de l'axe, au profil du feuillet qui occupe cette direction ;
+  // s'il est au-dessus (ou dans l'épaisseur du feuillet), il est repoussé sous sa face ventriculaire.
+  const Cd = new THREE.Vector3(), cq = new THREE.Vector3(), cr = new THREE.Vector3();
+  // profils (rayon, profondeur) de chaque colonne de feuillet, calculés à la demande une fois par image
+  const prof = leaflets.map((lf) => ({ lf, r: new Float32Array((lf.shell.nu + 1) * (lf.shell.nv + 1)), a: new Float32Array((lf.shell.nu + 1) * (lf.shell.nv + 1)), gen: new Int32Array(lf.shell.nu + 1).fill(-1) }));
+  let profGen = 0;
+  const underLeaflets = (p, margin) => {
+    cq.subVectors(p, Cd); const al = cq.dot(A); cr.copy(cq).addScaledVector(A, -al);
+    const r = cr.length(); if (r < 1e-4) return;
+    const th = Math.atan2(cr.dot(E2), cr.dot(E1));
+    let need = -Infinity;
+    for (const P of prof) {
+      const { lf } = P, t0 = lf.L.t0 - 0.06, sp = lf.span + 0.12;
+      const u = ((((th - t0) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / sp;
+      if (u > 1) continue;
+      const { nu, nv, mid: M } = lf.shell, i = Math.round(u * nu), o = i * (nv + 1);
+      if (P.gen[i] !== profGen) { // profil du feuillet dans ce demi-plan
+        P.gen[i] = profGen;
+        for (let j = 0; j <= nv; j++) {
+          const k = (j * (nu + 1) + i) * 3;
+          const x = M[k] - Cd.x, y = M[k + 1] - Cd.y, z = M[k + 2] - Cd.z, a = x * A.x + y * A.y + z * A.z;
+          const rx = x - A.x * a, ry = y - A.y * a, rz = z - A.z * a;
+          P.a[o + j] = a; P.r[o + j] = Math.sqrt(rx * rx + ry * ry + rz * rz);
+        }
+      }
+      for (let j = 0; j < nv; j++) {
+        const r0 = P.r[o + j], r1 = P.r[o + j + 1];
+        if ((r - r0) * (r - r1) > 0 || r0 === r1) continue;
+        need = Math.max(need, P.a[o + j] + (P.a[o + j + 1] - P.a[o + j]) * (r - r0) / (r1 - r0));
+      }
+    }
+    if (need > -Infinity && al < need + margin) p.addScaledVector(A, need + margin - al);
+  };
   // base rapide, bord libre plus lent : ouverture « en voile », léger rebond à la fermeture
   const op = new Opening([12, 0.75], [8, 0.65], 0.9);
   let flow = 0;
@@ -387,20 +423,25 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
     // vibration du bord libre dans le flux de remplissage (valve ouverte, cœur qui bat)
     const wob = flow > 0 ? (u, v) => flow * 0.022 * v * v * Math.sin(2 * Math.PI * 7 * time + 9 * u + 2 * v) * Math.max(0, op.tip.x) : null;
     for (const lf of leaflets) lf.shell.updateOpen(openAt, xf, 0.1, wob);
+    Cd.copy(C); if (xf) xf(Cd, 0.1);
+    profGen++;
     const segs = [];
-    rawChords(openAt, xf).forEach(([a, b, r0, r1, foot], i) => {
+    rawChords(openAt, xf).forEach(([a, b, r0, r1, foot, free], i) => {
       const dd = a.distanceTo(b), L0 = rest[i];
       mid.addVectors(a, b).multiplyScalar(0.5);
       let h = 0;
       if (dd < L0 && dd > 1e-4) h = Math.min(0.12 * L0, 0.5 * Math.sqrt((3 * dd * (L0 - dd)) / 8));
       sd.subVectors(b, a).normalize();
-      ctl.subVectors(C, mid).projectOnPlane(A).normalize().addScaledVector(A, -0.6);
+      // détendu, le cordage s'incurve vers la paroi et vers la pointe, jamais vers l'orifice ni l'oreillette
+      ctl.subVectors(mid, Cd).projectOnPlane(A).normalize().addScaledVector(A, 0.6);
       ctl.addScaledVector(sd, -ctl.dot(sd)).normalize();
       ctl.multiplyScalar(2 * h).add(mid);
-      let prev = a.clone();
-      for (let k = 1; k <= 3; k++) {
-        const p = k === 3 ? b.clone() : bez(a, ctl, b, k / 3, new THREE.Vector3());
-        segs.push([prev, p, r0 + (r1 - r0) * (k - 1) / 3, k === 3 ? foot : r0 + (r1 - r0) * k / 3]);
+      let prev = a.clone(); if (!free) underLeaflets(prev, 0.06 + r0);
+      for (let k = 1; k <= CS; k++) {
+        const p = k === CS ? b.clone() : bez(a, ctl, b, k / CS, new THREE.Vector3());
+        const rk = k === CS ? foot : r0 + (r1 - r0) * k / CS;
+        if (!free) underLeaflets(p, 0.06 + rk);
+        segs.push([prev, p, r0 + (r1 - r0) * (k - 1) / CS, rk]);
         prev = p;
       }
     });

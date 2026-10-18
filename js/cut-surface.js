@@ -13,14 +13,11 @@
 import * as THREE from 'three';
 import { GLSL_DEFORM } from './heart.js';
 
-// déformation du battement avec une raideur variable (paramètre au lieu de l'uniforme)
-const DEFORM_K = GLSL_DEFORM.replace('uniform float uDK; ', '').replace('vec3 heartDeform(vec3 p) {', 'vec3 heartDeform(vec3 p, float uDK) {');
 
 const SECTION_GLSL = /* glsl */`
 varying vec3 vW;
-uniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf; uniform float uVolOn;
 uniform vec3 uCapT; uniform vec3 uCapB;
-${DEFORM_K}
+${GLSL_DEFORM}
 float sh13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
 float sh12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float svn2(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -28,11 +25,6 @@ float svn2(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.
 float svn3(vec3 p) { vec3 i = floor(p), f = fract(p); vec3 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(sh13(i), sh13(i + vec3(1,0,0)), u.x), mix(sh13(i + vec3(0,1,0)), sh13(i + vec3(1,1,0)), u.x), u.y),
              mix(mix(sh13(i + vec3(0,0,1)), sh13(i + vec3(1,0,1)), u.x), mix(sh13(i + vec3(0,1,1)), sh13(i + vec3(1,1,1)), u.x), u.y), u.z); }
-vec4 volAt(vec3 p) {
-  vec3 t = (p - uVolMin) * uVolScale + uVolHalf;
-  if (uVolOn < 0.5 || any(lessThan(t, vec3(0.0))) || any(greaterThan(t, vec3(1.0)))) return vec4(0.4, 0.4, 0.5, 1.0); // hors carte : gros vaisseau
-  return textureLod(uVol, t, 0.0); // pas de mipmaps : lecture sans dérivées (appelée dans une boucle)
-}
 // motif des fibres dans un carreau : q = coordonnées locales (x le long des fibres), el = allongement des stries
 float fiberTile(vec2 q, float el, vec2 seed) {
   q += seed * 17.0;
@@ -48,14 +40,10 @@ float fiberTile(vec2 q, float el, vec2 seed) {
 
 // Matériau de la tranche « myo » (muscle, oreillettes, paroi des vaisseaux). color : teinte de base (sRGB).
 export function sectionMaterial(heart, { stencil, rank }) {
-  const W = heart.wall, D = heart.deformUniforms;
+  // carte de la paroi et déformation du battement : uniformes partagés avec les tissus (heart.js)
   const u = {
-    uVol: { value: W ? W.texture : null }, uVolOn: { value: W ? 1 : 0 },
-    uVolMin: { value: W ? W.min.clone() : new THREE.Vector3() },
-    uVolScale: { value: W ? new THREE.Vector3(1 / (W.step * W.n.x), 1 / (W.step * W.n.y), 1 / (W.step * W.n.z)) : new THREE.Vector3(1, 1, 1) },
-    uVolHalf: { value: W ? new THREE.Vector3(0.5 / W.n.x, 0.5 / W.n.y, 0.5 / W.n.z) : new THREE.Vector3() },
+    ...heart.deformUniforms, uDK: { value: 0.1 }, uDOn: { value: 1 },
     uCapT: { value: new THREE.Vector3(1, 0, 0) }, uCapB: { value: new THREE.Vector3(0, 1, 0) },
-    uDB: D.uDB, uDA: D.uDA, uDL: D.uDL, uDC: D.uDC, uDAt: D.uDAt, uDRA: D.uDRA, uDLA: D.uDLA, uDOn: { value: 1 },
   };
   const mat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.24, specularIntensity: 0.45,
@@ -69,13 +57,13 @@ export function sectionMaterial(heart, { stencil, rank }) {
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${SECTION_GLSL}\nfloat gSecH;`)
       .replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
   {
-    // point d'origine du tissu (avant déformation) : deux pas de déformation inverse, raideur selon la profondeur
-    vec3 p0 = vW; vec4 vol = volAt(p0);
-    for (int it = 0; it < 2; it++) {
-      float f0 = clamp(vol.g / max(vol.g + vol.r, 0.02), 0.0, 1.0);
-      p0 = vW - (heartDeform(p0, mix(0.26, 0.05, f0)) - p0);
-      vol = volAt(p0);
-    }
+    // point d'origine du tissu (avant déformation) : déformation inverse (raideur lue dans la carte)
+    vec3 p0 = vW;
+    p0 = vW - (heartDeform(p0) - p0); // quatre pas déroulés (pas de boucle : lecture de texture hors boucle)
+    p0 = vW - (heartDeform(p0) - p0);
+    p0 = vW - (heartDeform(p0) - p0);
+    p0 = vW - (heartDeform(p0) - p0);
+    vec4 vol = wallAt(p0);
     // r : profondeur sous l'épicarde, g : distance à l'endocarde, b : fraction transmurale du VG (cloison comprise),
     // a : code de tissu (0 ventricule, 0,5 oreillette, 1 gros vaisseau)
     float dEpi = vol.r * 2.55, dEndo = vol.g * 2.55;

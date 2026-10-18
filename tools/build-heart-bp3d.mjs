@@ -44,6 +44,10 @@ const ENV_IDS = ['ventricule-droit', 'ventricule-gauche', 'apex', 'oreillette-dr
 
 /* ─────────── 1. lecture et classement ─────────── */
 const pieces = readPieces(DIR).map((p) => ({ ...p, cls: classify(p.name) })).filter((p) => p.cls && p.file !== 'FJ3659.obj'); // FJ3659 : VCI abdominale
+// Toutes les pièces retenues sont lues dès le départ : le calcul dure plus d'une demi-heure et ne dépend plus ensuite
+// du dossier source (un nettoyage du dossier temporaire l'avait supprimé en cours de route).
+const MESHES = new Map(pieces.map((p) => [p.file, loadMesh(DIR, p.file)]));
+const meshFile = (file) => MESHES.get(file) ?? loadMesh(DIR, file);
 const by = (role, id) => pieces.filter((p) => p.cls.role === role && (!id || p.cls.id === id));
 // Calibre des vaisseaux du cœur : BodyParts3D les donne fins (tronc commun 3,6 mm, IVA et coronaire droite 2,6 mm,
 // branches ≈ 2 mm, sinus coronaire 2,9 mm). On les gonfle le long des normales vers les diamètres usuels des atlas et
@@ -85,7 +89,7 @@ function inflate(m, d) {
   return { pos, idx: m.idx };
 }
 const loadPiece = (p) => {
-  const m = loadMesh(DIR, p.file);
+  const m = meshFile(p.file);
   if (p.cls.role !== 'coronaire' && p.cls.role !== 'veine') return m;
   const c = CALIBRE.find(([re]) => re.test(p.name));
   return inflate(m, c ? c[1] : 0.022);
@@ -112,7 +116,7 @@ const cen0 = (m) => meanOf(verts(m));
 const VC = { mitral: cen0(raw.valve['valve-mitrale']), tricus: cen0(raw.valve['valve-tricuspide']), aortic: cen0(raw.valve['valve-aortique']), pulmo: cen0(raw.valve['valve-pulmonaire']) };
 // Repères des valves (modèle paramétrique de js/valves.js), calculés tôt : l'anneau des valves auriculo-ventriculaires
 // sert aussi à ouvrir les orifices dans les cavités et à couper le muscle ventriculaire au-dessus de la base.
-const leafPts = (re) => pieces.filter((p) => re.test(p.name)).map((p) => ({ name: p.name, pts: mainComponent(loadMesh(DIR, p.file)) }));
+const leafPts = (re) => pieces.filter((p) => re.test(p.name)).map((p) => ({ name: p.name, pts: mainComponent(meshFile(p.file)) }));
 const junction = (Vc, Ac, Sa, Sv) => [...verts(Vc).filter((p) => Math.abs(Sa.query(...p, 1)) < 0.4), ...verts(Ac).filter((p) => Math.abs(Sv.query(...p, 1)) < 0.4)];
 const VALVES = {
   'valve-mitrale': avModel({ leaflets: leafPts(/leaflet of mitral/), papillaries: leafPts(/papillary muscle of left ventricle/), mitral: true,
@@ -314,7 +318,57 @@ const core = (x, y, z) => {
   return { myo, od, og, all: smin(smin(myo, od, 0.5), og, 0.5) };
 };
 // Cavités réelles, réunies par les orifices auriculo-ventriculaires
-const cavField = (x, y, z) => Math.min(S.VG.query(x, y, z, 2), S.VD.query(x, y, z, 2), S.OGc.query(x, y, z, 2), S.ODc.query(x, y, z, 2), ...ORI.map((f) => f(x, y, z)));
+const cavLeft = (x, y, z) => Math.min(S.VG.query(x, y, z, 2), S.OGc.query(x, y, z, 2), ORI[0](x, y, z));
+const cavRight = (x, y, z) => Math.min(S.VD.query(x, y, z, 2), S.ODc.query(x, y, z, 2), ORI[1](x, y, z));
+const cavRaw = (x, y, z) => Math.min(cavLeft(x, y, z), cavRight(x, y, z));
+// Jonction auriculo-ventriculaire : les cavités BodyParts3D de l'oreillette et du ventricule se chevauchent par endroits
+// au-delà de l'anneau (tricuspide surtout, en avant et contre le septum) ; vu de l'oreillette, une fente s'ouvrait alors
+// entre la base des feuillets et la paroi. Pour chaque direction autour de l'anneau paramétrique (js/valves.js), on
+// cherche la paroi la plus proche (pente de −45° à +60° par rapport au plan de l'anneau) et on tend une lame de tissu
+// de 3 mm de l'anneau à cette paroi : l'oreillette rejoint la base des feuillets sans laisser voir le ventricule.
+function junctionShelf(v, cav) {
+  const N = 144, C = v.center, A = v.axis, [ra, rb] = v.radii;
+  const tAnt = (() => { const l = v.leaflets.find((x) => /Anterior/.test(x.name)); return (l.t0 + l.t1) / 2; })();
+  const ring = (th) => { // anneau : rayon dans le plan, hauteur le long de l'axe (selle)
+    const e = v3.add(v3.mul(v.e1, ra * Math.cos(th)), v3.mul(v.e2, rb * Math.sin(th)));
+    return [v3.len(e), -v.saddle * Math.cos(2 * (th - tAnt))];
+  };
+  const rad = (th) => v3.norm(v3.add(v3.mul(v.e1, Math.cos(th)), v3.mul(v.e2, Math.sin(th))));
+  const at = (th, r, h) => v3.add(v3.add(C, v3.mul(rad(th), r)), v3.mul(A, h));
+  const ends = [];
+  for (let i = 0; i < N; i++) {
+    const th = (i / N) * 2 * Math.PI, [r0, h0] = ring(th), s = [r0 + 0.05, h0];
+    let best = null;
+    if (cav(...at(th, s[0], s[1])) < 0) { // base des feuillets dans la cavité : chercher la paroi
+      for (let deg = -45; deg <= 60; deg += 5) {
+        const a = (deg * Math.PI) / 180, dr = Math.cos(a), dh = Math.sin(a);
+        let t = 0; while (t < 2.5 && cav(...at(th, s[0] + dr * t, s[1] + dh * t)) < 0) t += 0.02;
+        if (t < 2.5 && (!best || t < best[0])) best = [t, dr, dh];
+      }
+    }
+    ends.push(best ? [s[0] + best[1] * best[0], s[1] + best[2] * best[0], 1] : [s[0], s[1], 0]);
+  }
+  // lissage circulaire des extrémités (pas de lame en dents de scie quand la pente optimale change)
+  const sm = ends.map((_, i) => { const o = [0, 0, 0]; for (let k = -4; k <= 4; k++) { const e = ends[(i + k + N) % N]; for (let q = 0; q < 3; q++) o[q] += e[q] / 9; } return o; });
+  const table = sm.map((e, i) => { const th = (i / N) * 2 * Math.PI, [r0, h0] = ring(th); return { s: [r0 + 0.05, h0], e, on: e[2] }; });
+  const used = table.filter((t) => t.on > 0.05).length;
+  log(`jonction ${v.leaflets.length === 2 ? 'mitrale' : 'tricuspide'} : lame sur ${Math.round((100 * used) / N)} % du tour, longueur médiane ${(() => { const L = table.filter((t) => t.on > 0.05).map((t) => Math.hypot(t.e[0] - t.s[0], t.e[1] - t.s[1])).sort((a, b) => a - b); return L.length ? L[L.length >> 1].toFixed(2) : 0; })()} cm`);
+  return (x, y, z) => {
+    const q = [x - C[0], y - C[1], z - C[2]], al = v3.dot(q, A), pr = v3.sub(q, v3.mul(A, al)), r = v3.len(pr);
+    if (Math.abs(al) > 3 || r > 4.5 || r < 0.8) return 1e9;
+    const th = Math.atan2(v3.dot(pr, v.e2), v3.dot(pr, v.e1)), f = (((th / (2 * Math.PI)) * N) % N + N) % N;
+    const i0 = Math.floor(f) % N, i1 = (i0 + 1) % N, u = f - Math.floor(f);
+    const L = (k) => table[i0][k].map((x0, j) => x0 + (table[i1][k][j] - x0) * u);
+    const s = L('s'), e = L('e'), on = table[i0].on + (table[i1].on - table[i0].on) * u;
+    if (on < 0.05) return 1e9;
+    // prolongée de 2,5 mm dans la paroi ; segment (s → e) dans le demi-plan (rayon, hauteur) de la direction θ
+    const dx = e[0] - s[0], dy = e[1] - s[1], l = Math.hypot(dx, dy) || 1, ex = e[0] + (dx / l) * 0.25, ey = e[1] + (dy / l) * 0.25;
+    const vx = ex - s[0], vy = ey - s[1], t = Math.min(1, Math.max(0, ((r - s[0]) * vx + (al - s[1]) * vy) / (vx * vx + vy * vy)));
+    return Math.hypot(r - s[0] - vx * t, al - s[1] - vy * t) - 0.15 * Math.min(1, on * 2);
+  };
+}
+const SHELF_M = junctionShelf(AVM, cavLeft), SHELF_T = junctionShelf(AVT, cavRight);
+const cavField = (x, y, z) => Math.min(Math.max(cavLeft(x, y, z), -SHELF_M(x, y, z)), Math.max(cavRight(x, y, z), -SHELF_T(x, y, z)));
 const field = (x, y, z) => {
   const c = core(x, y, z).all;
   let f = c;
@@ -323,7 +377,7 @@ const field = (x, y, z) => {
     for (const [id, k] of A.parts) { const d = PARTS[id](x, y, z); a = k ? smin(a, d, k) : Math.min(a, d); }
     f = Math.min(f, smin(a, c, A.k));
   }
-  return Math.min(f, cavField(x, y, z) - 0.12); // les cavités sont toujours contenues dans l'enveloppe (paroi ≥ 1,2 mm)
+  return Math.min(f, cavRaw(x, y, z) - 0.12); // les cavités (et les lames de jonction) sont toujours contenues dans l'enveloppe
 };
 
 // Lissage de Taubin (λ/μ) : retire le grain des maillages réduits sans faire maigrir la forme
@@ -337,12 +391,6 @@ function taubin(mesh, iters = 6, lambda = 0.5, mu = -0.53) {
   };
   for (let i = 0; i < iters; i++) { step(lambda); step(mu); }
   return mesh;
-}
-function subdivide(mesh) {
-  const verts = mesh.verts.map((p) => p.slice()), mid = new Map(), tris = [];
-  const m = (a, b) => { const k = a < b ? a * 1e7 + b : b * 1e7 + a; let i = mid.get(k); if (i === undefined) { i = verts.length; verts.push(v3.mul(v3.add(mesh.verts[a], mesh.verts[b]), 0.5)); mid.set(k, i); } return i; };
-  for (let t = 0; t < mesh.tris.length; t += 3) { const [a, b, c] = [mesh.tris[t], mesh.tris[t + 1], mesh.tris[t + 2]]; const ab = m(a, b), bc = m(b, c), ca = m(c, a); tris.push(a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca); }
-  return { verts, tris };
 }
 function vertexNormals(mesh) {
   const n = mesh.verts.map(() => [0, 0, 0]);
@@ -581,8 +629,15 @@ addMesh('lumiere-artere', lumA); addMesh('lumiere-veine', lumV);
 for (const [role, o] of Object.entries(raw)) for (const [id, m] of Object.entries(o)) {
   if (role === 'valve') continue;
   let mesh = { verts: verts(m), tris: [...m.idx] };
-  if (role === 'pilier') mesh = subdivide(mesh);
-  taubin(mesh, role === 'pilier' ? 6 : 3); vertexNormals(mesh);
+  if (role === 'pilier') {
+    // muscles papillaires : maillages BodyParts3D ouverts par endroits ; recalculés en solides fermés (surface 0,5 mm
+    // au-dehors), sans quoi le comptage des surfaces de coupe (stencil) se trompe et dessine des éclats de tranche
+    const sp = new MeshSDF(m.pos, m.idx, { cell: 0.2 }), V = verts(m);
+    const B = { min: [0, 1, 2].map((k) => Math.min(...V.map((p) => p[k])) - 0.3), max: [0, 1, 2].map((k) => Math.max(...V.map((p) => p[k])) + 0.3) };
+    mesh = surfaceNets((x, y, z) => sp.query(x, y, z, 1) - 0.05, B, 0.07, { project: 1 });
+    taubin(mesh, 4);
+  } else taubin(mesh, 3);
+  vertexNormals(mesh);
   addMesh(`${role}:${id}`, mesh, { role, id });
 }
 // Carte 3D de la paroi (tranches de coupe) : pour chaque voxel de 2 mm autour du cœur, profondeur sous la surface
@@ -598,7 +653,9 @@ const VOL = (() => {
   for (let k = 0; k < n[2]; k++) for (let j = 0; j < n[1]; j++) for (let i = 0; i < n[0]; i++) {
     const x = min[0] + i * step, y = min[1] + j * step, z = min[2] + k * step, o = ((k * n[1] + j) * n[0] + i) * 4;
     const f = field(x, y, z);
-    if (f > 0.3) continue; // hors du cœur
+    // hors du cœur : fraction transmurale 1 (raideur de l'épicarde) — sans quoi la déformation du battement, qui lit
+    // cette fraction, contracterait le pourtour de l'épicarde comme un endocarde
+    if (f > 0.3) { data[o + 2] = 255; continue; }
     const c = core(x, y, z);
     let ves = 1e9; for (const id of Object.keys(PARTS)) ves = Math.min(ves, PARTS[id](x, y, z));
     const atr = Math.min(c.od, c.og), mus = Math.min(c.myo, atr);

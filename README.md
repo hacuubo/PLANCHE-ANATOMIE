@@ -11,14 +11,16 @@ une liste numérotée des structures, et une fiche explicative par structure.
   arbre coronaire et veines du cœur, gros vaisseaux (aorte et crosse, tronc pulmonaire et artères
   pulmonaires, veines caves, veines pulmonaires). Le myocarde ventriculaire, absent de
   BodyParts3D, est reconstruit autour des cavités réelles, son épaisseur étant calée sur le
-  trajet réel des coronaires.
+  trajet réel des coronaires. À la jonction auriculo-ventriculaire, une lame de tissu relie l'anneau des valves mitrale et
+  tricuspide à la paroi là où les cavités de BodyParts3D laissaient une fente ; les muscles papillaires sont
+  recalculés en solides fermés (surfaces de coupe sans éclats).
 - **Coronaires** comme sur les planches de référence : sillons dégagés de leur graisse, artères en rouge et veines en
   bleu, troncs remis au calibre des atlas (tronc commun ≈ 4,5 mm, IVA proximale et coronaire droite ≈ 3,5 mm, branches
   ≈ 2,4 mm, sinus coronaire ≈ 6 mm), calibre qui diminue vers la périphérie ; le myocarde reconstruit est creusé
   sous chaque vaisseau, visible sur toute sa longueur (jamais interrompu). Visibles : coronaire droite, branche du
   conus, branches ventriculaires et marginales, IVP (interventriculaire postérieure) ; tronc commun, IVA et
   diagonales, circonflexe ; grande veine du cœur, veine interventriculaire antérieure, veine moyenne, petites veines,
-  sinus coronaire.
+  sinus coronaire (masqué au-delà de son orifice dans l'oreillette droite).
 - **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques en relief procédural, film humide satiné, translucidité, liseré lumineux,
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
 - **Coupe** (profondeur réglable) : **5 cavités** (coupe courbe : plan 5 cavités par la pointe et la valve aortique,
@@ -28,8 +30,10 @@ une liste numérotée des structures, et une fiche explicative par structure.
   à l'anneau, oreillettes retirées jusqu'à lui ; aortique et pulmonaire perpendiculairement à leur axe, cuspides vues
   de dessus), **vue
   chirurgien** (petit axe de la mitrale comme en ETO 3D : oreillettes retirées au-dessus de l'anneau, valve vue
-  depuis l'oreillette gauche, aorte à 12 h, mitrale fermée au repos pour montrer la coaptation), frontale et
-  horizontale. **Tranches** (js/cut-surface.js) : muscle rouge sectionné, fibres en hélice dont l'angle tourne dans
+  depuis l'oreillette gauche, aorte à 12 h, mitrale fermée au repos pour montrer la coaptation), **frontale** (plan
+  frontal à peine incliné pour contenir l'axe de la racine aortique, placé au centre de la valve aortique : cuspides
+  coupées en leur milieu, voie d'éjection et aorte ascendante dans le même plan) et horizontale. Quand une coupe passe
+  par la racine aortique ou pulmonaire, celle-ci est ouverte (intima et cuspides visibles) au lieu d'un aplat de sang. **Tranches** (js/cut-surface.js) : muscle rouge sectionné, fibres en hélice dont l'angle tourne dans
   l'épaisseur (cloison comprise, de sa face gauche à sa face droite) (stries ou points selon leur orientation dans la tranche), cloisons entre faisceaux, endocarde nacré,
   épicarde et couche sous-épicardique, paroi des oreillettes, paroi crème des gros vaisseaux ; profondeur lue dans
   une carte 3D de la paroi (voxels de 2 mm) qui suit le battement. On y voit cavités, septum, valves et
@@ -41,33 +45,40 @@ une liste numérotée des structures, et une fiche explicative par structure.
   base fibreuse rosée, zone claire mince et translucide, zone rugueuse épaissie ; lunules et nodule d'Arantius des
   sigmoïdes ; fibres de collagène radiales, ondulations du bord et lumière traversant les zones minces dessinées
   dans le shader (`VALVE`, js/heart.js). Cordages en trois ordres (tronc, branches, cordages fins évasés à
-  l'insertion), inextensibles : tendus valve fermée, ils s'incurvent quand elle s'ouvre. **Cinétique** : ouverture
+  l'insertion), inextensibles : tendus valve fermée, ils s'incurvent quand elle s'ouvre, toujours sous les feuillets
+  (côté ventricule) : vus de l'oreillette, ils n'apparaissent qu'à travers l'orifice. **Cinétique** : ouverture
   suivant un ressort amorti (léger rebond à la fermeture), bord libre en retard sur la base (ondulation en voile),
   vibration du bord libre dans le flux pendant le battement.
-- **Battement** : cycle cardiaque physiologique (≈ 64/min) — systole auriculaire, contraction isovolumique
-  (fermeture mitrale et tricuspide), éjection (ouverture aortique et pulmonaire), relaxation, remplissage.
-  Raccourcissement base → pointe, épaississement des parois, réduction des cavités (fraction d'éjection apparente
-  ≈ 50 %) et torsion, calculés dans le shader de sommets : tous les tissus, les surfaces de coupe et les ombres
-  suivent le même mouvement. Le ventricule se vide pendant l'éjection et se remplit après l'ouverture des valves
-  mitrale et tricuspide.
+- **Battement** (js/heart.js, `cycle` et `GLSL_DEFORM`) : chronologie d'un adulte à 64/min (940 ms), d'après
+  l'échographie (Doppler tissulaire, recommandations ASE/EACVI 2015) et l'IRM de marquage — systole auriculaire
+  (droite 15 ms avant la gauche, derniers 20 % du remplissage), fermeture mitrale puis tricuspide, contraction
+  isovolumique (35 ms : le VG s'arrondit, brève rotation inverse), ouverture pulmonaire puis aortique, éjection
+  (285 ms, rapide puis lente), fermeture aortique puis pulmonaire, relaxation isovolumique (95 ms, détorsion
+  commencée), ouverture tricuspide puis mitrale, remplissage rapide (≈ 75 %), diastasis (valves à demi refermées).
+  Mouvement autour de l'axe propre du VG : la pointe reste immobile, le plan auriculo-ventriculaire descend vers elle
+  (13 mm à l'anneau mitral, ≈ 23 mm sur le bord libre de la tricuspide) et remonte en diastole ; la paroi,
+  incompressible, s'épaissit (endocarde ≈ 8 mm vers l'axe, épicarde ≈ 3 mm ; raideur lue dans la carte 3D de la
+  paroi, de l'endocarde du VG à l'épicarde et à la face droite de la cloison) ; paroi libre du VD en soufflet vers la
+  cloison ; anneau mitral sphinctérien (surface ≈ −25 %) ; racines aortique et pulmonaire non contractées ; torsion : pointe +8,7°, base −4,8°
+  (vue de la pointe), pics en fin d'éjection, détorsion pointe d'abord ; la pointe précède la base de 30 ms ; les
+  oreillettes se remplissent et s'allongent pendant la systole ventriculaire, se vident puis se contractent en fin de
+  diastole. Calculé dans le shader de sommets : tissus, surfaces de coupe, tranches et ombres suivent le même
+  mouvement ; valves et cordages côté processeur, à l'identique.
 - **Modèle visuel** : plein écran, sans panneau, texte, légende, nom de structure ni repère d'orientation ; coronaires
   toujours affichées ; battement automatique dès l'ouverture, bouton « Pause ».
-- **Valves** (gros plans chirurgicaux, js/aortic-view.js et js/av-views.js) : le bouton « Valves » ouvre le choix de la
-  valve sans bouger la vue ; le clic sur le nom de la valve l'entoure d'un anneau et lance le zoom (≈ 6 s). Choix
-  de la variante et de la position (fermée / ouverte), animation avec le battement, fiche par variante.
-  **Zoom de repérage** : la caméra montre d'abord le cœur translucide avec la valve à sa place, entourée et nommée,
-  puis plonge vers elle jusqu'à la vue chirurgicale ; d'une valve à l'autre, elle ressort et tourne autour du cœur.
-  - **Aortique** (depuis l'aorte, chirurgien à droite du patient) : normale, bicuspidie type 1 L-R (Sievers), RAo
-    serré dégénératif.
-  - Mitrale et tricuspide : oreillette ouverte comme après atriotomie (paroi qui remonte de l'anneau, bord coupé
-    épais) ; l'anneau n'est qu'une fine ligne de charnière. Oreillette gauche : endocarde lisse, veines pulmonaires,
-    auricule gauche et sa crête, fosse ovale. Oreillette droite : veines caves et valvule d'Eustachi, sinus coronaire,
-    fosse ovale et limbe, muscles pectinés et crête terminale, auricule droite.
+- **Valves** (vues chirurgicales tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : le bouton
+  « Valves » ouvre le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la
+  vue en cours : la caméra plonge vers la valve pendant que la coupe descend jusqu'au-dessus de l'anneau (oreillette
+  ou aorte retirées). Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui.
+  Choix de la variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend
+  et remonte avec la base. Au retour, la vue et la coupe de départ sont rétablies.
+  - **Aortique** (depuis l'aorte, coupe au-dessus de la jonction sino-tubulaire, chirurgien à droite du patient) :
+    normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif.
   - **Mitrale** (depuis l'oreillette gauche, aorte à 12 h, auricule gauche à gauche) : normale (A1-A3, P1-P3),
     insuffisance par prolapsus de P2 avec rupture de cordage (segment flottant, cordages rompus, brèche de coaptation).
-  - **Tricuspide** (depuis l'oreillette droite, feuillet septal en bas, sinus coronaire) : normale, insuffisance
-    fonctionnelle par dilatation de l'anneau (paroi libre dilatée, feuillets attirés vers le ventricule, défaut de
-    coaptation central).
+  - **Tricuspide** (depuis l'oreillette droite, feuillet septal en bas) : normale, insuffisance fonctionnelle par
+    dilatation de l'anneau (anneau, oreillette et ventricule droits élargis sur la paroi libre par la déformation du
+    cœur, feuillets attirés vers le ventricule, défaut de coaptation central).
 - **Circulation** : parcours guidé du sang en 8 étapes (veines caves → oreillette droite → ventricule droit →
   poumons → veines pulmonaires → oreillette gauche → ventricule gauche → aorte), en coupe 5 cavités vue de face et
   d'en haut. Flèches animées dans le sens du sang (bleu = pauvre en oxygène, rouge = riche), valves dans la position
@@ -96,7 +107,7 @@ des maillages BodyParts3D, qui ne sont pas versionnés dans ce dépôt :
 1. Télécharger `partof_BP3D_4.0_obj_99.zip` (62 Mo) depuis la
    [page de téléchargement BodyParts3D](https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html)
    et le décompresser hors du dépôt.
-2. Lancer la génération (≈ 15 à 20 min) :
+2. Lancer la génération (≈ 30 min) :
 
 ```bash
 node tools/build-heart-bp3d.mjs <chemin>/partof_BP3D_4.0_obj_99
@@ -114,8 +125,8 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, trajets du sang, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
-| `js/av-views.js` | Vues chirurgicales des valves mitrale et tricuspide (normales et pathologiques) |
-| `js/aortic-view.js` | Vue chirurgicale de la valve aortique : racine aortique et variantes (normale, bicuspide, rétrécie) |
+| `js/av-views.js` | Vues chirurgicales des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
+| `js/aortic-view.js` | Vue chirurgicale de la valve aortique dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), circulation guidée, étiquettes, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
