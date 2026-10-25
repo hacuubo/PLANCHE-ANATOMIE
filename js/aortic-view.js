@@ -192,6 +192,8 @@ export function buildAorticView(heart) {
       };
     })(),
     get variant() { return current; },
+    valveFor: (name) => out[name] ?? heart.valves[id], // objet valve d'une variante (normale : celle du cœur)
+    dilationOf: () => 0,
     setVariant(name) { current = name; if (view.active) view.activate(true); },
     active: false,
     activate(on) { view.active = on; heart.useValve(id, on ? out[current] : null); },

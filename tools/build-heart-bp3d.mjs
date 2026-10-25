@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { surfaceNets } from './lib/surface-nets.mjs';
 import { readPieces, loadMesh, mergeMeshes, classify, MeshSDF, PointCloud, smin, fbm, tubeSDF } from './lib/bp3d-heart.mjs';
 import { avModel, slModel, mainComponent } from './lib/valve-landmarks.mjs';
+import { toHRT3 } from './lib/hrt-codec.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -697,8 +698,9 @@ const header = {
 const hb = Buffer.from(JSON.stringify(header), 'utf8'); const hpad = (4 - (hb.length % 4)) % 4;
 const pre = Buffer.alloc(8); pre.write('HRT2', 0, 'ascii'); pre.writeUInt32LE(hb.length + hpad, 4);
 const file = Buffer.concat([pre, hb, Buffer.alloc(hpad, 0x20), ...chunks]);
-fs.writeFileSync(path.join(ROOT, 'assets', 'heart.bin'), file);
-log(`assets/heart.bin : ${(file.length / 1048576).toFixed(2)} Mo, ${meshes.length} maillages`);
+const packed = toHRT3(file); // format compact (tools/lib/hrt-codec.mjs)
+fs.writeFileSync(path.join(ROOT, 'assets', 'heart.bin'), packed);
+log(`assets/heart.bin : ${(packed.length / 1048576).toFixed(2)} Mo, ${meshes.length} maillages`);
 // Contrôle des épaisseurs : distance de chaque point des cavités ventriculaires à la surface externe (hors base)
 for (const [nom, id, cible] of [['VG', 'ventricule-gauche', '8–12 mm'], ['VD', 'ventricule-droit', '3–5 mm']]) {
   const w = verts(cav[id]).filter((p) => v3.dot(v3.sub(p, BASE), AXIS) > 0.8).map((p) => -field(...p)).sort((a, b) => a - b);

@@ -8,6 +8,8 @@
 // Normales reconstruites depuis la profondeur, échantillonnage en spirale (demi-résolution), flou bilatéral à la
 // recomposition, puis tonalité et espace de couleur de sortie identiques au rendu direct.
 // Les éléments d'interface 3D éventuels (calque 1) sont dessinés après, sans ombrage.
+// Écran partagé (split) : deux images côte à côte dans la même cible (moitié gauche, moitié droite), préparées par
+// split.before(i) ; l'occlusion lit chaque moitié avec sa propre projection et ne déborde pas sur l'autre.
 import * as THREE from 'three';
 
 // Triangle plein écran (sans dépendance aux modules d'exemples de three)
@@ -29,11 +31,16 @@ uniform mat4 uProj, uProjInv;
 uniform vec2 uTexel;      // 1 / taille de la profondeur (pleine résolution)
 uniform float uRadius;    // rayon d'influence (cm)
 uniform float uIntensity;
+uniform float uSplit;     // 1 : deux moitiés, chacune avec la projection complète
 varying vec2 vUv;
 #define NS 14
+vec2 toNdc(vec2 uv) {
+  if (uSplit > 0.5) uv.x = uv.x < 0.5 ? uv.x * 2.0 : uv.x * 2.0 - 1.0;
+  return uv * 2.0 - 1.0;
+}
 vec3 viewPos(vec2 uv) {
   float d = texture2D(tDepth, uv).x;
-  vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  vec4 v = uProjInv * vec4(toNdc(uv), d * 2.0 - 1.0, 1.0);
   return v.xyz / v.w;
 }
 void main() {
@@ -49,13 +56,16 @@ void main() {
   if (dot(Nc, Nc) < 1e-14) { gl_FragColor = vec4(1.0); return; } // normale indéterminée : pas d'occlusion
   vec3 N = normalize(Nc);
   vec2 rUv = vec2(uProj[0][0], uProj[1][1]) * 0.5 * uRadius / max(-P.z, 0.1);
+  float lo = 0.0, hi = 1.0;
+  if (uSplit > 0.5) { rUv.x *= 0.5; lo = vUv.x < 0.5 ? 0.0 : 0.5; hi = lo + 0.5; } // reste dans sa moitié
   // rotation de la spirale selon un motif régulier 4 × 4, que le flou 4 × 4 de la recomposition annule exactement
   vec2 cell = mod(floor(gl_FragCoord.xy), 4.0);
   float a0 = (cell.x * 4.0 + cell.y + 0.5) / 16.0 * 6.2831853, R2 = uRadius * uRadius, occ = 0.0;
   for (int i = 0; i < NS; i++) {
     float t = (float(i) + 0.5) / float(NS);
     float a = a0 + t * 6.2831853 * 3.0;
-    vec3 Q = viewPos(vUv + vec2(cos(a), sin(a)) * t * rUv);
+    vec2 sUv = vUv + vec2(cos(a), sin(a)) * t * rUv; sUv.x = clamp(sUv.x, lo + uTexel.x, hi - uTexel.x);
+    vec3 Q = viewPos(sUv);
     vec3 v = Q - P;
     float vv = dot(v, v);
     float fall = 1.0 - smoothstep(0.4 * R2, R2, vv);       // occultants lointains ignorés
@@ -104,6 +114,7 @@ export class ContactShadows {
   constructor(renderer, scene, camera, { radius = 0.6, intensity = 3, strength = 0.9, overlayLayer = 1 } = {}) {
     Object.assign(this, { renderer, scene, camera, overlayLayer });
     this.enabled = true;
+    this.split = null; // { before(i), after() } : écran partagé
     const depth = new THREE.DepthTexture(1, 1, THREE.UnsignedInt248Type);
     depth.format = THREE.DepthStencilFormat;
     // couleur HDR si l'appareil sait la rendre (sinon 8 bits : quelques dégradés moins fins, mais même image)
@@ -113,7 +124,7 @@ export class ContactShadows {
     this.aoTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.UnsignedByteType, depthBuffer: false });
     this.aoMat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: AO_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { tDepth: { value: depth }, uProj: { value: new THREE.Matrix4() }, uProjInv: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: radius }, uIntensity: { value: intensity } },
+      uniforms: { tDepth: { value: depth }, uProj: { value: new THREE.Matrix4() }, uProjInv: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: radius }, uIntensity: { value: intensity }, uSplit: { value: 0 } },
     });
     this.composeMat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: COMPOSE_FRAG, depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending, toneMapped: true,
@@ -136,7 +147,19 @@ export class ContactShadows {
     const mask = camera.layers.mask;
     camera.layers.disable(this.overlayLayer);
     renderer.setRenderTarget(this.target);
-    renderer.render(scene, camera);
+    const split = this.split, T = this.target;
+    if (split) {
+      const W = T.width, H = T.height, hw = Math.floor(W / 2);
+      for (let i = 0; i < 2; i++) {
+        split.before(i);
+        T.viewport.set(i * hw, 0, i ? W - hw : hw, H); T.scissor.copy(T.viewport); T.scissorTest = true;
+        renderer.setRenderTarget(T); // la cible applique sa fenêtre au moment où elle est choisie
+        renderer.render(scene, camera);
+      }
+      T.viewport.set(0, 0, W, H); T.scissor.set(0, 0, W, H); T.scissorTest = false;
+      renderer.setRenderTarget(T);
+    } else renderer.render(scene, camera);
+    this.aoMat.uniforms.uSplit.value = split ? 1 : 0;
     camera.layers.mask = mask;
     this.aoMat.uniforms.uProj.value.copy(camera.projectionMatrix);
     this.aoMat.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse);
@@ -145,6 +168,7 @@ export class ContactShadows {
     this.aoQuad.render(renderer);
     renderer.setRenderTarget(null);
     this.composeQuad.render(renderer);
+    split?.after();
     // calque d'interface : par-dessus, sans ombrage ni nouvel effacement (rien à dessiner : passe sautée)
     let any = false;
     scene.traverseVisible((o) => { if (!any && o.isMesh && o.layers.isEnabled(this.overlayLayer) && !o.layers.isEnabled(0)) any = true; });

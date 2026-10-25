@@ -482,26 +482,67 @@ function gridRaycast(raycaster, intersects) {
 
 
 /* ─────────── chargement (assets/heart.bin, format HRT2) ─────────── */
-async function loadHeartData() {
-  const res = await fetch(new URL('../assets/heart.bin', import.meta.url));
+// Lecture en flux : progression connue dès les premiers octets (longueur totale inscrite dans l'en-tête HRT3), même
+// quand le serveur compresse le fichier (la longueur annoncée par HTTP est alors celle du fichier compressé).
+async function fetchModel(url, onProgress) {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`assets/heart.bin : ${res.status}`);
-  const buf = await res.arrayBuffer();
+  if (!res.body || !onProgress) return res.arrayBuffer();
+  const reader = res.body.getReader(), parts = [];
+  let got = 0, total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value); got += value.length;
+    if (!total && got >= 12) {
+      const head = parts.length === 1 ? parts[0] : new Uint8Array(parts.flatMap((p) => [...p.subarray(0, 12)]).slice(0, 12));
+      const dv = new DataView(head.buffer, head.byteOffset, 12);
+      total = String.fromCharCode(head[0], head[1], head[2], head[3]) === 'HRT3' ? dv.getUint32(8, true) : Number(res.headers.get('content-length')) || 0;
+    }
+    if (total) onProgress(Math.min(1, got / total));
+  }
+  const buf = new Uint8Array(got);
+  let o = 0; for (const p of parts) { buf.set(p, o); o += p.length; }
+  return buf.buffer;
+}
+// Format compact HRT3 (tools/lib/hrt-codec.mjs) : positions en écarts, indices en entiers de longueur variable
+function decodePositions(src, n) {
+  const q = new Uint16Array(n);
+  for (let i = 0; i < n; i++) q[i] = ((i >= 3 ? q[i - 3] : 0) + (src[i] | (src[n + i] << 8))) & 0xffff;
+  return q;
+}
+function decodeIndices(src, count, wide) {
+  const out = wide ? new Uint32Array(count) : new Uint16Array(count);
+  let p = 0, hi = 0;
+  for (let k = 0; k < count; k++) {
+    let v = 0, s = 0, b;
+    do { b = src[p++]; v |= (b & 0x7f) << s; s += 7; } while (b & 0x80);
+    v >>>= 0;
+    const i = hi - ((v >>> 1) ^ -(v & 1));
+    out[k] = i; if (i + 1 > hi) hi = i + 1;
+  }
+  return out;
+}
+async function loadHeartData(onProgress) {
+  const buf = await fetchModel(new URL('../assets/heart.bin', import.meta.url), onProgress);
   const dv = new DataView(buf);
   const magic = String.fromCharCode(...new Uint8Array(buf, 0, 4));
-  if (magic !== 'HRT2') throw new Error(`assets/heart.bin : format ${magic} inattendu`);
+  if (magic !== 'HRT2' && magic !== 'HRT3') throw new Error(`assets/heart.bin : format ${magic} inattendu`);
+  const v3f = magic === 'HRT3', h0 = v3f ? 12 : 8;
   const hl = dv.getUint32(4, true);
-  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
-  const base = 8 + hl;
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, h0, hl)));
+  const base = h0 + hl;
   const view = (Type, [off, len]) => new Type(buf, base + off, len);
   const { min, size } = header.bounds;
   const geos = {};
   for (const m of header.meshes) {
-    const q = view(Uint16Array, m.pos), p = new Float32Array(q.length);
+    const q = v3f ? decodePositions(view(Uint8Array, m.pos), m.pos[1] / 2) : view(Uint16Array, m.pos), p = new Float32Array(q.length);
     for (let i = 0; i < q.length; i++) { const k = i % 3; p[i] = min[k] + (q[i] / 65535) * size[k]; }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(p, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(view(Int16Array, m.nor), 3, true));
-    g.setIndex(new THREE.BufferAttribute(m.idx32 ? view(Uint32Array, m.idx) : view(Uint16Array, m.idx), 1));
+    g.setIndex(new THREE.BufferAttribute(v3f ? decodeIndices(view(Uint8Array, m.idx), m.icount, m.idx32) : m.idx32 ? view(Uint32Array, m.idx) : view(Uint16Array, m.idx), 1));
+    if (m.nor) g.setAttribute('normal', new THREE.BufferAttribute(view(Int16Array, m.nor), 3, true));
+    else g.computeVertexNormals(); // HRT3 : normales recalculées (pondérées par l'aire, comme au générateur)
     if (m.col) g.setAttribute('col', new THREE.BufferAttribute(view(Uint8Array, m.col), 4, true));
     if (m.tis) g.setAttribute('tis', new THREE.BufferAttribute(view(Uint8Array, m.tis), 4, true));
     g.computeBoundingSphere();
@@ -520,8 +561,8 @@ async function loadHeartData() {
 }
 
 /* ─────────── construction ─────────── */
-export async function buildHeart() {
-  const { header, geos, wall } = await loadHeartData();
+export async function buildHeart(onProgress) {
+  const { header, geos, wall } = await loadHeartData(onProgress);
   const ids = header.ids;
   const F = header.frame;
   // repère local du cœur : x = gauche locale, y = vers la base (−axe), z = avant local, origine au centre de la base
@@ -695,7 +736,8 @@ export async function buildHeart() {
       mesh.castShadow = true;
       register(meta.id, mesh);
       cutOnly.push(mesh);
-      solids.push({ mesh, hole: false, cap: 'myo', k: K_ENDO });
+      // tranche propre (fibres longitudinales, js/cut-surface.js) : la carte de la paroi les place dans la cavité
+      solids.push({ mesh, hole: false, cap: 'pilier', k: K_ENDO });
     }
   }
 
@@ -703,6 +745,7 @@ export async function buildHeart() {
   const valves = header.valves ? buildValves(header.valves, matFor) : {};
   // Une seule valve affichée par orifice : la valve normale, ou une variante pathologique posée à sa place dans le
   // même cœur (vues des valves : js/av-views.js, js/aortic-view.js). Visibles seulement en coupe (showValves).
+  const extraValves = new Map(); // valve supplémentaire (comparaison) → orifice
   const shown = { ...valves }, variants = Object.fromEntries(Object.keys(valves).map((id) => [id, [valves[id]]]));
   let valvesOn = false;
   const syncValves = () => { for (const [id, list] of Object.entries(variants)) for (const v of list) for (const m of v.meshes) m.visible = valvesOn && v === shown[id]; };
@@ -898,13 +941,14 @@ export async function buildHeart() {
     U.uDR.value.set(rad[0], rad[1]); U.uDLg.value = lg; U.uDTw.value.set(tw[0], tw[1]); U.uDAt.value.set(at[0], at[1]); U.uDRes.value = res;
     lastPose = c;
     for (const [id, v2] of Object.entries(shown)) { const [k1, k2] = VALVE_KEY[id]; v2.setTarget(c[k1] ?? c[k2] ?? 0); }
+    for (const [v2, id] of extraValves) { const [k1, k2] = VALVE_KEY[id]; v2.setTarget(c[k1] ?? c[k2] ?? 0); }
     return c;
   };
   // dt (s), time (s), live : cœur qui bat → vibration des bords libres. Renvoie vrai si
   // une valve bouge encore.
   const stepValves = (dt, time, live) => {
     let moving = false;
-    for (const v of Object.values(shown)) moving = v.step(dt, time, deformPoint, deformDirty, live) || moving;
+    for (const v of new Set([...Object.values(shown), ...extraValves.keys()])) moving = v.step(dt, time, deformPoint, deformDirty, live) || moving;
     deformDirty = false;
     return moving;
   };
@@ -921,6 +965,12 @@ export async function buildHeart() {
     syncValves();
   };
   const showValves = (on) => { valvesOn = on; syncValves(); };
+  // Comparaison en écran partagé (js/app.js) : une seconde valve du même orifice suit le cycle avec celle affichée
+  // (consigne et dynamique), et les deux sont affichées tour à tour, sans recalage, chacune redessinée sur la
+  // déformation du cœur de sa moitié d'écran (anneau dilaté ou non).
+  const setExtraValves = (list) => { extraValves.clear(); for (const [id, v] of list) { extraValves.set(v, id); const [k1, k2] = VALVE_KEY[id]; v.snap(lastPose ? lastPose[k1] ?? lastPose[k2] ?? 0 : 0, deformPoint); } };
+  const showValve = (id, v) => { if (shown[id] !== v) { shown[id] = v; syncValves(); } };
+  const redrawValve = (v, time, live = false) => v.step(0, time, deformPoint, true, live);
   // dilatation de l'anneau tricuspide (0 : cœur normal)
   const setDilation = (x) => { if (deformU.uDDil.value !== x) { deformU.uDDil.value = x; deformDirty = true; } };
 
@@ -970,7 +1020,7 @@ export async function buildHeart() {
   cutOnly.forEach((m) => { m.visible = false; });
 
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
-    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation,
+    cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve,
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
     landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k, cut) => addDeformTo(mat, deformU, k, cut),

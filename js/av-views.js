@@ -59,6 +59,8 @@ export function buildAVView(heart, kind) {
         orient: mitral ? 'Vue depuis le ventricule gauche · <b>aorte en haut</b>' : 'Vue depuis le ventricule droit · <b>septum en bas</b>' },
     },
     get variant() { return current; },
+    valveFor: (name) => variants[name] ?? heart.valves[id], // objet valve d'une variante (normale : celle du cœur)
+    dilationOf: (name) => dilation[name] ?? 0,
     get dilation() { return dilation[current] ?? 0; }, // dilatation de la variante (transitions progressives)
     setVariant(name) { current = name; if (view.active) view.activate(true); },
     active: false,

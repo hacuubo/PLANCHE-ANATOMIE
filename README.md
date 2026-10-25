@@ -33,8 +33,11 @@ une liste numérotée des structures, et une fiche explicative par structure.
   par la racine aortique ou pulmonaire, celle-ci est ouverte (intima et cuspides visibles) au lieu d'un aplat de sang. **Tranches** (js/cut-surface.js) : muscle rouge sectionné, fibres en hélice dont l'angle tourne dans
   l'épaisseur (cloison comprise, de sa face gauche à sa face droite) (stries ou points selon leur orientation dans la tranche), cloisons entre faisceaux, endocarde nacré,
   épicarde et couche sous-épicardique, paroi des oreillettes, paroi crème des gros vaisseaux ; profondeur lue dans
-  une carte 3D de la paroi (voxels de 2 mm) qui suit le battement. On y voit cavités, septum, valves et
-  cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé dans le septum.
+  une carte 3D de la paroi (voxels de 2 mm) qui suit le battement ; muscles papillaires coupés en travers (fibres le
+  long du pilier, en points) ; détail le plus fin des fibres et relief atténués quand ils tombent sous quelques pixels
+  (pas de grain scintillant). Lumière des gros vaisseaux : sang sombre et humide, plus profond au centre qu'au bord.
+  On y voit cavités, septum, valves et cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé
+  dans le septum (masqués dans les vues des valves).
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
   tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
   les deux piliers qui encadrent ses commissures), coaptation mitrale en « sourire » et tricuspide en Y ; ouverts, les
@@ -62,8 +65,15 @@ une liste numérotée des structures, et une fiche explicative par structure.
   oreillettes se remplissent et s'allongent pendant la systole ventriculaire, se vident puis se contractent en fin de
   diastole. Calculé dans le shader de sommets : tissus, surfaces de coupe, tranches et ombres suivent le même
   mouvement ; valves et cordages côté processeur, à l'identique.
-- **Modèle visuel** : plein écran, sans panneau, texte, légende, nom de structure ni repère d'orientation ; coronaires
-  toujours affichées ; battement automatique dès l'ouverture, bouton « Pause ».
+- **Modèle visuel** : plein écran, sans panneau, texte, légende ni nom de structure ; coronaires toujours affichées ;
+  battement automatique dès l'ouverture, bouton « Pause » (le cœur reste à l'instant où on l'arrête).
+- **Cycle cardiaque** (barre du bas) : curseur sur un cycle de 940 ms, contraction des oreillettes, systole (de la
+  fermeture mitrale à la fermeture aortique) et diastole marquées ; glisser arrête le cœur à cet instant, valves
+  comprises ; ralenti ½ et ¼.
+- **Repères** (bouton, à la demande) : côtés du patient, et dans les vues des valves noms des feuillets, des cuspides et
+  de l'aorte. **Recentrer** : cadrage de départ de la vue en cours. **Partager** : lien de la vue en cours (valve, côté,
+  variante, position ou instant du cycle, coupe, vitesse, repères, comparaison), tenu à jour dans la barre d'adresse et
+  rouvert tel quel (par exemple `?valve=mitrale&cote=ventricule&variante=prolapsus&instant=300`).
 - **Valves** (vues de face tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : le bouton « Valves » ouvre
   le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la vue en cours : la
   caméra plonge vers la valve pendant que la coupe descend. Deux côtés, comme en échocardiographie 3D (ASE/EAE,
@@ -73,7 +83,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
   aorte à 12 h pour la mitrale, feuillet septal à 6 h pour la tricuspide, cuspide coronaire droite à 6 h pour
   l'aortique. Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui. Choix de la
   variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend et remonte
-  avec la base. Au retour, la vue et la coupe de départ sont rétablies.
+  avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
+  doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
+  gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
   - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif. Ouvertes, les cuspides restent à
     distance de la paroi des sinus (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ;
     à travers l'orifice, on voit la chambre de chasse et le ventricule.
@@ -87,7 +99,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
   l'endocarde) et ombres de contact en espace écran (creux, sillons, jonctions valves–anneau, cordages–feuillets,
   piliers–paroi), calculées sur la profondeur de l'image réellement affichée : coupes et battement compris.
-- **Hors ligne** : service worker mettant en cache l'application, le modèle et three.js.
+- **Hors ligne** : service worker mettant en cache l'application, le modèle et three.js (pas en local, pour que les
+  essais tournent toujours sur la dernière version).
+- **Chargement** : modèle au format compact HRT3 (≈ 2,2 Mo transférés), barre de progression.
 
 ## Lancer en local
 
@@ -112,7 +126,9 @@ des maillages BodyParts3D, qui ne sont pas versionnés dans ce dépôt :
 node tools/build-heart-bp3d.mjs <chemin>/partof_BP3D_4.0_obj_99
 ```
 
-L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. Incrémenter ensuite
+L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier ; il écrit le format compact HRT3
+(`tools/lib/hrt-codec.mjs` : normales recalculées dans le navigateur, positions et indices codés en écarts ; un
+ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter ensuite
 `VERSION` dans `sw.js` pour que les applications installées se mettent à jour.
 
 ## Organisation
@@ -126,11 +142,12 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier. I
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V de la valve aortique dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie) |
-| `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée |
-| `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves, étiquettes, interface |
+| `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
+| `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
-| `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves |
+| `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves, format compact du modèle, pilotage d'Edge pour les captures |
+| `tools/pack-heart.mjs` | Convertit `assets/heart.bin` au format compact HRT3 |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |
 

@@ -65,6 +65,9 @@
           <span class="tool-sep" aria-hidden="true"></span>
           <span class="tool-group" aria-label="Options">
             <button class="tool option beat-btn" data-toggle="battement" type="button" aria-pressed="true" title="Mettre le battement en pause ou le relancer"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ic-pause" d="M5.5 3.5v9M10.5 3.5v9"/><path class="ic-play" d="M5 3l8 5-8 5z"/></svg><span class="beat-txt">Pause</span></button>
+            <button class="tool option" data-action="recentrer" type="button" title="Revenir au cadrage de départ de la vue en cours"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v3.2M8 11.3v3.2M1.5 8h3.2M11.3 8h3.2"/></svg><span class="lbl">Recentrer</span></button>
+            <button class="tool option" data-toggle="reperes" type="button" aria-pressed="false" title="Afficher les repères d'orientation : côtés du patient, aorte, feuillets et cuspides"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 3.5l1.6 4.5L8 12.5 6.4 8z"/></svg><span class="lbl">Repères</span></button>
+            <button class="tool option" data-action="partager" type="button" title="Partager ou copier le lien de cette vue (valve, côté, variante, instant du cycle)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="3.8" r="1.8"/><circle cx="12" cy="12.2" r="1.8"/><path d="M5.6 7.1l4.8-2.4M5.6 8.9l4.8 2.4"/></svg><span class="lbl">Partager</span></button>
           </span>
         </div>
         <div id="cut-tools" class="cut-tools hidden">
@@ -81,14 +84,31 @@
             <button data-valve="tricuspide" type="button">Tricuspide</button>
           </div>
           <div class="seg" role="group" aria-label="Côté d'observation">
-            <button data-vside="C" class="active" type="button" title="Vue chirurgicale : depuis l'oreillette (ou l'aorte), comme le chirurgien">C</button>
-            <button data-vside="V" type="button" title="Vue ventriculaire : depuis l'intérieur du ventricule, du côté opposé">V</button>
+            <button data-vside="C" class="active" type="button" title="Vue chirurgicale : depuis l'oreillette (ou l'aorte), comme le chirurgien">Chirurgien</button>
+            <button data-vside="V" type="button" title="Vue ventriculaire : depuis l'intérieur du ventricule, du côté opposé">Ventricule</button>
           </div>
           <div class="seg" id="valve-variants" role="group" aria-label="Variante"></div>
           <div class="seg" role="group" aria-label="Position de la valve">
             <button data-vphase="ferme" class="active" type="button">Fermée</button>
             <button data-vphase="ouvert" type="button">Ouverte</button>
           </div>
+          <button class="tool option" data-toggle="comparer" type="button" aria-pressed="false" title="Écran partagé : valve normale à gauche, valve malade à droite, dans le même cœur et au même instant du cycle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M8 3v10"/></svg><span class="lbl">Comparer</span></button>
+        </div>
+      </div>
+      <!-- cycle cardiaque : position dans le battement (glisser pour arrêter à un instant), vitesse -->
+      <div id="cycle" class="cycle" role="group" aria-label="Cycle cardiaque">
+        <div class="cycle-main">
+          <div class="cycle-track">
+            <span class="cycle-band band-atr" title="Contraction des oreillettes (fin de diastole)"></span>
+            <span class="cycle-band band-sys" title="Systole : contraction des ventricules, de la fermeture de la mitrale à celle de la valve aortique"></span>
+            <input id="cycle-pos" type="range" min="0" max="1000" step="1" value="0" aria-label="Instant du cycle cardiaque">
+          </div>
+          <div class="cycle-labels" aria-hidden="true"><span class="lab-atr">Oreillettes</span><span class="lab-sys">Systole</span><span class="lab-dia">Diastole</span></div>
+        </div>
+        <div class="seg cycle-speed" role="group" aria-label="Vitesse du battement">
+          <button data-speed="1" class="active" aria-pressed="true" type="button" title="Vitesse réelle (64 battements par minute)">1×</button>
+          <button data-speed="0.5" aria-pressed="false" type="button" title="Ralenti, deux fois plus lent">½×</button>
+          <button data-speed="0.25" aria-pressed="false" type="button" title="Ralenti, quatre fois plus lent">¼×</button>
         </div>
       </div>
       <div class="bottombar">

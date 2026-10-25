@@ -81,6 +81,8 @@ export async function openBrowser() {
         const r = await s('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) });
         return Buffer.from(r.data, 'base64');
       },
+      // script exécuté avant ceux de chaque page chargée ensuite (relevé des erreurs, par exemple)
+      beforeLoad: (source) => s('Page.addScriptToEvaluateOnNewDocument', { source }),
       close: () => send('Target.closeTarget', { targetId }),
     };
     return api;

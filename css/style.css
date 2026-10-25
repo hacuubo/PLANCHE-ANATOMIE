@@ -64,10 +64,12 @@ button { font: inherit; color: inherit; }
 /* fond de studio : dégradé gris-bleu très clair, comme en animation médicale (le modèle s'en détache par contre-jour) */
 .scene { position: relative; overflow: hidden; cursor: grab;
   background: radial-gradient(75% 70% at 45% 42%, #fbfcfd 0%, #e2e8ef 45%, #c4ced9 100%); }
-.scene:not(.ready)::after {
-  content: "Chargement du modèle…"; position: absolute; inset: 0; display: grid; place-items: center;
-  font-size: 15px; color: var(--ink-2); letter-spacing: .02em;
+.loading {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  font-size: 15px; color: var(--ink-2); letter-spacing: .02em; z-index: 4;
 }
+.loading-bar { width: min(260px, 60%); height: 4px; border-radius: 2px; background: rgba(43, 36, 32, .12); overflow: hidden; }
+.loading-bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .2s; }
 .scene canvas { display: block; }
 .labels { position: absolute; inset: 0; z-index: 1; } /* étiquettes sous la barre d'outils */
 
@@ -113,6 +115,33 @@ button { font: inherit; color: inherit; }
 .orient b { font-weight: 700; }
 .only-cut { display: none; }
 .scene.is-cut .only-cut { display: inline; }
+
+/* ── cycle cardiaque (bas de la scène) ── */
+/* temps du cycle de 940 ms (js/heart.js, cycle) : oreillettes 20–178 ms, systole ventriculaire 175–495 ms */
+.cycle {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 5;
+  width: min(560px, calc(100% - 28px)); display: flex; align-items: center; gap: 12px;
+  background: rgba(255, 253, 249, .92); border: 1px solid var(--line-strong); border-radius: 12px; padding: 6px 10px 4px 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06); font-size: 12.5px; color: var(--ink-2);
+}
+.cycle-main { flex: 1; min-width: 0; }
+.cycle-track { position: relative; height: 26px; }
+.cycle-track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: #e6dccd; }
+.cycle-band { position: absolute; top: 50%; height: 6px; margin-top: -3px; }
+.band-atr { left: 2.1%; width: 16.8%; background: #d9a08f; border-radius: 3px 0 0 3px; }
+.band-sys { left: 18.6%; width: 34.1%; background: var(--accent); border-radius: 0 3px 3px 0; }
+.cycle input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+.cycle input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 26px; }
+.cycle input[type=range]::-moz-range-track { background: transparent; height: 26px; }
+.cycle input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 22px; margin-top: 2px; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 2px rgba(255,253,249,.9); }
+.cycle input[type=range]::-moz-range-thumb { width: 4px; height: 22px; border: 0; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 2px rgba(255,253,249,.9); }
+.cycle-labels { position: relative; height: 15px; line-height: 15px; }
+.cycle-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.lab-atr { left: 10.5%; } .lab-sys { left: 35.6%; color: var(--accent); font-weight: 600; } .lab-dia { left: 76%; }
+.cycle.idle input[type=range]::-webkit-slider-thumb { opacity: .3; }
+.cycle.idle input[type=range]::-moz-range-thumb { opacity: .3; }
+.cycle-speed button { padding: 6px 9px; min-height: 34px; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .lab-atr { display: none; } .cycle { gap: 8px; padding-left: 10px; } }
 
 /* ── étiquettes 3D (survol / sélection) ── */
 .label {
@@ -211,4 +240,24 @@ button { font: inherit; color: inherit; }
 
 /* ── modèle visuel : plein écran, sans panneau, sans texte ni repère ── */
 .panel, #panel-toggle, .bottombar { display: none !important; }
+/* repères à la demande (bouton « Repères ») : côtés du patient au-dessus de la barre du cycle, noms sur les valves */
+.scene.show-marks .bottombar { display: flex !important; left: 50%; right: auto; transform: translateX(-50%); bottom: 82px; width: max-content; max-width: calc(100% - 28px); justify-content: center; text-align: center; }
+.ao-label { font-size: 12.5px; }
+.ao-label.struct { font-weight: 600; border-color: var(--ink); }
+/* comparaison : écran partagé, valve normale à gauche, valve malade à droite */
+.compare-tags { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.compare-tags span {
+  position: absolute; top: var(--cmp-top, 150px); transform: translateX(-50%); white-space: nowrap;
+  background: rgba(255, 253, 249, .94); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 12px; font-size: 13.5px; font-weight: 600;
+}
+.compare-tags .cmp-l { left: 25%; } .compare-tags .cmp-r { left: 75%; color: var(--accent); }
+.compare-tags i { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255, 253, 249, .9); box-shadow: 0 0 6px rgba(0,0,0,.15); }
+/* message bref (lien copié) */
+.toast {
+  position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); z-index: 8; pointer-events: none; max-width: calc(100% - 28px);
+  background: var(--ink); color: #fff; border-radius: 999px; padding: 8px 16px; font-size: 14px; opacity: 0; transition: opacity .2s;
+}
+.toast.show { opacity: 1; }
+/* petits écrans : boutons d'options réduits à leur icône */
+@media (max-width: 640px) { .tool .lbl { display: none; } .tool.option { padding: 9px 12px; } }
 
