@@ -744,6 +744,7 @@ const valveMarks = {};
       const name = NAMES.find(([re]) => re.test(l.name)); if (!name) continue;
       list.push(mark(name[1], at((l.t0 + l.t1) / 2, 0.6)));
     }
+    if (key === 'aortique') for (const [side, o] of Object.entries(heart.ostia ?? {})) list.push(mark(`Ostium coronaire ${side}`, o.point.clone().addScaledVector(o.normal, -0.45), 'struct')); // au-delà de la paroi : ne cache pas le nom de la cuspide
     if (key === 'mitrale') list.push(mark('Aorte', C.clone().addScaledVector(VALVE_VIEWS.mitrale.sides.C.up, Math.max(ra, rb) * 1.18), 'struct'));
     valveMarks[key] = list;
   }

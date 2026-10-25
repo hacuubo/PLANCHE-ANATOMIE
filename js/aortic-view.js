@@ -305,9 +305,11 @@ export function buildSLView(heart, kind = 'aortique') {
     // V (ventriculaire) : caméra dans la chambre de chasse, regard vers l'artère ; on garde le côté artériel, la coupe
     //   passe 1 cm sous la valve : face ventriculaire des cuspides, sinus vus à travers la valve ouverte.
     sides: {
-      // (pulmonaire : le tronc de BodyParts3D n'est pas dans l'axe de la valve ; coupe juste au-dessus des cuspides,
-      // qui restent entières car coupées 1,5 cm plus loin, pour regarder la valve de face et non un tube oblique)
-      C: { camDir: A.clone(), center: C.clone().addScaledVector(A, Hc * 0.5), dist: 10, up, cut: { normal: A.clone().negate(), def: A.dot(C) + Hc * (aortic ? 1.35 : 0.95) }, interior: 1.5,
+      // (aortique : aortotomie transverse à 2 hauteurs de cuspide, au-dessus de la jonction sino-tubulaire et des ostia
+      // coronaires, qui restent visibles dans leurs sinus ; pulmonaire : le tronc de BodyParts3D n'est pas dans l'axe de
+      // la valve ; coupe juste au-dessus des cuspides, qui restent entières car coupées 1,5 cm plus loin, pour regarder
+      // la valve de face et non un tube oblique)
+      C: { camDir: A.clone(), center: C.clone().addScaledVector(A, Hc * (aortic ? 0.8 : 0.5)), dist: aortic ? 11 : 10, up, cut: { normal: A.clone().negate(), def: A.dot(C) + Hc * (aortic ? 2.0 : 0.95) }, interior: 1.5,
         orient: `Vue depuis ${where[0]} · <b>${names}</b>` },
       V: { camDir: A.clone().negate(), center: C.clone().addScaledVector(A, Hc * 0.2), dist: 10, up, cut: { normal: A.clone(), def: -A.dot(C) + 1.0 }, interior: 0.3,
         orient: `Vue depuis ${where[1]} · <b>${names}</b>` },

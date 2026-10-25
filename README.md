@@ -24,6 +24,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
   sinus coronaire, qui s'ouvre dans l'oreillette droite par un orifice de ≈ 8 mm bordé de la valvule de Thébésius.
   Les vaisseaux sont coupés au ras de l'endocarde là où la pièce BodyParts3D dépasse dans une cavité (sinus coronaire,
   grande veine du cœur contre l'oreillette gauche) ; la coupe, faite en position de repos, suit la contraction.
+  **Ostia coronaires** : chaque artère (tronc commun, coronaire droite) est prolongée à son calibre jusqu'à l'intima
+  de son sinus aortique ; l'intima y est percée et l'orifice s'enfonce dans la paroi (vue chirurgicale de la valve
+  aortique, repères « Ostium coronaire gauche / droite »).
   Contrôlé sur tout le cycle (repos, contraction des oreillettes, systole, diastole) : aucune artère coronaire n'entre
   dans une cavité ni dans l'aorte, la déformation du battement étant une même fonction de l'espace pour la paroi et les
   vaisseaux.
