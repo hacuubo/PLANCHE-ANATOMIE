@@ -261,8 +261,8 @@ function patchShader(sh) {
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#ifdef CAVCLIP\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif`)
-    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj)) discard;\n  #endif')
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj)) discard;\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -625,7 +625,7 @@ export async function buildHeart(onProgress) {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -633,6 +633,7 @@ export async function buildHeart(onProgress) {
     if (envelope) m.defines = { ...m.defines, ENVELOPPE: '' };
     if (valve) m.defines = { ...m.defines, VALVE: '' };
     if (cavClip) m.defines = { ...m.defines, CAVCLIP: '' };
+    if (coro) m.defines = { ...m.defines, CORONAIRE: '' };
     if (roots) m.defines = { ...m.defines, RACINES: '' };
     const uniforms = {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
@@ -641,7 +642,7 @@ export async function buildHeart(onProgress) {
       ...cutU, uCutExtra: { value: 0 }, ...rootU, uRootSel: { value: rootSel },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
-    m.customProgramCacheKey = () => (valve ? 'tissu-valve' : envelope ? 'tissu-enveloppe' : cavClip ? 'tissu-cavite' : roots ? 'tissu-racine' : 'tissu');
+    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', roots && 'racine'].filter(Boolean).join('-');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
     materials.push(m); tissueMats.push(m);
@@ -661,9 +662,12 @@ export async function buildHeart(onProgress) {
     intima: () => tissue(0xffffff, { envelope: true, deformOn: false, sss: 0.45, rim: 0.1, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.12, sheen: 0.1 }),
     papillaire: () => tissue(COL.papillaire, { deformK: K_ENDO, roughness: 0.42, clearcoat: 0.45, bump: 0.35, sss: 0.45, rim: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     conduction: () => tissue(COL.conduction, { deformK: 0.12, tis: [0, 1, 0, 1], emissive: 0xffb300, emissiveIntensity: 0.35, roughness: 0.45, sss: 0.2 }),
-    coroA: () => tissue(COL.coronaire, { tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
+    // vaisseaux coronaires : la partie qui dépasse de l'endocarde dans une cavité (grande veine du cœur contre
+    // l'oreillette gauche ; sinus coronaire, voir aussi CAVCLIP) est coupée en position de repos (vObj) : la coupe
+    // suit la contraction
+    coroA: () => tissue(COL.coronaire, { coro: true, tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
     // sinus coronaire : la pièce BodyParts3D se prolonge dans l'oreillette droite ; masquée au-delà de son orifice
-    coroV: (id) => tissue(COL.veineCard, { cavClip: id === 'sinus-coronaire', tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff }),
+    coroV: (id) => tissue(COL.veineCard, { cavClip: id === 'sinus-coronaire', coro: true, tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff }),
   };
   const matFor = (id, preset) => {
     const key = `${id}|${preset}`;

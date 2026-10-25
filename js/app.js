@@ -407,13 +407,16 @@ function applyClipping() {
   updateCapPlanes();
 }
 
-// Structures intérieures (piliers, conduction, orifice du sinus) : visibles en coupe. Dans les vues des valves, le
-// tissu de conduction (points jaunes coupés au ras de l'anneau) est masqué : il n'aide pas à lire la valve.
+// Structures intérieures (piliers, conduction, orifice du sinus) : visibles en coupe. Voies de conduction (nœuds
+// sinusal et auriculo-ventriculaire, faisceau de His, en jaune) masquées pour le moment ; avec SHOW_CONDUCTION, elles
+// reviennent dans les coupes, sauf dans les vues des valves (points jaunes au ras de l'anneau).
 const CONDUCTION = new Set(['noeud-sinusal', 'noeud-av', 'faisceau-his']);
+const SHOW_CONDUCTION = false;
 function syncCutOnly() {
   const cut = state.coupe;
   heart.cutOnly.forEach((m) => {
-    m.visible = cut && (!m.userData.ostium || state.coronaires) && !(state.valve && CONDUCTION.has(m.userData.id));
+    const cond = CONDUCTION.has(m.userData.id);
+    m.visible = cut && (!m.userData.ostium || state.coronaires) && !(cond && (!SHOW_CONDUCTION || state.valve));
   });
 }
 function setCutMode(mode, value) {

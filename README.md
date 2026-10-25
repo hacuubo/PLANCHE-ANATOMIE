@@ -22,6 +22,11 @@ une liste numérotée des structures, et une fiche explicative par structure.
   conus, branches ventriculaires et marginales, IVP (interventriculaire postérieure) ; tronc commun, IVA et
   diagonales, circonflexe ; grande veine du cœur, veine interventriculaire antérieure, veine moyenne, petites veines,
   sinus coronaire, qui s'ouvre dans l'oreillette droite par un orifice de ≈ 8 mm bordé de la valvule de Thébésius.
+  Les vaisseaux sont coupés au ras de l'endocarde là où la pièce BodyParts3D dépasse dans une cavité (sinus coronaire,
+  grande veine du cœur contre l'oreillette gauche) ; la coupe, faite en position de repos, suit la contraction.
+  Contrôlé sur tout le cycle (repos, contraction des oreillettes, systole, diastole) : aucune artère coronaire n'entre
+  dans une cavité ni dans l'aorte, la déformation du battement étant une même fonction de l'espace pour la paroi et les
+  vaisseaux.
 - **Rendu « tissu vivant »** dans le style des animations médicales : fibres myocardiques en relief procédural, film humide satiné, translucidité, liseré lumineux,
   occlusion ambiante cuite dans le maillage, éclairage de studio sur fond clair.
 - **Coupe** (profondeur réglable) : **5 cavités** (coupe courbe : plan 5 cavités par la pointe et la valve aortique,
@@ -36,8 +41,8 @@ une liste numérotée des structures, et une fiche explicative par structure.
   une carte 3D de la paroi (voxels de 2 mm) qui suit le battement ; muscles papillaires coupés en travers (fibres le
   long du pilier, en points) ; détail le plus fin des fibres et relief atténués quand ils tombent sous quelques pixels
   (pas de grain scintillant). Lumière des gros vaisseaux : sang sombre et humide, plus profond au centre qu'au bord.
-  On y voit cavités, septum, valves et cordages, piliers, nœud sinusal, nœud atrio‑ventriculaire, faisceau de His placé
-  dans le septum (masqués dans les vues des valves).
+  On y voit cavités, septum, valves et cordages, piliers. Voies de conduction (nœud sinusal, nœud
+  atrio‑ventriculaire, faisceau de His placé dans le septum) : masquées pour le moment (`SHOW_CONDUCTION`, js/app.js).
 - **Valves** (js/valves.js) : modèle paramétrique calé sur les repères BodyParts3D — feuillets mitraux et
   tricuspides festonnés, cordages tendineux en éventail vers les muscles papillaires (chaque feuillet tenu par
   les deux piliers qui encadrent ses commissures), coaptation mitrale en « sourire » et tricuspide en Y ; ouverts, les
