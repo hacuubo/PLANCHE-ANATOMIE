@@ -188,7 +188,7 @@ export class Shell {
 
 /* ─────────── cordages ─────────── */
 // Faisceau de tubes dont les extrémités bougent : une seule géométrie, topologie fixe, normales radiales.
-class Cords {
+export class Cords {
   constructor(count, material, radial = 8) {
     this.n = count; this.radial = radial;
     const g = new THREE.BufferGeometry();
@@ -234,7 +234,12 @@ class Cords {
 //              l'oreillette à la fermeture (prolapsus / feuillet flottant) ; ruptured : cordages de ce segment rompus,
 //              libres dans l'oreillette ;
 //   dilate : allongement de l'anneau sur la paroi libre (anneau septal fixe) ; gap : défaut de coaptation (cm) ;
-//   tether : feuillets attirés vers le ventricule à la fermeture (cm).
+//   tether : feuillets attirés vers le ventricule à la fermeture (cm) ;
+//   rheum : { a, b, dome } — rétrécissement mitral rhumatismal : commissures soudées, bords libres réunis en un orifice
+//           ovale central (demi-axes a le long de la ligne des commissures, b en travers, cm), feuillet antérieur
+//           bombé vers le ventricule en diastole (dome, en fraction de la hauteur du feuillet) ;
+//   shade, thick, bulge : aspect et épaisseur des feuillets ; cordScale, cordFuse : cordages épaissis, soudés et
+//           raccourcis (ramification plus près du feuillet).
 export function avValve(id, d, leafletMat, cordMat, opts = {}) {
   const C = V(d.center), A = V(d.axis).normalize(), E1 = V(d.e1), E2 = V(d.e2);
   const [ra, rb] = d.radii;
@@ -243,7 +248,8 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
   const tAnt = (ant.t0 + ant.t1) / 2;
   const dir = (th, out) => out.copy(E1).multiplyScalar(Math.cos(th)).addScaledVector(E2, Math.sin(th)).normalize();
   const sep = d.leaflets.find((l) => /Septal/.test(l.name)), tSep = sep ? (sep.t0 + sep.t1) / 2 : tAnt + Math.PI;
-  const dil = opts.dilate ?? 0, gap = opts.gap ?? 0, tether = opts.tether ?? 0, pro = opts.prolapse ?? null;
+  const dil = opts.dilate ?? 0, gap = opts.gap ?? 0, tether = opts.tether ?? 0, pro = opts.prolapse ?? null, rheum = mitral ? opts.rheum ?? null : null;
+  const cs = opts.cordScale ?? 1, fuseC = opts.cordFuse ?? 0;
   const scaleAt = (th) => 1 + dil * (1 - 0.85 * Math.max(0, Math.cos(th - tSep))); // la paroi libre se dilate, pas le septum
   // anneau en selle (plus haut en avant et en arrière pour la mitrale)
   const annulus = (th, out) => out.copy(C).addScaledVector(E1, ra * scaleAt(th) * Math.cos(th)).addScaledVector(E2, rb * scaleAt(th) * Math.sin(th)).addScaledVector(A, -d.saddle * Math.cos(2 * (th - tAnt)));
@@ -268,7 +274,7 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
   };
   const leaflets = d.leaflets.map((L) => {
     const span = L.t1 - L.t0, nu = Math.max(24, Math.round(span / 0.07)), pad = 0.06;
-    const shell = new Shell(nu, 22, leafletMat, shadeLeaflet, thickLeaflet);
+    const shell = new Shell(nu, 22, leafletMat, opts.shade ?? shadeLeaflet, opts.thick ?? thickLeaflet, opts.bulge ?? null);
     const prof = (u) => {
       let h = Math.pow(Math.sin(Math.PI * u), 0.55);
       if (L.scallops > 1) h *= 0.74 + 0.26 * Math.pow(Math.abs(Math.sin(L.scallops * Math.PI * u)), 0.7); // festons et fentes
@@ -286,9 +292,22 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       // (il traversait le plancher de l'oreillette), voile seulement dans la moitié distale
       const sail = R * (0.13 * Math.sin(Math.PI * v) * Math.pow(Math.sin(Math.PI * u), 0.7) * smooth(0.35, 0.8, v) + 0.025 * Math.sin(3 * Math.PI * u + 2 * v) * v * v);
       const inw = R * (0.22 * v * v + 0.08 * smooth(0.75, 1, v)); // longe la paroi près de la charnière, puis converge
-      const ox = tmpA.x + A.x * v * h * 0.95 + tmpD.x * (sail - inw);
-      const oy = tmpA.y + A.y * v * h * 0.95 + tmpD.y * (sail - inw);
-      const oz = tmpA.z + A.z * v * h * 0.95 + tmpD.z * (sail - inw);
+      let ox = tmpA.x + A.x * v * h * 0.95 + tmpD.x * (sail - inw);
+      let oy = tmpA.y + A.y * v * h * 0.95 + tmpD.y * (sail - inw);
+      let oz = tmpA.z + A.z * v * h * 0.95 + tmpD.z * (sail - inw);
+      if (rheum) {
+        // rétrécissement rhumatismal : le bord libre est sur l'ovale central (« bouche de poisson »), du côté de son
+        // feuillet ; près des commissures, les deux feuillets soudés rejoignent les extrémités de l'ovale. Le corps
+        // du feuillet antérieur bombe vers le ventricule (aspect en « crosse de hockey »), le postérieur bouge peu.
+        // position le long de l'ovale : d'une commissure à l'autre selon u (sens donné par la commissure de départ)
+        const s0 = Math.sign(annulus(L.t0, tmpR).sub(Cc).dot(lineDir)) || 1, sx = s0 * Math.cos(Math.PI * THREE.MathUtils.clamp(u, 0, 1));
+        const side = L === ant ? 1 : -1, depth = h * 0.7;
+        const ex = Cc.x + lineDir.x * sx * rheum.a + dirAnt.x * side * rheum.b * Math.sqrt(1 - sx * sx) + A.x * depth;
+        const ey = Cc.y + lineDir.y * sx * rheum.a + dirAnt.y * side * rheum.b * Math.sqrt(1 - sx * sx) + A.y * depth;
+        const ez = Cc.z + lineDir.z * sx * rheum.a + dirAnt.z * side * rheum.b * Math.sqrt(1 - sx * sx) + A.z * depth;
+        const dm = (L === ant ? rheum.dome : rheum.dome * 0.3) * h * Math.sin(Math.PI * v) * Math.pow(Math.sin(Math.PI * u), 0.6);
+        ox = tmpA.x + (ex - tmpA.x) * v + A.x * dm; oy = tmpA.y + (ey - tmpA.y) * v + A.y * dm; oz = tmpA.z + (ez - tmpA.z) * v + A.z * dm;
+      }
       // fermé : le corps du feuillet rejoint la ligne de coaptation en bombant vers l'oreillette, puis la zone
       // d'accolement (bord libre) pend dans le ventricule
       coapt(L, th, u, tmpQ);
@@ -353,17 +372,17 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       // tronc et branches inextensibles : longueur fixée valve fermée (g.lenB, g.lenC), direction suivant les feuillets
       const toward = (from, to, len, frac) => { const d = to.clone().sub(from); const l = d.length() || 1; return from.clone().addScaledVector(d, (len ?? l * frac) / l); };
       const mAll = mean([...marg.flat(), ...sec].length ? [...marg.flat(), ...sec] : rupt);
-      if (g.lenB === undefined) g.lenB = H.distanceTo(mAll) * 0.36;
+      if (g.lenB === undefined) g.lenB = H.distanceTo(mAll) * (0.36 + 0.3 * fuseC); // cordages soudés : tronc plus long
       const B = toward(H, mAll, g.lenB);
-      out.push([H, B, 0.055, 0.042, 0.042]);                                // tronc
-      for (const p of sec) out.push([B, p, 0.026, 0.02, 0.036]);           // 2e ordre, évasé à l'insertion
+      out.push([H, B, 0.055 * cs, 0.042 * cs, 0.042 * cs]);                 // tronc
+      for (const p of sec) out.push([B, p, 0.026 * cs, 0.02 * cs, 0.036 * cs]); // 2e ordre, évasé à l'insertion
       g.lenC ??= [];
       for (const [ci, cl] of marg.entries()) {
         const mc = mean(cl);
-        if (g.lenC[ci] === undefined) g.lenC[ci] = B.distanceTo(mc) * 0.55;
+        if (g.lenC[ci] === undefined) g.lenC[ci] = B.distanceTo(mc) * (0.55 + 0.3 * fuseC);
         const Bc = toward(B, mc, g.lenC[ci]);
-        out.push([B, Bc, 0.03, 0.022, 0.022]);                             // branche
-        for (const p of cl) out.push([Bc, p, 0.016, 0.013, 0.03]);        // cordage fin, pied évasé
+        out.push([B, Bc, 0.03 * cs, 0.022 * cs, 0.022 * cs]);              // branche
+        for (const p of cl) out.push([Bc, p, 0.016 * cs, 0.013 * cs, 0.03 * cs]); // cordage fin, pied évasé
       }
       // cordages rompus : bout libre qui flotte dans l'oreillette au rythme du flux
       // bout libre : dans l'oreillette quand la valve se ferme, dans le ventricule quand elle s'ouvre ; courbé, il flotte

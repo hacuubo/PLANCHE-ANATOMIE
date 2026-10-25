@@ -187,18 +187,26 @@ const CUT_VERTEX = 'vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;';
 // visible, cuspides entières au lieu d'un aplat de sang (js/app.js).
 export const GLSL_ROOTS = /* glsl */`
 uniform vec4 uHoleC[2]; uniform vec4 uHoleA[2];
+uniform float uRootSel; // racine concernée : 0 aortique, 1 pulmonaire, −1 les deux
 bool inRoot(vec3 p, float grow) {
   for (int i = 0; i < 2; i++) {
+    if (uRootSel > -0.5 && abs(float(i) - uRootSel) > 0.5) continue; // chaque lumière n'ouvre que sa racine
     vec3 q = p - uHoleC[i].xyz; float al = dot(q, uHoleA[i].xyz);
     if (al > -1.5 && al < uHoleA[i].w && length(q - uHoleA[i].xyz * al) < uHoleC[i].w + grow) return true;
   }
   return false;
 }
-// fond de la lumière artérielle, fermée à la base des cuspides : retiré, on voit le ventricule à travers la valve
+// fond de la lumière artérielle, fermée à la base des cuspides : retiré, on voit le ventricule à travers la valve.
+// Aorte : jusqu'à 1,5 mm au-dessus de l'anneau ; tronc pulmonaire : sa lumière (BodyParts3D) ne commence qu'en haut des
+// sinus (≈ 1,1 cm au-dessus de l'anneau), d'où un fond retiré jusqu'à la hauteur des cuspides (uHoleA.w = 1,8 hauteur
+// de cuspide) ; au centre de la racine seulement (les parois des sinus sont au-delà de 0,9 rayon ; tronc pulmonaire
+// plus étroit que ses sinus : 0,75 rayon, sa paroi reste)
 bool inRootFloor(vec3 p) {
   for (int i = 0; i < 2; i++) {
+    if (uRootSel > -0.5 && abs(float(i) - uRootSel) > 0.5) continue;
     vec3 q = p - uHoleC[i].xyz; float al = dot(q, uHoleA[i].xyz);
-    if (al > -1.5 && al < 0.15 && length(q - uHoleA[i].xyz * al) < uHoleC[i].w * 0.9) return true;
+    float top = i == 1 ? uHoleA[i].w * 0.55 : 0.15, rr = i == 1 ? 0.75 : 0.9;
+    if (al > -1.5 && al < top && length(q - uHoleA[i].xyz * al) < uHoleC[i].w * rr) return true;
   }
   return false;
 }
@@ -617,7 +625,7 @@ export async function buildHeart(onProgress) {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, roots = false, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -630,7 +638,7 @@ export async function buildHeart(onProgress) {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
       uBump: { value: bump }, uSSS: { value: sss }, uRim: { value: rim }, uFocus: focusUniform,
       ...deformU, uDK: { value: deformK }, uDOn: { value: deformOn ? 1 : 0 }, uTrans: { value: trans },
-      ...cutU, uCutExtra: { value: 0 }, ...rootU,
+      ...cutU, uCutExtra: { value: 0 }, ...rootU, uRootSel: { value: rootSel },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
     m.customProgramCacheKey = () => (valve ? 'tissu-valve' : envelope ? 'tissu-enveloppe' : cavClip ? 'tissu-cavite' : roots ? 'tissu-racine' : 'tissu');
@@ -644,6 +652,9 @@ export async function buildHeart(onProgress) {
   const PRESETS = {
     // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
     valve: () => interior(tissue(0xffffff, { envelope: true, valve: true, trans: 0.35, deformOn: false, sss: 0.25, rim: 0.12, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.09, bump: 1.1, sheen: 0.08, sheenColor: 0xfff2dc, sheenRoughness: 0.4, envMapIntensity: 0.55 })),
+    // armature métallique d'une bioprothèse percutanée (cobalt-chrome) : reflets francs, pas de translucidité ; coupée
+    // avec les parois (et non plus loin, comme les feuillets) : pas de montants au-dessus de la tranche
+    metal: () => tissue(0x9aa1ab, { tis: [0, 1, 0, 1], deformOn: false, sss: 0, rim: 0.04, roughness: 0.28, metalness: 0.85, clearcoat: 0.2, clearcoatRoughness: 0.2, bump: 0, sheen: 0, envMapIntensity: 1.1 }),
     cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.6, rim: 0.3, roughness: 0.26, clearcoat: 0.75, clearcoatRoughness: 0.1, bump: 0.03, sheen: 0.1 })),
     // piliers : plus clairs que l'endocarde trabéculé, pour se détacher de la paroi ; coupés comme le reste du muscle
     // intima de la racine aortique (vue de la valve aortique) : couleur et occlusion par sommet
@@ -689,11 +700,14 @@ export async function buildHeart(onProgress) {
     // la lumière n'est pas du muscle : creux dans la tranche de paroi (le sang la recouvre, sauf dans les racines)
     solids.push({ mesh: m, hole: true, cap: 'myo', k: 0.03 });
   }
-  // intima des racines aortique et pulmonaire : paroi interne visible quand une coupe ouvre la racine
+  // intima des racines aortique et pulmonaire : paroi interne visible quand une coupe ouvre la racine (le tronc
+  // pulmonaire est dans la lumière « veineuse », sang pauvre en oxygène)
   {
-    const m = new THREE.Mesh(geos['lumiere-artere'].geometry, tissue(0xdba4a0, { roots: true, side: THREE.BackSide, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.1, sss: 0.45, rim: 0.1 }));
-    m.receiveShadow = true;
-    root.add(m); cutOnly.push(m);
+    for (const [name, rootSel] of [['lumiere-artere', 0], ['lumiere-veine', 1]]) {
+      const m = new THREE.Mesh(geos[name].geometry, tissue(0xdba4a0, { roots: true, rootSel, side: THREE.BackSide, roughness: 0.38, clearcoat: 0.6, clearcoatRoughness: 0.15, bump: 0.1, sss: 0.45, rim: 0.1 }));
+      m.receiveShadow = true;
+      root.add(m); cutOnly.push(m);
+    }
   }
 
   /* ── Cavités (paroi interne, visibles en coupe ; « trou » unique pour les surfaces de coupe) ── */

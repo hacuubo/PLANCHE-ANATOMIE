@@ -5,7 +5,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { buildHeart, COL, GLSL_ROOTS } from './heart.js';
 import { ContactShadows } from './contact-shadows.js';
 import { sectionMaterial, setSectionPlane, setSectionFrame } from './cut-surface.js';
-import { buildAorticView } from './aortic-view.js';
+import { buildSLView } from './aortic-view.js';
 import { buildAVView } from './av-views.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
@@ -108,7 +108,7 @@ scene.add(pivot);
 key.target.position.copy(CENTER);
 
 // Vues chirurgicales des valves, dans le cœur (aortique, mitrale, tricuspide ; normale et pathologique)
-const VALVE_VIEWS = { aortique: buildAorticView(heart), mitrale: buildAVView(heart, 'mitrale'), tricuspide: buildAVView(heart, 'tricuspide') };
+const VALVE_VIEWS = { aortique: buildSLView(heart, 'aortique'), mitrale: buildAVView(heart, 'mitrale'), tricuspide: buildAVView(heart, 'tricuspide'), pulmonaire: buildSLView(heart, 'pulmonaire') };
 
 // Ombres et « fantôme » de la partie retirée par la coupe (voile très léger qui garde la silhouette lisible).
 const ghostMats = [], ghosts = [];
@@ -282,11 +282,11 @@ const CAP_COLORS = { artere: COL.lumenArtere, veine: COL.lumenVeine, conduction:
 // chaque racine ; une coupe qui passe par la valve laisse voir ses cuspides et l'intima de la paroi opposée, comme sur
 // une pièce ouverte, au lieu d'un aplat de sang qui les cache. La paroi coupée garde sa tranche (la lumière est un
 // creux dans la tranche du muscle et des parois).
-function withRootHoles(mat) {
+function withRootHoles(mat, rootSel = -1) {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     prev?.call(mat, sh, r);
-    Object.assign(sh.uniforms, heart.rootUniforms);
+    Object.assign(sh.uniforms, heart.rootUniforms, { uRootSel: { value: rootSel } });
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vHoleW;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvHoleW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vHoleW;\n${GLSL_ROOTS}`)
@@ -323,7 +323,7 @@ function lumenCapMaterial(capKey, rank) {
     diffuseColor.rgb *= mix(1.0, 0.42, depth); }`);
   };
   mat.customProgramCacheKey = () => `lumiere-${capKey}`;
-  return capKey === 'artere' ? withRootHoles(mat) : mat;
+  return withRootHoles(mat, capKey === 'artere' ? 0 : 1); // aorte : racine aortique ; tronc pulmonaire : racine pulmonaire
 }
 // Compteur de stencil centré sur 128 : solides +1, creux −1. La tranche n'est posée que si le compte est positif ;
 // là où deux creux se chevauchent (cavité du VG et lumière aortique dans la chambre de chasse), le compte tombe sous
@@ -718,27 +718,28 @@ function refreshLabels() {
 }
 
 /* ─────────── repères des vues des valves (bouton « Repères ») ─────────── */
-// Noms posés sur la valve, à l'aplomb de l'anneau : feuillets (mitrale, tricuspide), cuspides (aortique), et l'aorte
-// pour la mitrale (12 h, Lang 2012). Noms anatomiques des pièces BodyParts3D : cuspide « antérieure » = coronaire
-// droite, « postérieure gauche » = coronaire gauche, « postérieure droite » = non coronaire.
+// Noms posés sur la valve, à l'aplomb de l'anneau : feuillets (mitrale, tricuspide), cuspides (aortique, pulmonaire),
+// et l'aorte pour la mitrale (12 h, Lang 2012). Cuspides reconnues par les vues (js/aortic-view.js) : aortique,
+// coronaire droite, coronaire gauche, non coronaire ; pulmonaire, antérieure, droite, gauche.
 const valveMarks = {};
 {
   const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
   const NAMES = [[/^Anterior leaflet of mitral/, 'Feuillet antérieur'], [/^Posterior leaflet of mitral/, 'Feuillet postérieur'],
-    [/^Anterior leaflet of tricuspid/, 'Antérieur'], [/^Posterior leaflet of tricuspid/, 'Postérieur'], [/^Septal leaflet/, 'Septal'],
-    [/^Anterior cusp of aortic/, 'Coronaire droite'], [/^Left posterior cusp of aortic/, 'Coronaire gauche'], [/^Right posterior cusp of aortic/, 'Non coronaire']];
+    [/^Anterior leaflet of tricuspid/, 'Antérieur'], [/^Posterior leaflet of tricuspid/, 'Postérieur'], [/^Septal leaflet/, 'Septal']];
+  const CUSPS = { aortique: ['Coronaire droite', 'Coronaire gauche', 'Non coronaire'], pulmonaire: ['Antérieure', 'Droite', 'Gauche'] };
   const mark = (text, pos, cls = '') => {
     const el = document.createElement('div'); el.className = 'ao-label ' + cls; el.textContent = text;
     const o = new CSS2DObject(el); o.position.copy(pos); o.visible = false; heart.root.add(o); return o;
   };
-  for (const [key, id] of [['mitrale', 'valve-mitrale'], ['tricuspide', 'valve-tricuspide'], ['aortique', 'valve-aortique']]) {
+  for (const [key, id] of [['mitrale', 'valve-mitrale'], ['tricuspide', 'valve-tricuspide'], ['aortique', 'valve-aortique'], ['pulmonaire', 'valve-pulmonaire']]) {
     const d = heart.valveData[id]; if (!d) continue;
     const C = V3(d.center), E1 = V3(d.e1), E2 = V3(d.e2), [ra, rb] = d.radii ?? [d.radius, d.radius];
     const at = (t, k) => C.clone().addScaledVector(E1, ra * k * Math.cos(t)).addScaledVector(E2, rb * k * Math.sin(t));
     const list = [];
-    for (const l of d.leaflets ?? d.cusps) {
+    if (CUSPS[key]) VALVE_VIEWS[key].cusps.forEach((c, i) => list.push(mark(CUSPS[key][i], at((c.t0 + c.t1) / 2, 0.55))));
+    else for (const l of d.leaflets) {
       const name = NAMES.find(([re]) => re.test(l.name)); if (!name) continue;
-      list.push(mark(name[1], at((l.t0 + l.t1) / 2, key === 'aortique' ? 0.55 : 0.6)));
+      list.push(mark(name[1], at((l.t0 + l.t1) / 2, 0.6)));
     }
     if (key === 'mitrale') list.push(mark('Aorte', C.clone().addScaledVector(VALVE_VIEWS.mitrale.sides.C.up, Math.max(ra, rb) * 1.18), 'struct'));
     valveMarks[key] = list;

@@ -77,20 +77,29 @@ une liste numérotée des structures, et une fiche explicative par structure.
 - **Valves** (vues de face tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : le bouton « Valves » ouvre
   le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la vue en cours : la
   caméra plonge vers la valve pendant que la coupe descend. Deux côtés, comme en échocardiographie 3D (ASE/EAE,
-  Lang 2012) : **C** (chirurgical) depuis l'oreillette ou l'aorte, cœur coupé juste au-dessus de l'anneau ou de la
+  Lang 2012) : **C** (chirurgical) depuis l'oreillette ou l'artère, cœur coupé juste au-dessus de l'anneau ou de la
   jonction sino-tubulaire ; **V** (ventriculaire) depuis le ventricule, cœur coupé à mi-ventricule (piliers, cordages,
   face ventriculaire des feuillets) ou dans la chambre de chasse. Même orientation des deux côtés (image en miroir) :
   aorte à 12 h pour la mitrale, feuillet septal à 6 h pour la tricuspide, cuspide coronaire droite à 6 h pour
-  l'aortique. Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui. Choix de la
+  l'aortique, cuspide antérieure à 12 h pour la pulmonaire. Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui. Choix de la
   variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend et remonte
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
   doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
   gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
-  - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif. Ouvertes, les cuspides restent à
-    distance de la paroi des sinus (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ;
-    à travers l'orifice, on voit la chambre de chasse et le ventricule.
+  - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif, insuffisance par dilatation de la
+    racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²), TAVI
+    (bioprothèse à ballonnet de type SAPIEN 3, taille 29 : armature en cobalt-chrome de 22,5 mm à cellules en losange
+    et grandes cellules hautes, jupe en tissu, feuillets en péricarde bovin, commissures alignées, cuspides natives
+    calcifiées plaquées contre les sinus). Ouvertes, les cuspides normales restent à distance de la paroi des sinus
+    (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ; à travers l'orifice, on voit la
+    chambre de chasse et le ventricule.
   - **Mitrale** (aorte à 12 h, auricule gauche à gauche en vue C) : normale (A1-A3, P1-P3),
-    insuffisance par prolapsus de P2 avec rupture de cordage (segment flottant, cordages rompus, brèche de coaptation).
+    insuffisance par prolapsus de P2 avec rupture de cordage (segment flottant, cordages rompus, brèche de coaptation),
+    rétrécissement rhumatismal (commissures soudées, orifice en « bouche de poisson » d'≈ 1 cm², feuillet antérieur
+    bombé en diastole, bords libres épaissis, calcifications commissurales, cordages épaissis, soudés et raccourcis).
+  - **Pulmonaire** (cuspide antérieure à 12 h ; vue C depuis le tronc pulmonaire, vue V depuis l'infundibulum du VD) :
+    normale (cuspides antérieure, droite et gauche), rétrécissement congénital en dôme (commissures soudées, raphés,
+    dôme systolique percé d'un orifice central de ≈ 6,5 mm).
   - **Tricuspide** (feuillet septal en bas) : normale, insuffisance fonctionnelle par
     dilatation de l'anneau (anneau, oreillette et ventricule droits élargis sur la paroi libre par la déformation du
     cœur, feuillets attirés vers le ventricule, défaut de coaptation central).
@@ -141,7 +150,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
-| `js/aortic-view.js` | Vues C et V de la valve aortique dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie) |
+| `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |

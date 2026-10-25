@@ -7,6 +7,10 @@
 //
 // Valve mitrale (vue du chirurgien, comme en ETO 3D « surgeon's view » : aorte à 12 h, auricule gauche à gauche) :
 //   - normale : feuillet antérieur (A1-A3) et feuillet postérieur festonné (P1, P2, P3), fermeture en « sourire » ;
+//   - rétrécissement mitral rhumatismal : commissures soudées, feuillets épaissis surtout au bord libre (fibrose,
+//     nodules calcaires aux commissures), orifice diastolique ovale central en « bouche de poisson » (≈ 1 cm² ;
+//     normal 4–6 cm², serré < 1,5 cm², ESC 2021), feuillet antérieur bombé vers le ventricule en diastole (« crosse
+//     de hockey »), feuillet postérieur peu mobile ; cordages épaissis, soudés et raccourcis (score de Wilkins) ;
 //   - insuffisance mitrale par prolapsus de P2 avec rupture de cordage : le segment P2 n'est plus retenu, il se
 //     soulève au-dessus de l'anneau et son bord libre se retourne dans l'oreillette à chaque fermeture (feuillet
 //     flottant) ; les cordages rompus flottent dans l'oreillette ; défaut de coaptation en regard de P2, par où le
@@ -17,7 +21,7 @@
 //     s'élargissent sur la paroi libre (le versant septal, fixé, se dilate peu : heart.setDilation) ; les feuillets,
 //     normaux, ne se rejoignent plus et sont attirés vers le ventricule : défaut de coaptation central.
 import * as THREE from 'three';
-import { avValve } from './valves.js';
+import { avValve, mix, smooth, ENDO } from './valves.js';
 
 const V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 export const DILATATION = 0.32; // allongement relatif de l'anneau sur la paroi libre
@@ -35,6 +39,20 @@ export function buildAVView(heart, kind) {
   if (mitral) {
     up = heart.landmarks.valves['valve-aortique'].center.clone().sub(C).projectOnPlane(A).normalize(); // aorte à 12 h
     variants.prolapsus = make({ prolapse: { leaflet: /Posterior/, u0: 0.37, u1: 0.63, lift: 1.0, ruptured: true } });
+    // rétrécissement rhumatismal : feuillets fibreux, épais (bord libre surtout), opaques ; calcifications commissurales
+    const comm = (u, v) => (Math.exp(-((u / 0.09) ** 2)) + Math.exp(-(((1 - u) / 0.09) ** 2))) * Math.exp(-(((v - 0.85) / 0.15) ** 2));
+    variants.rhumatismal = make({
+      rheum: { a: 0.9, b: 0.38, dome: 0.32 }, // ovale de 1,8 × 0,76 cm : ≈ 1,07 cm²
+      cordScale: 1.9, cordFuse: 1,
+      shade: (u, v) => {
+        let c = mix(ENDO, [0.9, 0.84, 0.72], smooth(0.02, 0.18, v));
+        c = mix(c, [0.94, 0.9, 0.8], smooth(0.55, 0.9, v));                 // bord libre fibreux, blanchâtre
+        c = mix(c, [0.96, 0.95, 0.9], Math.min(1, comm(u, v) * 1.2));       // calcaire aux commissures
+        return [...c, 0.6 + 0.35 * smooth(0, 0.35, v) - 0.2 * comm(u, v)];
+      },
+      thick: (u, v) => 0.08 * (1 - smooth(0, 0.15, v)) + 0.07 + 0.14 * smooth(0.5, 0.95, v) + 0.08 * comm(u, v),
+      bulge: (u, v) => 0.1 * comm(u, v),
+    });
   } else {
     const sep = d.leaflets.find((l) => /Septal/.test(l.name));
     up = dirOf((sep.t0 + sep.t1) / 2).projectOnPlane(A).normalize().negate(); // feuillet septal en bas (6 h)
@@ -46,7 +64,7 @@ export function buildAVView(heart, kind) {
   let current = 'normale';
   const view = {
     key: kind, title: mitral ? 'Valve mitrale' : 'Valve tricuspide', heartValveId: id, phase: 'av',
-    variantList: mitral ? [['normale', 'Normale'], ['prolapsus', 'Prolapsus P2']] : [['normale', 'Normale'], ['dilatation', 'Anneau dilaté']],
+    variantList: mitral ? [['normale', 'Normale'], ['prolapsus', 'Prolapsus P2'], ['rhumatismal', 'Rétrécissement']] : [['normale', 'Normale'], ['dilatation', 'Anneau dilaté']],
     // C (chirurgicale) : caméra côté oreillette, dans l'axe de la valve ; on garde le côté ventriculaire, la coupe passe
     //   7 mm au-dessus de l'anneau (oreillette ouverte comme après atriotomie) ;
     // V (ventriculaire) : caméra dans le ventricule, regard vers l'oreillette (perspective ventriculaire de l'ETO 3D) ;
