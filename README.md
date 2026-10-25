@@ -111,6 +111,16 @@ une liste numérotée des structures, et une fiche explicative par structure.
   - **Tricuspide** (feuillet septal en bas) : normale, insuffisance fonctionnelle par
     dilatation de l'anneau (anneau, oreillette et ventricule droits élargis sur la paroi libre par la déformation du
     cœur, feuillets attirés vers le ventricule, défaut de coaptation central).
+- **FOP** (js/special-views.js) : **fosse ovale normale** vue de l'oreillette droite (paroi libre retirée) — fosse
+  placée sur la zone la plus mince du septum (19 × 16 mm, plancher mince du septum primum, limbe en fer à cheval ouvert
+  vers le bas, Naqvi 2018) ; **FOP · test aux bulles** : coupe bicave comme en ETO (OG en haut, veine cave supérieure à
+  droite), tunnel au quadrant antéro-supérieur de la fosse (≈ 3 mm, Goel 2009) ; les bulles du sérum salé agité arrivent
+  par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
+  (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015).
+- **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de
+  l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),
+  akinésie des segments 7, 8, 13, 14 et 17 du modèle AHA (ni épaississement, ni mouvement vers le centre, ni torsion),
+  territoire plus terne ; comparaison en écran partagé.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
@@ -157,6 +167,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
+| `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles) et Coronaires (infarctus de l'IVA) |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |

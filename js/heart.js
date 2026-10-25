@@ -38,6 +38,10 @@ varying vec3 vObj;
 varying vec4 vTis;
 varying vec3 vCol;
 varying float vSid;
+varying float vInfW; uniform float uInfTint; uniform float uOccl;
+#ifdef OCCL
+varying float vOccl;
+#endif
 uniform float uSel;
 uniform float uHi;
 uniform float uBump;
@@ -114,6 +118,20 @@ uniform vec3 uDRA; uniform vec3 uDLA; uniform float uDK; uniform float uDOn;
 uniform float uDDil; uniform vec3 uDTc; uniform vec3 uDTa; uniform vec3 uDTs;
 uniform vec3 uDMc; uniform vec3 uDMa; uniform vec3 uDAo; uniform vec3 uDPu;
 uniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf; uniform float uVolOn;
+uniform float uInf; uniform vec3 uInfAnt; uniform vec3 uInfSep;
+// Territoire akinétique d'une occlusion de l'IVA moyenne (modèle AHA à 17 segments, Cerqueira 2002) : segments 7
+// (antérieur moyen) et 8 (antéroseptal moyen), 13 (antérieur apical), 14 (septal apical) et 17 (apex). Angle autour de
+// l'axe du VG : 0 au centre de la paroi antérieure, + vers la cloison (l'IVA court à +30°, sur l'insertion antérieure
+// du VD) ; s : 0 à la base, 1 à la pointe. 0 hors du territoire, 1 dedans, transition de quelques millimètres.
+float infarctW(vec3 p) {
+  if (uInf <= 0.0) return 0.0;
+  vec3 q = p - uDB; float al = dot(q, uDA), s = al / uDL; vec3 r = q - uDA * al; float lr = max(length(r), 1e-3);
+  float th = degrees(atan(dot(r, uInfSep), dot(r, uInfAnt)));
+  float mid = smoothstep(0.30, 0.38, s) * (1.0 - smoothstep(0.62, 0.70, s)) * smoothstep(-40.0, -25.0, th) * (1.0 - smoothstep(85.0, 100.0, th));
+  float api = smoothstep(0.62, 0.70, s) * smoothstep(-55.0, -40.0, th) * (1.0 - smoothstep(130.0, 145.0, th));
+  float apx = smoothstep(0.84, 0.94, s);
+  return uInf * max(max(mid, api), apx) * (1.0 - smoothstep(2.9, 3.7, lr)); // paroi du VG et cloison, pas la paroi libre du VD
+}
 // carte 3D de la paroi : r profondeur sous l'épicarde, g distance à l'endocarde, b fraction transmurale du VG, a tissu
 vec4 wallAt(vec3 p) {
   vec3 t = (p - uVolMin) * uVolScale + uVolHalf;
@@ -133,13 +151,14 @@ vec3 heartDeform(vec3 p) {
   float wRoot = smoothstep(1.0, 1.8, length(p - uDAo)) * smoothstep(1.0, 1.8, length(p - uDPu));
   float wV = smoothstep(-0.3, 0.3, dAV) * (1.0 - smoothstep(1.05, 1.3, s)) * wRoot;
   float k = uVolOn > 0.5 ? mix(${K_ENDO.toFixed(3)}, ${K_EPI.toFixed(3)}, wallAt(p).b) : uDK;
+  float wI = 1.0 - infarctW(p); // akinésie : ni rapprochement vers l'axe, ni épaississement, ni torsion
   // descente de la base : maximale au plan auriculo-ventriculaire, nulle à la pointe, amortie dans les oreillettes
   float wRV = smoothstep(1.5, 4.0, dot(r, uDRV));
   float desc = uDLg * (1.3 + 1.0 * wRV) * (dAV >= 0.0 ? 1.0 - clamp(dAV / uDApx, 0.0, 1.0) : clamp(1.0 + dAV / (3.0 + 1.5 * wRV), 0.0, 1.0));
   // rétrécissement radial vers l'axe du VG (déplacement plafonné à 3,2 cm de l'axe : paroi libre du VD)
-  float cR = mix(uDR.x, uDR.y, sc), shape = wV * (0.65 + 0.35 * sin(3.14159 * sc));
+  float cR = mix(uDR.x, uDR.y, sc), shape = wV * wI * (0.65 + 0.35 * sin(3.14159 * sc));
   float rad = 1.0 - k * cR * shape * min(1.0, 3.2 / lr);
-  float ang = wV * radians(mix(uDTw.x, uDTw.y, sc));
+  float ang = wV * wI * radians(mix(uDTw.x, uDTw.y, sc));
   vec3 rr = (r * cos(ang) + cross(uDA, r) * sin(ang)) * rad;
   vec3 o = uDB + uDA * (al + desc) + rr;
   // paroi libre du VD : mouvement en soufflet vers la cloison (≈ 5 mm)
@@ -249,7 +268,11 @@ function patchShader(sh) {
       ${GLSL_DEFORM}
       varying vec3 vCutW;
       varying vec3 vObj; varying vec4 vTis; varying vec3 vCol; varying float vSid;
+      varying float vInfW;
       uniform vec4 uTis;
+      #ifdef OCCL
+      attribute float occl; varying float vOccl;
+      #endif
       #ifdef ENVELOPPE
       attribute vec4 col; attribute vec4 tis;
       #endif
@@ -259,6 +282,10 @@ function patchShader(sh) {
       `)
     .replace('#include <begin_vertex>', `#include <begin_vertex>
       vObj = position;
+      vInfW = infarctW((modelMatrix * vec4(position, 1.0)).xyz);
+      #ifdef OCCL
+      vOccl = occl;
+      #endif
       #ifdef VALVE
       vPar = vparam;
       #endif
@@ -270,8 +297,8 @@ function patchShader(sh) {
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif`)
-    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif')
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB;\n#endif`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; } }\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -292,7 +319,12 @@ function patchShader(sh) {
         dTint = 0.8 + 0.3 * fib - 0.1 * rough * nod + 0.05 * crimp * rough;
       }
       #endif
-      diffuseColor.rgb *= vCol * dTint;`)
+      diffuseColor.rgb *= vCol * dTint;
+      // myocarde infarci : terne, plus pâle et grisâtre (Michaud 2020) ; artère occluse : sombre, sans sang (TIMI 0)
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.6, 0.62) + vec3(0.16, 0.14, 0.12), 0.85 * vInfW * uInfTint);
+      #ifdef OCCL
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.045, 0.03, 0.035), 0.9 * vOccl * uOccl);
+      #endif`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       normal = perturbN(-vViewPosition, normal, vec2(dFdx(dH), dFdy(dH)) * uBump, faceDirection);`)
     .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -618,6 +650,9 @@ export async function buildHeart(onProgress) {
       uVolMin: { value: wall ? wall.min.clone() : new THREE.Vector3() },
       uVolScale: { value: wall ? new THREE.Vector3(1 / (wall.step * wall.n.x), 1 / (wall.step * wall.n.y), 1 / (wall.step * wall.n.z)) : new THREE.Vector3(1, 1, 1) },
       uVolHalf: { value: wall ? new THREE.Vector3(0.5 / wall.n.x, 0.5 / wall.n.y, 0.5 / wall.n.z) : new THREE.Vector3() },
+      // infarctus de l'IVA (vue Coronaires) : territoire akinétique, teinte, artère occluse ; fosse ovale
+      uInf: { value: 0 }, uInfAnt: { value: new THREE.Vector3(1, 0, 0) }, uInfSep: { value: new THREE.Vector3(0, 1, 0) }, uInfTint: { value: 0 }, uOccl: { value: 0 },
+      uFosC: { value: new THREE.Vector3() }, uFosN: { value: new THREE.Vector3(0, 0, 1) }, uFosU: { value: new THREE.Vector3(0, 1, 0) }, uFosAB: { value: new THREE.Vector3(1, 1, -1) },
     };
   })();
   const focusUniform = { value: 0 };
@@ -637,7 +672,7 @@ export async function buildHeart(onProgress) {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, fossa = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -646,6 +681,8 @@ export async function buildHeart(onProgress) {
     if (valve) m.defines = { ...m.defines, VALVE: '' };
     if (cavClip) m.defines = { ...m.defines, CAVCLIP: '' };
     if (coro) m.defines = { ...m.defines, CORONAIRE: '' };
+    if (occl) m.defines = { ...m.defines, OCCL: '' };
+    if (fossa) m.defines = { ...m.defines, FOSSE: '' };
     if (roots) m.defines = { ...m.defines, RACINES: '' };
     const uniforms = {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
@@ -654,7 +691,7 @@ export async function buildHeart(onProgress) {
       ...cutU, uCutExtra: { value: 0 }, ...rootU, uRootSel: { value: rootSel },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
-    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', roots && 'racine'].filter(Boolean).join('-');
+    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', fossa && 'fosse', roots && 'racine'].filter(Boolean).join('-');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
     materials.push(m); tissueMats.push(m);
@@ -677,7 +714,7 @@ export async function buildHeart(onProgress) {
     // vaisseaux coronaires : la partie qui dépasse de l'endocarde dans une cavité (grande veine du cœur contre
     // l'oreillette gauche ; sinus coronaire, voir aussi CAVCLIP) est coupée en position de repos (vObj) : la coupe
     // suit la contraction
-    coroA: () => tissue(COL.coronaire, { coro: true, tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
+    coroA: (id) => tissue(COL.coronaire, { coro: true, occl: id === 'iva', tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
     // sinus coronaire : la pièce BodyParts3D se prolonge dans l'oreillette droite ; masquée au-delà de son orifice
     coroV: (id) => tissue(COL.veineCard, { cavClip: id === 'sinus-coronaire', coro: true, tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff }),
   };
@@ -690,7 +727,7 @@ export async function buildHeart(onProgress) {
   const register = (id, mesh) => { mesh.userData.id = id; root.add(mesh); reg(id).meshes.push(mesh); return mesh; };
 
   /* ── Enveloppe continue ── */
-  const envMat = tissue(0xffffff, { envelope: true, rim: 0.45 });
+  const envMat = tissue(0xffffff, { envelope: true, fossa: true, rim: 0.45 }); // fossa : la surface externe s'enfonce dans le sillon interauriculaire, ouverte à la fosse ovale
   const envelope = new THREE.Mesh(geos.enveloppe.geometry, envMat);
   envelope.userData.envelope = true;
   envelope.castShadow = true; envelope.receiveShadow = true;
@@ -740,7 +777,7 @@ export async function buildHeart(onProgress) {
     }
     if (!fromFile) { g.setAttribute('col', new THREE.BufferAttribute(col, 4, true)); g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true)); }
     // endocarde : film humide brillant sur le relief des trabécules
-    const cavMat = tissue(0xffffff, { envelope: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
+    const cavMat = tissue(0xffffff, { envelope: true, fossa: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
     const cav = new THREE.Mesh(g, cavMat);
     cav.userData.id = 'cavites';
     cav.userData.sid = sid; // clic : cavité touchée (oreillette ou ventricule)
@@ -905,7 +942,127 @@ export async function buildHeart(onProgress) {
       ostia[side] = { point: O.clone(), normal: nSurf.clone(), radius: rEnd, height: O.clone().sub(C).dot(A) };
     }
   }
+  /* ── Infarctus de l'IVA (vue Coronaires) ──
+     Repère du territoire : l'IVA court sur l'insertion antérieure du VD, entre les segments antérieur et antéroseptal ;
+     sa direction moyenne autour de l'axe du VG (tiers moyen) fixe l'angle +30° du modèle à 17 segments. Occlusion :
+     juste après la naissance de la 1re diagonale (début de l'IVA 2, IVA moyenne) ; l'aval (IVA moyenne et distale,
+     branches nées après) est trouvé par connexité du maillage, la 1re diagonale reste perméable. */
+  const infarct = { s0: null, point: null, center: null };
+  if (registry.iva) {
+    const U = deformU, B = U.uDB.value, A = U.uDA.value, L = U.uDL.value;
+    const sOf = (p) => p.clone().sub(B).dot(A) / L, rOf = (p) => { const q = p.clone().sub(B); return q.addScaledVector(A, -q.dot(A)); };
+    const mesh = registry.iva.meshes.find((m) => m.geometry.index);
+    const g = mesh.geometry, pa = g.attributes.position, nV = pa.count, P = [];
+    for (let i = 0; i < nV; i++) P.push(new THREE.Vector3().fromBufferAttribute(pa, i));
+    const S = P.map(sOf);
+    // direction du sillon interventriculaire antérieur : sommets du tiers moyen proches de leur moyenne angulaire
+    const gDir = new THREE.Vector3();
+    P.forEach((p, i) => { if (S[i] > 0.25 && S[i] < 0.6) gDir.add(rOf(p).normalize()); });
+    gDir.normalize();
+    // repère ancré sur l'IVA : elle est à +30° du centre de la paroi antérieure, du côté de la cloison (vers le VD)
+    const eP = new THREE.Vector3().crossVectors(A, gDir).normalize(); if (eP.dot(U.uDRV.value) < 0) eP.negate();
+    const c30 = Math.cos(Math.PI / 6), s30 = Math.sin(Math.PI / 6);
+    const eAnt = gDir.clone().multiplyScalar(c30).addScaledVector(eP, -s30).normalize();
+    const eSep = gDir.clone().multiplyScalar(s30).addScaledVector(eP, c30).normalize();
+    U.uInfAnt.value.copy(eAnt); U.uInfSep.value.copy(eSep);
+    // tronc de l'IVA (près du sillon) et branches latérales (diagonales) : la 1re diagonale naît au plus haut
+    const angOf = (p) => Math.atan2(rOf(p).dot(eSep), rOf(p).dot(eAnt)) * 180 / Math.PI; // IVA ≈ +30°
+    let sD1 = 1;
+    P.forEach((p, i) => { const a = angOf(p); if (S[i] > 0.05 && S[i] < 0.8 && a < -5) sD1 = Math.min(sD1, S[i]); });
+    const s0 = Math.min(0.55, sD1 + 0.05);
+    // point d'occlusion : sommets du tronc à cette hauteur
+    const near = P.filter((p, i) => Math.abs(S[i] - s0) < 0.025 && Math.abs(angOf(p) - 30) < 25);
+    const O = near.length ? near.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / near.length) : null;
+    // aval : composantes connexes une fois retirés les sommets autour de l'occlusion ; une composante est en aval si
+    // son sommet le plus haut est sous l'occlusion
+    if (O) {
+      const parent = new Int32Array(nV).map((_, i) => i), find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+      const cut = P.map((p) => p.distanceTo(O) < 0.32), idx = g.index.array;
+      for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) {
+        const a = idx[t + e], b = idx[t + (e + 1) % 3]; if (cut[a] || cut[b]) continue;
+        const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb;
+      }
+      const top = new Map(); P.forEach((p, i) => { if (cut[i]) return; const r = find(i); top.set(r, Math.min(top.get(r) ?? 9, S[i])); });
+      const occl = new Float32Array(nV);
+      const ramp = (x) => { const t = Math.min(1, Math.max(0, (x + 0.1) / 0.22)); return t * t * (3 - 2 * t); }; // fondu sur 2 mm
+      P.forEach((p, i) => { occl[i] = cut[i] ? ramp(p.clone().sub(O).dot(A)) : (top.get(find(i)) > s0 - 0.01 ? 1 : 0); });
+      g.setAttribute('occl', new THREE.BufferAttribute(occl, 1));
+      Object.assign(infarct, { s0, sD1, point: O.clone() });
+    }
+    // centre du territoire, sur l'épicarde : direction moyenne (antérieur-antéroseptal) au tiers apical
+    infarct.center = B.clone().addScaledVector(A, L * 0.72).addScaledVector(eAnt.clone().lerp(eSep, 0.4).normalize(), 2.6);
+  }
+  const setInfarct = (on, { tint = on, occl = on } = {}) => { deformU.uInf.value = on ? 1 : 0; deformU.uInfTint.value = tint ? 1 : 0; deformU.uOccl.value = occl ? 1 : 0; deformDirty = true; };
+
+  /* ── Fosse ovale et foramen ovale perméable (rubrique FOP) ──
+     Fosse : dépression postéro-inférieure du septum interauriculaire, là où il est le plus mince (septum primum,
+     1 à 2 mm) ; ≈ 19 × 16 mm (Kydd ; Kishve 2021) ; limbe (septum secundum) en fer à cheval ouvert vers le bas
+     (Naqvi, McCarthy, Ho 2018). FOP : tunnel entre le bord libre du septum primum et le limbe qui le chevauche, au
+     quadrant antéro-supérieur de la fosse, ≈ 12 mm de long et 3 mm de haut (Goel 2009). */
+  const fossa = (() => {
+    const g = geos.cavites.geometry, cp = g.attributes.position, cs = geos.cavites.sid, RA = [], LA = [];
+    for (let i = 0; i < cs.length; i++) { const id = ids[cs[i]]; if (id === 'oreillette-droite') RA.push(new THREE.Vector3().fromBufferAttribute(cp, i)); else if (id === 'oreillette-gauche') LA.push(new THREE.Vector3().fromBufferAttribute(cp, i)); }
+    if (!RA.length || !LA.length) return null;
+    const LAs = LA.filter((_, i) => i % 3 === 0);
+    const near = RA.filter((_, i) => i % 2 === 0).map((p) => { let b = 1e9, bq = null; for (const q of LAs) { const d = p.distanceToSquared(q); if (d < b) { b = d; bq = q; } } return { p, d: Math.sqrt(b), q: bq }; });
+    const dmin = Math.min(...near.map((x) => x.d)), thin = near.filter((x) => x.d < dmin + 0.25);
+    const mean = (a) => a.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / a.length);
+    const F = mean(thin.map((x) => x.p)), Q = mean(thin.map((x) => x.q)), n = Q.clone().sub(F).normalize(); // de l'OD vers l'OG
+    const up = new THREE.Vector3(0, 1, 0).projectOnPlane(n).normalize(), ant = new THREE.Vector3().crossVectors(up, n).normalize();
+    if (ant.z < 0) ant.negate();
+    const a = 0.95, b = 0.8, Mid = F.clone().lerp(Q, 0.5), floorP = Q.clone().addScaledVector(n, -0.08), depth = floorP.clone().sub(F).dot(n);
+    // orifice dans l'endocarde des deux oreillettes (le plancher et la paroi de la dépression sont dessinés à part)
+    deformU.uFosC.value.copy(Mid); deformU.uFosN.value.copy(n); deformU.uFosU.value.copy(up); deformU.uFosAB.value.set(a, b, F.distanceTo(Q) / 2 + 0.06);
+    const basis = new THREE.Matrix4().makeBasis(ant, up, n); // x : antérieur, y : supérieur, z : vers l'OG
+    const place = (m, origin) => { m.matrixAutoUpdate = false; m.matrix.copy(basis).setPosition(origin); return m; };
+    const grp = new THREE.Group(); root.add(grp);
+    const add = (m) => { m.userData.id = 'septum-interauriculaire'; m.receiveShadow = true; grp.add(m); cutOnly.push(m); reg('septum-interauriculaire').meshes.push(m); return m; };
+    // plancher (septum primum) : mince, pâle et un peu translucide
+    const floorG = new THREE.CircleGeometry(1, 64).scale(b, a, 1);
+    const floorM = add(place(new THREE.Mesh(floorG, tissue(0xecc6bf, { deformK: K_ENDO, roughness: 0.4, clearcoat: 0.5, sss: 0.8, rim: 0.15, bump: 0.15, emissive: 0x5a2a28, emissiveIntensity: 0.35 })), floorP));
+    floorM.receiveShadow = false;
+    // paroi de la dépression, de l'endocarde de l'OD au plancher
+    const wallG = new THREE.CylinderGeometry(1, 1, depth, 64, 1, true).rotateX(Math.PI / 2).translate(0, 0, depth / 2).scale(b, a, 1);
+    add(place(new THREE.Mesh(wallG, tissue(COL.endoOreillette, { deformK: K_ENDO, roughness: 0.38, clearcoat: 0.55, sss: 0.5, rim: 0.08, bump: 0.2 })), F)).receiveShadow = false;
+    // limbe en fer à cheval, ouvert vers le bas (arc de 270°), plus épais en haut (septum secundum)
+    const limbG = new THREE.TorusGeometry(1, 0.15, 14, 96, 1.5 * Math.PI).rotateZ(-Math.PI / 2 + Math.PI / 4).scale(b * 1.08, a * 1.08, 1.2);
+    add(place(new THREE.Mesh(limbG, tissue(0xc97880, { deformK: K_ENDO, roughness: 0.36, clearcoat: 0.55, sss: 0.5, rim: 0.1, bump: 0.3 })), F.clone().addScaledVector(n, -0.04)));
+    // creux de la fosse dans la tranche du septum (coupes) : solide « creux » de l'endocarde de l'OD au plancher
+    const holeG = new THREE.CylinderGeometry(1, 1, depth + 0.1, 48, 1, false).rotateX(Math.PI / 2).translate(0, 0, depth / 2 - 0.05).scale(b, a, 1);
+    const hole = place(new THREE.Mesh(holeG, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })), F);
+    hole.renderOrder = -2; root.add(hole);
+    solids.push({ mesh: hole, hole: true, cap: 'myo', k: K_ENDO });
+    // tunnel du FOP : du bord antéro-supérieur de la fosse côté OD, sous le limbe, jusqu'à l'OG, 1 cm plus haut
+    const dAS = up.clone().multiplyScalar(0.8).addScaledVector(ant, 0.6).normalize();
+    const rAS = 1 / Math.sqrt((dAS.dot(ant) / b) ** 2 + (dAS.dot(up) / a) ** 2); // bord de l'ellipse dans cette direction
+    const T0 = F.clone().addScaledVector(dAS, rAS * 0.85).addScaledVector(n, -0.12);
+    const T1 = Mid.clone().addScaledVector(dAS, rAS + 0.45);
+    const T2 = Q.clone().addScaledVector(dAS, rAS + 0.95).addScaledVector(n, 0.12);
+    const tunG = tubeGeometry([T0, T1, T2], 0.14, 32, 16);
+    const tunnel = add(new THREE.Mesh(tunG, tissue(COL.endoOreillette, { deformK: K_ENDO, side: THREE.BackSide, roughness: 0.4, clearcoat: 0.5, sss: 0.5, rim: 0.05, bump: 0.15 })));
+    const tunHole = new THREE.Mesh(tunG, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    tunHole.renderOrder = -2; tunHole.visible = false; root.add(tunHole);
+    solids.push({ mesh: tunHole, hole: true, cap: 'myo', k: K_ENDO });
+    tunnel.userData.pfo = true; tunnel.userData.hidden = true; // affiché avec le FOP seulement (setPFO)
+    // atriums : abouchement des veines caves, centres, valves auriculo-ventriculaires (trajet des bulles)
+    const yTop = Math.max(...RA.map((p) => p.y)), yBot = Math.min(...RA.map((p) => p.y));
+    const svc = mean(RA.filter((p) => p.y > yTop - 0.6)).setY(yTop - 1.6), ivc = mean(RA.filter((p) => p.y < yBot + 0.6)).setY(yBot + 0.9);
+    return {
+      F, Q, center: Mid, floor: floorP, n, up, ant, a, b, tunnel: [T0, T1, T2], tunnelMesh: tunnel, tunnelHole: tunHole,
+      ra: mean(RA), la: mean(LA), svc, ivc,
+    };
+  })();
+  const setPFO = (on) => { if (!fossa) return; fossa.tunnelHole.visible = on; fossa.tunnelMesh.userData.hidden = !on; fossa.tunnelMesh.visible = on; };
+
   const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  // même territoire que infarctW (GLSL) ; r : rayon depuis l'axe du VG, s : position le long de l'axe, lr = |r|
+  const infarctW = (r, s, lr) => {
+    const U = deformU; if (U.uInf.value <= 0) return 0;
+    const th = THREE.MathUtils.radToDeg(Math.atan2(r.dot(U.uInfSep.value), r.dot(U.uInfAnt.value)));
+    const mid = sm(0.3, 0.38, s) * (1 - sm(0.62, 0.7, s)) * sm(-40, -25, th) * (1 - sm(85, 100, th));
+    const api = sm(0.62, 0.7, s) * sm(-55, -40, th) * (1 - sm(130, 145, th));
+    return U.uInf.value * Math.max(mid, api, sm(0.84, 0.94, s)) * (1 - sm(2.9, 3.7, lr));
+  };
   const tq = new THREE.Vector3(), tr = new THREE.Vector3(), tc = new THREE.Vector3(), tp = new THREE.Vector3();
   // k : raideur de repli quand la carte de la paroi est absente
   const deformPoint = (p, k = 0.1) => {
@@ -924,11 +1081,12 @@ export async function buildHeart(onProgress) {
     const wRoot = sm(1, 1.8, tp.distanceTo(U.uDAo.value)) * sm(1, 1.8, tp.distanceTo(U.uDPu.value));
     const wV = sm(-0.3, 0.3, dAV) * (1 - sm(1.05, 1.3, s)) * wRoot;
     const kk = wallB ? K_ENDO + (K_EPI - K_ENDO) * wallB(tp) : k;
+    const wI = 1 - infarctW(tr, s, lr); // akinésie (vue Coronaires, infarctus)
     const wRV = sm(1.5, 4, tr.dot(U.uDRV.value));
     const desc = Lg * (1.3 + 1.0 * wRV) * (dAV >= 0 ? 1 - Math.min(1, Math.max(0, dAV / U.uDApx.value)) : Math.min(1, Math.max(0, 1 + dAV / (3 + 1.5 * wRV))));
-    const cR = R.x + (R.y - R.x) * sc, shape = wV * (0.65 + 0.35 * Math.sin(Math.PI * sc));
+    const cR = R.x + (R.y - R.x) * sc, shape = wV * wI * (0.65 + 0.35 * Math.sin(Math.PI * sc));
     const rad = 1 - kk * cR * shape * Math.min(1, 3.2 / lr);
-    const ang = wV * THREE.MathUtils.degToRad(Tw.x + (Tw.y - Tw.x) * sc);
+    const ang = wV * wI * THREE.MathUtils.degToRad(Tw.x + (Tw.y - Tw.x) * sc);
     tc.crossVectors(A, tr);
     let ox = B.x + A.x * (al + desc) + (tr.x * Math.cos(ang) + tc.x * Math.sin(ang)) * rad;
     let oy = B.y + A.y * (al + desc) + (tr.y * Math.cos(ang) + tc.y * Math.sin(ang)) * rad;
@@ -1108,6 +1266,7 @@ export async function buildHeart(onProgress) {
 
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve, ostia,
+    infarct, setInfarct, fossa, setPFO,
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
     landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k, cut) => addDeformTo(mat, deformU, k, cut),

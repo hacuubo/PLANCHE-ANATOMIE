@@ -7,6 +7,7 @@ import { ContactShadows } from './contact-shadows.js';
 import { sectionMaterial, setSectionPlane, setSectionFrame } from './cut-surface.js';
 import { buildSLView } from './aortic-view.js';
 import { buildAVView } from './av-views.js';
+import { buildFOPViews, buildCoronaryView, createBubbles } from './special-views.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -52,7 +53,7 @@ const FOG_FAR = 25; // cm derrière la valve où la teinte sombre serait atteint
 scene.fog = new THREE.Fog(0x3b1c1e, 1e4, 1e4 + 1);
 let fogK = 0;
 function updateDepthFog(dt) {
-  fogK += ((state.valve ? 1 : 0) - fogK) * Math.min(1, dt * 2.5);
+  fogK += ((state.valve && !VALVE_VIEWS[state.valve].noFog ? 1 : 0) - fogK) * Math.min(1, dt * 2.5);
   if (fogK < 0.002) { scene.fog.near = 1e4; scene.fog.far = 1e4 + 1; return; }
   const d = camera.position.distanceTo(controls.target);
   scene.fog.near = d - 0.5; scene.fog.far = d - 0.5 + FOG_FAR / fogK;
@@ -109,6 +110,11 @@ key.target.position.copy(CENTER);
 
 // Vues chirurgicales des valves, dans le cœur (aortique, mitrale, tricuspide ; normale et pathologique)
 const VALVE_VIEWS = { aortique: buildSLView(heart, 'aortique'), mitrale: buildAVView(heart, 'mitrale'), tricuspide: buildAVView(heart, 'tricuspide'), pulmonaire: buildSLView(heart, 'pulmonaire') };
+for (const v of Object.values(VALVE_VIEWS)) v.group = 'valves';
+// Rubriques FOP (fosse ovale, test aux bulles) et Coronaires (infarctus de l'IVA) : mêmes mécanismes de vue
+const bubbles = createBubbles(heart);
+Object.assign(VALVE_VIEWS, buildFOPViews(heart), { coronaires: buildCoronaryView(heart) });
+for (const k of ['fosse', 'fop']) if (VALVE_VIEWS[k]) VALVE_VIEWS[k].onActivate = (on, pfo) => bubbles.setActive(on && pfo, pfo);
 
 // Ombres et « fantôme » de la partie retirée par la coupe (voile très léger qui garde la silhouette lisible).
 const ghostMats = [], ghosts = [];
@@ -219,7 +225,8 @@ function restPose() {
   // cœur arrêté à un instant du cycle (pause ou curseur du cycle) : cet instant, et la coupe suit la valve
   if (frozenPhase !== null) { heart.setBeat(frozenPhase); if (v && !trans) valveCut(v, 0); renderer.shadowMap.needsUpdate = true; return; }
   // vue d'une valve, cœur arrêté : position choisie (ouverte ou fermée) pour la valve regardée
-  if (v) { heart.setPose({ atr: 0, ven: 0, av: v.phase === 'av' && valveOpen ? 1 : 0, sl: v.phase === 'sl' && valveOpen ? 1 : 0 }); if (!trans) valveCut(v, 0); }
+  if (v && !v.phase) { heart.setBeat(null); if (!trans) valveCut(v, 0); } // FOP, coronaires : pose de repos (diastole)
+  else if (v) { heart.setPose({ atr: 0, ven: 0, av: v.phase === 'av' && valveOpen ? 1 : 0, sl: v.phase === 'sl' && valveOpen ? 1 : 0 }); if (!trans) valveCut(v, 0); }
   else heart.setBeat(null);
   renderer.shadowMap.needsUpdate = true;
 }
@@ -416,7 +423,7 @@ function syncCutOnly() {
   const cut = state.coupe;
   heart.cutOnly.forEach((m) => {
     const cond = CONDUCTION.has(m.userData.id);
-    m.visible = cut && (!m.userData.ostium || state.coronaires) && !(cond && (!SHOW_CONDUCTION || state.valve));
+    m.visible = cut && !m.userData.hidden && (!m.userData.ostium || state.coronaires) && !(cond && (!SHOW_CONDUCTION || state.valve));
   });
 }
 function setCutMode(mode, value) {
@@ -487,6 +494,7 @@ function halfCamera(on) {
 const splitHooks = {
   before(i) {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
+    if (v.applyHalf) { v.applyHalf(i); renderer.shadowMap.needsUpdate = true; halfCamera(true); return; }
     const name = i === 0 ? 'normale' : v.variant, valve = v.valveFor(name), dil = v.dilationOf(name);
     heart.showValve(v.heartValveId, valve);
     if (v.dilationOf('normale') !== v.dilationOf(v.variant)) { // anneau dilaté d'un seul côté : cœur et valve redessinés
@@ -499,6 +507,7 @@ const splitHooks = {
   },
   after() {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
+    if (v.applyHalf) { v.applyHalf(null); halfCamera(false); return; }
     heart.showValve(v.heartValveId, v.valveFor(v.variant)); heart.setDilation(v.dilationOf(v.variant));
     halfCamera(false);
   },
@@ -510,7 +519,7 @@ function setCompare(on) {
   const btn = document.querySelector('[data-toggle="comparer"]');
   btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', String(on));
   if (on && v.variant === 'normale') v.setVariant(v.variantList[1][0]); // à droite : la première pathologie
-  heart.setExtraValves(on ? [[v.heartValveId, v.valveFor('normale')]] : []);
+  if (v?.valveFor) heart.setExtraValves(on ? [[v.heartValveId, v.valveFor('normale')]] : []);
   contact.split = on ? splitHooks : null;
   if (v) { syncValveUI(); splitShift = valveShift().shift; restPose(); recenter(); } // cadrage refait pour une moitié d'écran
   syncCompareTags(); syncMarks();
@@ -523,15 +532,26 @@ function setCompare(on) {
 // lui. D'une valve à l'autre : la caméra passe directement d'une vue à l'autre en reculant un peu ; la coupe remonte, puis
 // redescend sur la nouvelle valve. Au retour, la caméra revient à la vue de départ et la coupe d'origine est rétablie.
 let valvePanel = false; // panneau du choix des valves ouvert (sans valve choisie : la vue ne bouge pas)
+// rubrique affichée : celle de la vue en cours, sinon « valves » si son panneau est ouvert
+const groupOf = () => (state.valve ? VALVE_VIEWS[state.valve].group : valvePanel ? 'valves' : null);
+// bouton d'une rubrique : ouvre sa vue (FOP : fosse ovale ; Coronaires : vue de face) ou referme la rubrique
+function openGroup(g) {
+  const cur = state.valve && VALVE_VIEWS[state.valve].group;
+  if (g === 'valves') { if (state.valve) { valvePanel = false; goValve(null, () => { if (cur !== 'valves') { valvePanel = true; syncValveUI(); } }); } else { valvePanel = !valvePanel; syncValveUI(); } return; }
+  if (cur === g) { goValve(null); return; }
+  valvePanel = false;
+  goValve(g === 'fop' ? 'fosse' : 'coronaires');
+}
 let valveOpen = false, trans = null, beforeValve = null;
 // Côté d'observation : C (chirurgical, depuis l'oreillette ou l'aorte) ou V (ventriculaire, côté opposé)
 let valveSide = 'C';
-const sideOf = (v, side = valveSide) => v.sides[side];
+const sideOf = (v, side = valveSide) => v.sides[side] ?? v.sides.C;
 for (const v of Object.values(VALVE_VIEWS)) for (const [side, sd] of Object.entries(v.sides)) {
   const mode = `v-${v.key}-${side}`;
   CUT_MODES[mode] = { normal: sd.cut.normal, min: sd.cut.def - 8, max: sd.cut.def + 16, def: sd.cut.def };
   INTERIOR_OFF[mode] = sd.interior; NO_GHOST.add(mode);
 }
+if (bubbles.mesh) bubbles.mesh.material.clippingPlanes = [cutPlane]; // bulles coupées avec le cœur (vue bicave)
 const FAR = 15; // coupe repoussée hors du cœur (rien n'est retiré)
 // états de caméra : cible, direction (de la cible vers l'œil), distance, verticale
 const camSt = () => { const off = camera.position.clone().sub(controls.target); return { target: controls.target.clone(), dir: off.clone().normalize(), dist: off.length(), up: camera.up.clone() }; };
@@ -669,16 +689,19 @@ function syncPhaseButtons() {
 }
 // Interface : bouton « Valves », panneau (valve, côté, variante, position)
 function syncValveUI() {
-  const v = state.valve && VALVE_VIEWS[state.valve], open = !!v || valvePanel;
+  const v = state.valve && VALVE_VIEWS[state.valve], group = groupOf(), open = !!group, isValve = group === 'valves';
   document.getElementById('valve-tools').classList.toggle('hidden', !open);
-  document.getElementById('valve-variants').classList.toggle('hidden', !v);
-  document.querySelector('[data-vphase]').parentElement.classList.toggle('hidden', !v);
-  document.querySelector('[data-vside]').parentElement.classList.toggle('hidden', !v);
+  document.querySelectorAll('[data-group]').forEach((el) => el.classList.toggle('hidden', el.dataset.group !== group));
+  document.getElementById('valve-variants').classList.toggle('hidden', !v || v.variantList.length < 2);
+  document.querySelector('[data-vphase]').parentElement.classList.toggle('hidden', !v || !isValve);
+  document.querySelector('[data-vside]').parentElement.classList.toggle('hidden', !v || !isValve);
   document.querySelectorAll('[data-vside]').forEach((b) => { b.classList.toggle('active', b.dataset.vside === valveSide); b.setAttribute('aria-pressed', String(b.dataset.vside === valveSide)); });
-  const btn = document.querySelector('[data-toggle="valves"]');
-  btn.classList.toggle('on', open); btn.setAttribute('aria-pressed', String(open));
+  for (const [name, g] of [['valves', 'valves'], ['fop', 'fop'], ['coro', 'coro']]) {
+    const btn = document.querySelector(`[data-toggle="${name}"]`); if (!btn) continue;
+    btn.classList.toggle('on', group === g); btn.setAttribute('aria-pressed', String(group === g));
+  }
   canvasWrap.classList.toggle('is-valve', !!v);
-  document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v);
+  document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v || v.compare === false);
   syncCutOnly();
   document.querySelectorAll('[data-valve]').forEach((b) => b.classList.toggle('active', b.dataset.valve === state.valve));
   if (v) {
@@ -748,11 +771,24 @@ const valveMarks = {};
     if (key === 'mitrale') list.push(mark('Aorte', C.clone().addScaledVector(VALVE_VIEWS.mitrale.sides.C.up, Math.max(ra, rb) * 1.18), 'struct'));
     valveMarks[key] = list;
   }
+  const fo = heart.fossa;
+  if (fo) {
+    valveMarks.fosse = [mark('Fosse ovale', fo.F.clone().addScaledVector(fo.n, -0.2)), mark('Limbe (septum secundum)', fo.F.clone().addScaledVector(fo.up, fo.a * 1.25).addScaledVector(fo.n, -0.3)),
+      mark('Veine cave supérieure', fo.svc, 'struct'), mark('Veine cave inférieure', fo.ivc, 'struct')];
+    valveMarks.fop = [mark('Oreillette droite', fo.ra, 'struct'), mark('Oreillette gauche', fo.la, 'struct'), mark('FOP', fo.tunnel[1].clone().addScaledVector(fo.up, 0.4))];
+  }
+  const inf = heart.infarct;
+  valveMarks.coronaires = [];
+  if (inf?.point) {
+    const occ = mark('Occlusion (IVA 2)', inf.point, 'struct'), zone = mark('Territoire akinétique', inf.center);
+    occ.userData.variant = zone.userData.variant = 'idm';
+    valveMarks.coronaires.push(occ, zone);
+  }
 }
 function syncMarks() {
   for (const [key, list] of Object.entries(valveMarks)) {
     const on = state.reperes && state.valve === key && !trans && !state.comparer; // pas de noms en écran partagé
-    list.forEach((o) => { o.visible = on; });
+    list.forEach((o) => { o.visible = on && (!o.userData.variant || o.userData.variant === VALVE_VIEWS[key].variant); });
   }
 }
 
@@ -854,7 +890,7 @@ function goView(name, instant = false) {
 function toggle(name, value) {
   if (trans && name !== 'battement' && name !== 'coronaires') { pendingAction = () => toggle(name, value); return; }
   if (name === 'comparer') { setCompare(value ?? !state.comparer); return; }
-  if (name === 'valves') { if (state.valve) { valvePanel = false; goValve(null); } else { valvePanel = !valvePanel; syncValveUI(); } return; }
+  if (name === 'valves' || name === 'fop' || name === 'coro') { openGroup(name); return; }
   if (name === 'coupe' && state.valve) { goValve(null, () => toggle(name, value)); return; }
   state[name] = value ?? !state[name];
   renderer.shadowMap.needsUpdate = true;
@@ -1120,6 +1156,7 @@ function animate() {
   else if (state.valve && state.battement) valveCut(VALVE_VIEWS[state.valve], 0); // la coupe suit la valve qui bat
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe et dans les vues des valves)
   if (state.coupe && heart.stepValves(dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
+  bubbles.update(Math.min(dt, 0.1) * beatSpeed, state.battement ? beatPhase : frozenPhase ?? 0, state.battement);
   controls.update();
   if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
   if (frame % 30 === 0) syncURL();
