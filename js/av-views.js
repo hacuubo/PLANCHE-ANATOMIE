@@ -33,8 +33,13 @@ export function buildAVView(heart, kind) {
   const C = V(d.center), A = V(d.axis).normalize(); // A : de l'oreillette vers le ventricule
   const E1 = V(d.e1), E2 = V(d.e2);
   const dirOf = (th) => new THREE.Vector3().copy(E1).multiplyScalar(Math.cos(th)).addScaledVector(E2, Math.sin(th));
-  const make = (opts) => heart.addValve(id, avValve(id, d, heart.material(id, 'valve'), heart.material(id, 'cordage'), opts));
-  const variants = { normale: null };
+  // variantes construites à leur première demande (démarrage plus court) : variants[nom] = options de la valve
+  const variants = {}, built = {};
+  const make = (opts) => opts;
+  const valveOf = (name) => {
+    if (!variants[name]) return null;
+    return (built[name] ??= heart.addValve(id, avValve(id, d, heart.material(id, 'valve'), heart.material(id, 'cordage'), variants[name])));
+  };
   let up, dilation = {};
   if (mitral) {
     up = heart.landmarks.valves['valve-aortique'].center.clone().sub(C).projectOnPlane(A).normalize(); // aorte à 12 h
@@ -77,7 +82,7 @@ export function buildAVView(heart, kind) {
         orient: mitral ? 'Vue depuis le ventricule gauche · <b>aorte en haut</b>' : 'Vue depuis le ventricule droit · <b>septum en bas</b>' },
     },
     get variant() { return current; },
-    valveFor: (name) => variants[name] ?? heart.valves[id], // objet valve d'une variante (normale : celle du cœur)
+    valveFor: (name) => valveOf(name) ?? heart.valves[id], // objet valve d'une variante (normale : celle du cœur)
     dilationOf: (name) => dilation[name] ?? 0,
     get dilation() { return dilation[current] ?? 0; }, // dilatation de la variante (transitions progressives)
     setVariant(name) { current = name; if (view.active) view.activate(true); },
@@ -85,7 +90,7 @@ export function buildAVView(heart, kind) {
     // pose la variante choisie dans le cœur (on = false : valve normale)
     activate(on) {
       view.active = on;
-      heart.useValve(id, on ? variants[current] : null);
+      heart.useValve(id, on ? valveOf(current) : null);
       if (!mitral) heart.setDilation(on ? dilation[current] ?? 0 : 0);
     },
   };

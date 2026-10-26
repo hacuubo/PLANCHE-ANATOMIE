@@ -97,6 +97,11 @@ une liste numérotée des structures, et une fiche explicative par structure.
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
   doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
   gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
+  **Repère** : en haut à droite (en bas à gauche sur téléphone), une petite coupe fixe où la valve regardée est
+  entourée — coupe 4 cavités pour la mitrale et la tricuspide, 5 cavités pour l'aortique, frontale passant par la voie
+  d'éjection du VD pour la pulmonaire (images pré-rendues depuis le modèle, cœur en diastole : `assets/reperes`,
+  ≈ 12 Ko chacune). Les variantes pathologiques ne sont construites qu'à leur premier affichage (démarrage plus court
+  d'≈ 0,3 s sur ordinateur, davantage sur téléphone).
   **Doppler couleur** (js/doppler.js) : les flux de la valve regardée, en volume dans le cœur qui bat, colorés comme à
   l'ETT en voie apicale (sonde à la pointe) : rouge vers la sonde, bleu en s'éloignant, plus clair quand c'est plus
   rapide ; limite de Nyquist ± 0,7 m/s, au-delà repliement ; jets de fuite et de rétrécissement turbulents en
@@ -114,10 +119,8 @@ une liste numérotée des structures, et une fiche explicative par structure.
   - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif (calcifié au stade évolué : amas
     calcaires sur toute la cuspide jusqu'aux commissures, bord libre épaissi, festonné et rétracté par endroits,
     commissures libres, petit orifice irrégulier), insuffisance par dilatation de la
-    racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²), TAVI
-    (bioprothèse à ballonnet de type SAPIEN 3, taille 29 : armature en cobalt-chrome de 22,5 mm à cellules en losange
-    et grandes cellules hautes, jupe en tissu, feuillets en péricarde bovin, commissures alignées, cuspides natives
-    calcifiées plaquées contre les sinus). Ouvertes, les cuspides normales restent à distance de la paroi des sinus
+    racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²).
+    Ouvertes, les cuspides normales restent à distance de la paroi des sinus
     (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ; à travers l'orifice, on voit la
     chambre de chasse et le ventricule.
   - **Mitrale** (aorte à 12 h, auricule gauche à gauche en vue C) : normale (A1-A3, P1-P3),
@@ -192,10 +195,11 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles) et Coronaires (infarctus de l'IVA) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
-| `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
+| `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante ; rétrécissement pulmonaire en dôme) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
+| `assets/reperes/` | Coupes de repérage des vues des valves (4 cavités, 5 cavités, frontale), rendues depuis l'application |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
 | `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves, format compact du modèle, pilotage d'Edge pour les captures |
 | `tools/pack-heart.mjs` | Convertit `assets/heart.bin` au format compact HRT3 |

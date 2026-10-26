@@ -252,9 +252,18 @@ button { font: inherit; color: inherit; }
 }
 .compare-tags .cmp-l { left: 25%; } .compare-tags .cmp-r { left: 75%; color: var(--accent); }
 .compare-tags i { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255, 253, 249, .9); box-shadow: 0 0 6px rgba(0,0,0,.15); }
+/* colonne de droite des vues des valves : repère (coupe où la valve est entourée), légende du Doppler */
+.side-stack { position: absolute; right: 14px; top: var(--stack-top, 14px); z-index: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
+.locator { margin: 0; width: 180px; background: rgba(255, 253, 249, .94); border: 1px solid var(--line-strong); border-radius: 12px; padding: 5px; }
+.loc-img { position: relative; border-radius: 8px; overflow: hidden; line-height: 0; }
+.loc-img img { width: 100%; height: auto; display: block; }
+.loc-img svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.loc-halo { fill: none; stroke: rgba(255, 255, 255, .9); stroke-width: 3.2; }
+.loc-ring { fill: none; stroke: var(--accent); stroke-width: 1.6; }
+.locator figcaption { font-size: 12px; font-weight: 600; text-align: center; padding: 4px 2px 1px; line-height: 1.25; }
 /* légende du Doppler couleur (vues des valves) */
 .doppler-legend {
-  position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 4; pointer-events: none; width: 168px;
+  width: 168px;
   background: rgba(255, 253, 249, .94); border: 1px solid var(--line-strong); border-radius: 12px; padding: 10px 12px; font-size: 12.5px; line-height: 1.3;
 }
 .doppler-legend b { display: block; font-size: 13.5px; }
@@ -270,7 +279,9 @@ button { font: inherit; color: inherit; }
 .dl-mos i { flex: none; width: 14px; height: 14px; border-radius: 3px;
   background: conic-gradient(#fded61 0 25%, #8cffff 0 50%, #40f259 0 75%, #ed1208 0); }
 @media (max-width: 640px) {
-  .doppler-legend { top: auto; bottom: 112px; right: 8px; transform: none; width: 112px; padding: 7px 9px; font-size: 11px; }
+  .side-stack { top: auto; bottom: 112px; left: 8px; right: 8px; flex-direction: row; justify-content: space-between; align-items: flex-end; }
+  .locator { width: 112px; padding: 3px; } .locator figcaption { font-size: 10.5px; }
+  .doppler-legend { margin-left: auto; width: 112px; padding: 7px 9px; font-size: 11px; }
   .doppler-legend b { font-size: 12px; } .doppler-legend small { margin-bottom: 5px; }
   .dl-scale { height: 70px; padding-left: 20px; } .dl-bar { width: 11px; } .dl-scale span { left: 20px; }
   .dl-mos { margin-top: 6px; gap: 6px; } .dl-mos em { display: none; }

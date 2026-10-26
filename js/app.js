@@ -471,7 +471,7 @@ function viewOffset() {
   const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
   if (state.valve && w && h) camera.setViewOffset(w, h, 0, valveShift().shift, w, h);
   else camera.clearViewOffset();
-  syncCompareTags();
+  syncCompareTags(); syncLocator();
 }
 
 /* ─────────── comparaison : écran partagé, valve normale à gauche, malade à droite ─────────── */
@@ -529,7 +529,7 @@ function setCompare(on) {
   if (v?.valveFor) heart.setExtraValves(on ? [[v.heartValveId, v.valveFor('normale')]] : []);
   contact.split = on ? splitHooks : null;
   if (v) { syncValveUI(); splitShift = valveShift().shift; restPose(); recenter(); } // cadrage refait pour une moitié d'écran
-  syncCompareTags(); syncMarks();
+  syncCompareTags(); syncMarks(); syncLocator();
 }
 
 /* ─────────── vues des valves : zoom dans le cœur ─────────── */
@@ -567,7 +567,34 @@ const nq = NYQUIST.toFixed(1).replace('.', ',');
 dopLegend.innerHTML = `<b>Doppler couleur</b><small>Sonde à la pointe du cœur</small>
   <div class="dl-scale"><i class="dl-bar"></i><span class="dl-top">+${nq} m/s<em>vers la sonde</em></span><span class="dl-bot">−${nq} m/s<em>s'éloigne</em></span></div>
   <div class="dl-mos"><i></i><span>Mosaïque<em> : flux rapide et turbulent (fuite, rétrécissement)</em></span></div>`;
-canvasWrap.appendChild(dopLegend);
+// Repère des vues des valves : petite coupe fixe où la valve regardée est entourée (image pré-rendue depuis le modèle,
+// cœur en diastole, assets/reperes ; position et rayon du cercle en % de la largeur de l'image). Mitrale et tricuspide :
+// coupe 4 cavités ; aortique : coupe 5 cavités ; pulmonaire : coupe frontale passant par la voie d'éjection du VD.
+const LOCATOR = {
+  mitrale: { img: 'coupe-4-cavites', cut: 'Coupe 4 cavités', x: 64.5, y: 47.3, r: 11.9 },
+  tricuspide: { img: 'coupe-4-cavites', cut: 'Coupe 4 cavités', x: 36.1, y: 36.4, r: 11.5 },
+  aortique: { img: 'coupe-5-cavites', cut: 'Coupe 5 cavités', x: 51.8, y: 44.5, r: 11.9 },
+  pulmonaire: { img: 'coupe-frontale', cut: 'Coupe frontale (voie d’éjection du VD)', x: 50.8, y: 27.5, r: 13.0 },
+};
+const locator = document.createElement('figure');
+locator.className = 'locator hidden';
+locator.innerHTML = `<div class="loc-img"><img alt="" width="180" height="135"><svg viewBox="0 0 100 75" aria-hidden="true">
+  <circle class="loc-halo"/><circle class="loc-ring"/></svg></div><figcaption></figcaption>`;
+const sideStack = document.createElement('div');
+sideStack.className = 'side-stack';
+sideStack.append(locator, dopLegend);
+canvasWrap.appendChild(sideStack);
+function syncLocator() {
+  const L = state.valve && LOCATOR[state.valve], on = !!(L && !state.comparer); // écran partagé : place laissée aux deux vues
+  if (state.valve) sideStack.style.setProperty('--stack-top', `${valveShift().top + 10}px`); // sous le panneau des réglages
+  locator.classList.toggle('hidden', !on);
+  if (!on) return;
+  const img = locator.querySelector('img');
+  img.src = `assets/reperes/${L.img}.jpg`;
+  img.alt = `${L.cut} : ${VALVE_VIEWS[state.valve].title.toLowerCase()} entourée`;
+  for (const c of locator.querySelectorAll('circle')) { c.setAttribute('cx', L.x); c.setAttribute('cy', L.y * 0.75); c.setAttribute('r', L.r); }
+  locator.querySelector('figcaption').textContent = L.cut;
+}
 function syncDoppler() {
   const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.doppler && v && v.group === 'valves');
   doppler.setView(on ? state.valve : null, v?.variant);
@@ -726,7 +753,7 @@ function syncValveUI() {
   document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v || v.compare === false);
   document.querySelector('[data-toggle="doppler"]').classList.toggle('hidden', !v || !isValve);
   syncCutOnly();
-  syncDoppler();
+  syncDoppler(); syncLocator();
   document.querySelectorAll('[data-valve]').forEach((b) => b.classList.toggle('active', b.dataset.valve === state.valve));
   if (v) {
     const seg = document.getElementById('valve-variants');

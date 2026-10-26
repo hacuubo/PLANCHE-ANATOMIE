@@ -730,9 +730,6 @@ export async function buildHeart(onProgress) {
   const PRESETS = {
     // feuillets et cuspides : couleur et ombrage par sommet (js/valves.js), film humide brillant, translucidité modérée
     valve: () => interior(tissue(0xffffff, { envelope: true, valve: true, trans: 0.35, deformOn: false, sss: 0.25, rim: 0.12, roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.09, bump: 1.1, sheen: 0.08, sheenColor: 0xfff2dc, sheenRoughness: 0.4, envMapIntensity: 0.55 })),
-    // armature métallique d'une bioprothèse percutanée (cobalt-chrome) : reflets francs, pas de translucidité ; coupée
-    // avec les parois (et non plus loin, comme les feuillets) : pas de montants au-dessus de la tranche
-    metal: () => tissue(0x9aa1ab, { tis: [0, 1, 0, 1], deformOn: false, sss: 0, rim: 0.04, roughness: 0.28, metalness: 0.85, clearcoat: 0.2, clearcoatRoughness: 0.2, bump: 0, sheen: 0, envMapIntensity: 1.1 }),
     cordage: () => interior(tissue(COL.cordage, { tis: [0, 1, 0, 1], deformOn: false, sss: 0.6, rim: 0.3, roughness: 0.26, clearcoat: 0.75, clearcoatRoughness: 0.1, bump: 0.03, sheen: 0.1 })),
     // piliers : plus clairs que l'endocarde trabéculé, pour se détacher de la paroi ; coupés comme le reste du muscle
     // intima de la racine aortique (vue de la valve aortique) : couleur et occlusion par sommet
