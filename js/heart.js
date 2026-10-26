@@ -116,7 +116,7 @@ uniform vec3 uDB; uniform vec3 uDA; uniform float uDL; uniform vec4 uDAV; unifor
 uniform vec2 uDR; uniform float uDLg; uniform vec2 uDTw; uniform vec2 uDAt; uniform float uDRes;
 uniform vec3 uDRA; uniform vec3 uDLA; uniform float uDK; uniform float uDOn;
 uniform float uDDil; uniform vec3 uDTc; uniform vec3 uDTa; uniform vec3 uDTs;
-uniform vec3 uDMc; uniform vec3 uDMa; uniform vec3 uDAo; uniform vec3 uDPu;
+uniform vec3 uDMc; uniform vec3 uDMa; uniform vec3 uDAo; uniform vec3 uDPu; uniform vec3 uDAoA;
 uniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf; uniform float uVolOn;
 uniform float uInf; uniform vec3 uInfAnt; uniform vec3 uInfSep;
 // Territoire akinétique d'une occlusion de l'IVA moyenne (modèle AHA à 17 segments, Cerqueira 2002) : segments 7
@@ -150,10 +150,15 @@ vec3 heartDeform(vec3 p) {
   // racines aortique et pulmonaire : elles descendent avec la base mais ne se contractent pas (elles s'élargissent un peu)
   float wRoot = smoothstep(1.0, 1.8, length(p - uDAo)) * smoothstep(1.0, 1.8, length(p - uDPu));
   float wV = smoothstep(-0.3, 0.3, dAV) * (1.0 - smoothstep(1.05, 1.3, s)) * wRoot;
+  // racine aortique et départ des coronaires (ostia, tronc commun, coronaire droite) : un seul bloc. Ni l'expansion ni
+  // la contraction des oreillettes voisines ne s'y appliquent, et la descente est celle de la racine : les ostia restent
+  // sur la paroi et les artères ne pénètrent jamais dans l'aorte, à tout instant du cycle.
+  vec3 qa = p - uDAo; float aa = dot(qa, uDAoA), ra = length(qa - uDAoA * aa);
+  float wAoZ = (1.0 - smoothstep(2.2, 3.2, ra)) * smoothstep(-1.2, -0.4, aa) * (1.0 - smoothstep(3.2, 4.2, aa));
   float k = uVolOn > 0.5 ? mix(${K_ENDO.toFixed(3)}, ${K_EPI.toFixed(3)}, wallAt(p).b) : uDK;
   float wI = 1.0 - infarctW(p); // akinésie : ni rapprochement vers l'axe, ni épaississement, ni torsion
   // descente de la base : maximale au plan auriculo-ventriculaire, nulle à la pointe, amortie dans les oreillettes
-  float wRV = smoothstep(1.5, 4.0, dot(r, uDRV));
+  float wRV = smoothstep(1.5, 4.0, dot(r, uDRV)) * (1.0 - wAoZ);
   float desc = uDLg * (1.3 + 1.0 * wRV) * (dAV >= 0.0 ? 1.0 - clamp(dAV / uDApx, 0.0, 1.0) : clamp(1.0 + dAV / (3.0 + 1.5 * wRV), 0.0, 1.0));
   // rétrécissement radial vers l'axe du VG (déplacement plafonné à 3,2 cm de l'axe : paroi libre du VD)
   float cR = mix(uDR.x, uDR.y, sc), shape = wV * wI * (0.65 + 0.35 * sin(3.14159 * sc));
@@ -170,7 +175,7 @@ vec3 heartDeform(vec3 p) {
   // centres des deux oreillettes mélangés en continu (pas de pli dans le septum interauriculaire)
   float wR = smoothstep(-0.8, 0.8, dLA - dRA);
   vec3 dd = wR * (o - uDRA) + (1.0 - wR) * (o - uDLA);
-  float wAt = (1.0 - smoothstep(-0.6, 0.2, dAV)) * (1.0 - smoothstep(2.6, 4.2, min(dRA, dLA)));
+  float wAt = (1.0 - smoothstep(-0.6, 0.2, dAV)) * (1.0 - smoothstep(2.6, 4.2, min(dRA, dLA))) * (1.0 - wAoZ);
   return o - dd * (0.14 * mix(uDAt.y, uDAt.x, wR) - 0.03 * uDRes) * wAt;
 }
 `;
@@ -205,7 +210,7 @@ const CUT_VERTEX = 'vCutW = (modelMatrix * vec4(transformed, 1.0)).xyz;';
 // vers le ventricule (la racine descend avec la base pendant la systole). Les coupes y ouvrent la lumière : intima
 // visible, cuspides entières au lieu d'un aplat de sang (js/app.js).
 export const GLSL_ROOTS = /* glsl */`
-uniform vec4 uHoleC[2]; uniform vec4 uHoleA[2];
+uniform vec4 uHoleC[2]; uniform vec4 uHoleA[2]; uniform vec3 uHoleCw[2]; // uHoleCw : centres suivant le battement
 uniform float uRootSel; // racine concernée : 0 aortique, 1 pulmonaire, −1 les deux
 uniform vec4 uOst[2]; uniform vec3 uOstN[2]; // ostia coronaires : centre et rayon, axe (vers le sang) ; rayon < 0 : absent
 bool inOstium(vec3 p) {
@@ -220,6 +225,16 @@ bool inRoot(vec3 p, float grow) {
   for (int i = 0; i < 2; i++) {
     if (uRootSel > -0.5 && abs(float(i) - uRootSel) > 0.5) continue; // chaque lumière n'ouvre que sa racine
     vec3 q = p - uHoleC[i].xyz; float al = dot(q, uHoleA[i].xyz);
+    if (al > -1.5 && al < uHoleA[i].w && length(q - uHoleA[i].xyz * al) < uHoleC[i].w + grow) return true;
+  }
+  return false;
+}
+// même test pour un point du monde déformé (tranches de sang à la coupe) : la racine descend avec la base pendant la
+// systole (jusqu'à ≈ 7 mm), le cylindre la suit, sans quoi un croissant de la tranche de sang réapparaissait contre la paroi
+bool inRootW(vec3 p, float grow) {
+  for (int i = 0; i < 2; i++) {
+    if (uRootSel > -0.5 && abs(float(i) - uRootSel) > 0.5) continue;
+    vec3 q = p - uHoleCw[i]; float al = dot(q, uHoleA[i].xyz);
     if (al > -1.5 && al < uHoleA[i].w && length(q - uHoleA[i].xyz * al) < uHoleC[i].w + grow) return true;
   }
   return false;
@@ -644,7 +659,7 @@ export async function buildHeart(onProgress) {
       uDR: { value: new THREE.Vector2() }, uDLg: { value: 0 }, uDTw: { value: new THREE.Vector2() }, uDAt: { value: new THREE.Vector2() }, uDRes: { value: 0 },
       uDRA: { value: new THREE.Vector3() }, uDLA: { value: new THREE.Vector3() },
       uDDil: { value: 0 }, uDTc: { value: T.clone() }, uDTa: { value: v3(VL['valve-tricuspide'].axis).normalize() },
-      uDMc: { value: M.clone() }, uDMa: { value: v3(VL['valve-mitrale'].axis).normalize() }, uDAo: { value: Ao.clone() }, uDPu: { value: v3(VL['valve-pulmonaire'].center) },
+      uDMc: { value: M.clone() }, uDMa: { value: v3(VL['valve-mitrale'].axis).normalize() }, uDAo: { value: Ao.clone() }, uDAoA: { value: v3(VL['valve-aortique'].axis).normalize() }, uDPu: { value: v3(VL['valve-pulmonaire'].center) },
       uDTs: { value: (() => { const d = VL['valve-tricuspide'], s = d.leaflets.find((l) => /Septal/.test(l.name)), t = (s.t0 + s.t1) / 2; return v3(d.e1).multiplyScalar(Math.cos(t)).addScaledVector(v3(d.e2), Math.sin(t)).normalize(); })() },
       uVol: { value: wall ? wall.texture : null }, uVolOn: { value: wall ? 1 : 0 },
       uVolMin: { value: wall ? wall.min.clone() : new THREE.Vector3() },
@@ -664,6 +679,7 @@ export async function buildHeart(onProgress) {
       return [new THREE.Vector4(d.center[0], d.center[1], d.center[2], d.radius * 0.97), new THREE.Vector4(a.x, a.y, a.z, d.height * (id === 'valve-aortique' ? 2.2 : 1.8))];
     });
     return { uHoleC: { value: z.map((x) => x[0]) }, uHoleA: { value: z.map((x) => x[1]) },
+      uHoleCw: { value: z.map((x) => new THREE.Vector3(x[0].x, x[0].y, x[0].z)) },
       uOst: { value: [new THREE.Vector4(0, 0, 0, -1), new THREE.Vector4(0, 0, 0, -1)] }, uOstN: { value: [new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 1)] } };
   })();
   const depthCache = new Map();
@@ -1080,9 +1096,11 @@ export async function buildHeart(onProgress) {
     const AV = U.uDAV.value, dAV = tp.x * AV.x + tp.y * AV.y + tp.z * AV.z - AV.w;
     const wRoot = sm(1, 1.8, tp.distanceTo(U.uDAo.value)) * sm(1, 1.8, tp.distanceTo(U.uDPu.value));
     const wV = sm(-0.3, 0.3, dAV) * (1 - sm(1.05, 1.3, s)) * wRoot;
+    tc.subVectors(tp, U.uDAo.value); const aa = tc.dot(U.uDAoA.value), ra = tc.addScaledVector(U.uDAoA.value, -aa).length();
+    const wAoZ = (1 - sm(2.2, 3.2, ra)) * sm(-1.2, -0.4, aa) * (1 - sm(3.2, 4.2, aa)); // racine aortique et départ des coronaires
     const kk = wallB ? K_ENDO + (K_EPI - K_ENDO) * wallB(tp) : k;
     const wI = 1 - infarctW(tr, s, lr); // akinésie (vue Coronaires, infarctus)
-    const wRV = sm(1.5, 4, tr.dot(U.uDRV.value));
+    const wRV = sm(1.5, 4, tr.dot(U.uDRV.value)) * (1 - wAoZ);
     const desc = Lg * (1.3 + 1.0 * wRV) * (dAV >= 0 ? 1 - Math.min(1, Math.max(0, dAV / U.uDApx.value)) : Math.min(1, Math.max(0, 1 + dAV / (3 + 1.5 * wRV))));
     const cR = R.x + (R.y - R.x) * sc, shape = wV * wI * (0.65 + 0.35 * Math.sin(Math.PI * sc));
     const rad = 1 - kk * cR * shape * Math.min(1, 3.2 / lr);
@@ -1098,7 +1116,7 @@ export async function buildHeart(onProgress) {
     ox -= tq.x * sph; oy -= tq.y * sph; oz -= tq.z * sph;
     const RA = U.uDRA.value, LA = U.uDLA.value;
     const dRA = tp.distanceTo(RA), dLA = tp.distanceTo(LA), wR = sm(-0.8, 0.8, dLA - dRA);
-    const wAt = (1 - sm(-0.6, 0.2, dAV)) * (1 - sm(2.6, 4.2, Math.min(dRA, dLA)));
+    const wAt = (1 - sm(-0.6, 0.2, dAV)) * (1 - sm(2.6, 4.2, Math.min(dRA, dLA))) * (1 - wAoZ);
     const f = (0.14 * (At.y + (At.x - At.y) * wR) - 0.03 * Res) * wAt;
     p.set(ox - (wR * (ox - RA.x) + (1 - wR) * (ox - LA.x)) * f, oy - (wR * (oy - RA.y) + (1 - wR) * (oy - LA.y)) * f, oz - (wR * (oz - RA.z) + (1 - wR) * (oz - LA.z)) * f);
     return p;
@@ -1185,6 +1203,7 @@ export async function buildHeart(onProgress) {
       || U.uDAt.value.x !== at[0] || U.uDAt.value.y !== at[1] || U.uDRes.value !== res) deformDirty = true;
     U.uDR.value.set(rad[0], rad[1]); U.uDLg.value = lg; U.uDTw.value.set(tw[0], tw[1]); U.uDAt.value.set(at[0], at[1]); U.uDRes.value = res;
     lastPose = c;
+    syncRootHoles();
     for (const [id, v2] of Object.entries(shown)) { const [k1, k2] = VALVE_KEY[id]; v2.setTarget(c[k1] ?? c[k2] ?? 0); }
     for (const [v2, id] of extraValves) { const [k1, k2] = VALVE_KEY[id]; v2.setTarget(c[k1] ?? c[k2] ?? 0); }
     return c;
@@ -1197,6 +1216,19 @@ export async function buildHeart(onProgress) {
     deformDirty = false;
     return moving;
   };
+  // centres des racines déformés (cylindres des tranches de sang, inRootW) : déplacement de la racine à la hauteur de la
+  // coupe des vues chirurgicales (aortique : 2 hauteurs de cuspide ; pulmonaire : 0,95), là où la tranche de sang est
+  // posée — l'anneau descend davantage (≈ 13 mm) que la racine au-dessus de la jonction (≈ 5 mm)
+  const rootRef = ['valve-aortique', 'valve-pulmonaire'].map((id, i) => header.valves[id].height * (i ? 0.95 : 2.0));
+  const _rr = new THREE.Vector3(), _rd = new THREE.Vector3();
+  function syncRootHoles() {
+    const H = rootU.uHoleC.value, Ax = rootU.uHoleA.value, W = rootU.uHoleCw.value;
+    for (let i = 0; i < 2; i++) {
+      _rr.set(H[i].x + Ax[i].x * rootRef[i], H[i].y + Ax[i].y * rootRef[i], H[i].z + Ax[i].z * rootRef[i]);
+      _rd.copy(_rr); deformPoint(_rd);
+      W[i].set(H[i].x, H[i].y, H[i].z).add(_rd.sub(_rr));
+    }
+  }
   const REPOS = { atr: 0, ven: 0, av: 0.9, sl: 0 };
   const setBeat = (phase) => setPose(phase === null ? REPOS : cycle(phase));
   setBeat(null);
@@ -1217,7 +1249,7 @@ export async function buildHeart(onProgress) {
   const showValve = (id, v) => { if (shown[id] !== v) { shown[id] = v; syncValves(); } };
   const redrawValve = (v, time, live = false) => v.step(0, time, deformPoint, true, live);
   // dilatation de l'anneau tricuspide (0 : cœur normal)
-  const setDilation = (x) => { if (deformU.uDDil.value !== x) { deformU.uDDil.value = x; deformDirty = true; } };
+  const setDilation = (x) => { if (deformU.uDDil.value !== x) { deformU.uDDil.value = x; deformDirty = true; syncRootHoles(); } };
 
   /* ── Système de conduction (positions calculées dans le septum réel) ── */
   const C = header.conduction;

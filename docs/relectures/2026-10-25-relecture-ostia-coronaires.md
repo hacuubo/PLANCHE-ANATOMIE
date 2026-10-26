@@ -46,3 +46,21 @@ séries anatomiques (≈ 1 à 1,3 cm, Ribeiro 2013).
 
 Vue chirurgicale fermée, ouverte, en systole, avec repères, avec TAVI ; vue depuis la chambre de chasse ; vue de face
 du cœur (continuité des artères) ; coupes 5 cavités et frontale sans voies de conduction ; console sans erreur.
+
+## Correction (26 octobre) : croissant rouge dans l'aorte et ostia pendant le cycle
+
+Constat : en vue chirurgicale aortique, un croissant rouge apparaissait contre la paroi de la racine en systole et au
+début de la diastole (captures v26-03 : 0, 200, 300, 400, 500 et 700 ms).
+
+- **Ce n'était pas une coronaire** (identifié pixel par pixel) mais la tranche de sang de la lumière aortique. L'ouverture
+  de la racine qui la retire était un cylindre fixe, alors que la racine descend avec la base jusqu'à ≈ 5 mm au niveau
+  de la coupe : en systole, une partie de la tranche sortait du cylindre. Le cylindre suit maintenant la racine
+  (déplacement mesuré à la hauteur de la coupe ; l'anneau, lui, descend de ≈ 13 mm).
+- **Coronaires et ostia** : deux termes du battement déplaçaient le départ des coronaires autrement que la racine voisine
+  (expansion et contraction des oreillettes, descente plus forte côté VD). Autour de la racine aortique (≈ 2,5 cm de son
+  axe), racine, ostia et départ des artères forment désormais un seul bloc : ni effet des oreillettes, même descente que
+  la racine. Contrôle sur 20 instants du cycle : aucun point des artères (prolongements compris) dans la lumière
+  aortique ; les deux ostia restent sur la paroi et sont portés par la racine (jusqu'à 7 mm de descente en systole,
+  presque identique pour les deux).
+- Vérifié aussi : vue chirurgicale pulmonaire, coupes frontale et 5 cavités en systole. Capture v26-04 (même cycle,
+  après correction).
