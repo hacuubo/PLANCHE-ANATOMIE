@@ -8,6 +8,7 @@ import { sectionMaterial, setSectionPlane, setSectionFrame } from './cut-surface
 import { buildSLView } from './aortic-view.js';
 import { buildAVView } from './av-views.js';
 import { buildFOPViews, buildCoronaryView, createBubbles } from './special-views.js';
+import { createDoppler, restTime, NYQUIST } from './doppler.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -393,7 +394,7 @@ function syncCycleUI() {
   cyclePos.value = String(Math.round(ph * 1000));
   if ((++cycleTick & 15) === 0 || !state.battement) cyclePos.setAttribute('aria-valuetext', phaseText(ph));
 }
-const state = { coupe: false, modeCoupe: 'cinq-cavites', battement: true, coronaires: true, reperes: false, comparer: false, selected: null, hovered: null, vue: 'anterieure', valve: null };
+const state = { coupe: false, modeCoupe: 'cinq-cavites', battement: true, coronaires: true, reperes: false, comparer: false, doppler: false, selected: null, hovered: null, vue: 'anterieure', valve: null };
 
 function applyClipping() {
   const cut = state.coupe, flat = cut && !curved;
@@ -419,11 +420,15 @@ function applyClipping() {
 // reviennent dans les coupes, sauf dans les vues des valves (points jaunes au ras de l'anneau).
 const CONDUCTION = new Set(['noeud-sinusal', 'noeud-av', 'faisceau-his']);
 const SHOW_CONDUCTION = false;
+// orifice du sinus coronaire : montré dans les coupes et dans les vues qui regardent l'oreillette droite ; ailleurs
+// (valves aortique, pulmonaire, mitrale) on ne le voyait que par la tranche, au loin, tache sombre qui bougeait
+const CS_VIEWS = new Set(['tricuspide', 'fosse', 'fop']);
 function syncCutOnly() {
   const cut = state.coupe;
   heart.cutOnly.forEach((m) => {
     const cond = CONDUCTION.has(m.userData.id);
-    m.visible = cut && !m.userData.hidden && (!m.userData.ostium || state.coronaires) && !(cond && (!SHOW_CONDUCTION || state.valve));
+    const cs = m.userData.ostium && m.userData.id === 'sinus-coronaire' && state.valve && !CS_VIEWS.has(state.valve);
+    m.visible = cut && !m.userData.hidden && (!m.userData.ostium || state.coronaires) && !cs && !(cond && (!SHOW_CONDUCTION || state.valve));
   });
 }
 function setCutMode(mode, value) {
@@ -496,6 +501,7 @@ const splitHooks = {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
     if (v.applyHalf) { v.applyHalf(i); renderer.shadowMap.needsUpdate = true; halfCamera(true); return; }
     const name = i === 0 ? 'normale' : v.variant, valve = v.valveFor(name), dil = v.dilationOf(name);
+    if (state.doppler) doppler.setView(state.valve, name);
     heart.showValve(v.heartValveId, valve);
     if (v.dilationOf('normale') !== v.dilationOf(v.variant)) { // anneau dilaté d'un seul côté : cœur et valve redessinés
       heart.setDilation(dil);
@@ -509,6 +515,7 @@ const splitHooks = {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
     if (v.applyHalf) { v.applyHalf(null); halfCamera(false); return; }
     heart.showValve(v.heartValveId, v.valveFor(v.variant)); heart.setDilation(v.dilationOf(v.variant));
+    if (state.doppler) doppler.setView(state.valve, v.variant);
     halfCamera(false);
   },
 };
@@ -552,6 +559,21 @@ for (const v of Object.values(VALVE_VIEWS)) for (const [side, sd] of Object.entr
   INTERIOR_OFF[mode] = sd.interior; NO_GHOST.add(mode);
 }
 if (bubbles.mesh) bubbles.mesh.material.clippingPlanes = [cutPlane]; // bulles coupées avec le cœur (vue bicave)
+// Doppler couleur (js/doppler.js) : flux de la valve regardée, sonde à la pointe ; légende sur le côté de la vue
+const doppler = createDoppler(heart);
+const dopLegend = document.createElement('div');
+dopLegend.className = 'doppler-legend hidden'; dopLegend.setAttribute('role', 'note');
+const nq = NYQUIST.toFixed(1).replace('.', ',');
+dopLegend.innerHTML = `<b>Doppler couleur</b><small>Sonde à la pointe du cœur</small>
+  <div class="dl-scale"><i class="dl-bar"></i><span class="dl-top">+${nq} m/s<em>vers la sonde</em></span><span class="dl-bot">−${nq} m/s<em>s'éloigne</em></span></div>
+  <div class="dl-mos"><i></i><span>Mosaïque<em> : flux rapide et turbulent (fuite, rétrécissement)</em></span></div>`;
+canvasWrap.appendChild(dopLegend);
+function syncDoppler() {
+  const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.doppler && v && v.group === 'valves');
+  doppler.setView(on ? state.valve : null, v?.variant);
+  doppler.setActive(on);
+  dopLegend.classList.toggle('hidden', !on);
+}
 const FAR = 15; // coupe repoussée hors du cœur (rien n'est retiré)
 // états de caméra : cible, direction (de la cible vers l'œil), distance, verticale
 const camSt = () => { const off = camera.position.clone().sub(controls.target); return { target: controls.target.clone(), dir: off.clone().normalize(), dist: off.length(), up: camera.up.clone() }; };
@@ -702,7 +724,9 @@ function syncValveUI() {
   }
   canvasWrap.classList.toggle('is-valve', !!v);
   document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v || v.compare === false);
+  document.querySelector('[data-toggle="doppler"]').classList.toggle('hidden', !v || !isValve);
   syncCutOnly();
+  syncDoppler();
   document.querySelectorAll('[data-valve]').forEach((b) => b.classList.toggle('active', b.dataset.valve === state.valve));
   if (v) {
     const seg = document.getElementById('valve-variants');
@@ -903,6 +927,7 @@ function toggle(name, value) {
     syncPhaseButtons();
   }
   if (name === 'reperes') { canvasWrap.classList.toggle('show-marks', state.reperes); syncMarks(); }
+  if (name === 'doppler') syncDoppler();
   if (name === 'coupe') restPose();
   if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires && (!m.userData.ostium || state.coupe); })); }
@@ -931,6 +956,7 @@ function viewParams() {
   }
   if (beatSpeed !== 1) q.set('vitesse', String(beatSpeed));
   if (state.comparer) q.set('comparer', '1');
+  if (state.doppler && state.valve) q.set('doppler', '1');
   if (state.reperes) q.set('reperes', '1');
   return q.toString();
 }
@@ -943,6 +969,7 @@ function syncURL() {
 function applyURL() {
   const q = new URLSearchParams(location.search);
   if (q.get('reperes') === '1') toggle('reperes', true);
+  if (q.get('doppler') === '1') toggle('doppler', true);
   const sp = parseFloat(q.get('vitesse'));
   if ([0.5, 0.25].includes(sp)) { beatSpeed = sp; document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('active', parseFloat(x.dataset.speed) === sp)); }
   const inst = parseFloat(q.get('instant')), pos = q.get('position');
@@ -1157,6 +1184,9 @@ function animate() {
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe et dans les vues des valves)
   if (state.coupe && heart.stepValves(dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   bubbles.update(Math.min(dt, 0.1) * beatSpeed, state.battement ? beatPhase : frozenPhase ?? 0, state.battement);
+  // Doppler : instant du cycle ; vue figée (valve ouverte ou fermée) : instant représentatif de cette position
+  doppler.update(state.battement ? Math.min(dt, 0.1) * beatSpeed : 0,
+    state.battement ? beatPhase * 940 : frozenPhase !== null ? frozenPhase * 940 : restTime(state.valve && VALVE_VIEWS[state.valve].phase, valveOpen), camera.position);
   controls.update();
   if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
   if (frame % 30 === 0) syncURL();

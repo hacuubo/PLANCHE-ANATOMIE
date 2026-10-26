@@ -312,8 +312,8 @@ function patchShader(sh) {
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif`)
-    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; } }\n  #endif')
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if (!inRoot(vObj, 0.4) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef OSTENV\n  for (int i = 0; i < 2; i++) { if (uOst[i].w <= 0.0) continue; vec3 q = vObj - uOst[i].xyz; float a = dot(q, uOstN[i]);\n    if (a > -0.45 && a < 0.25 && length(q - uOstN[i] * a) < uOst[i].w * 1.45) discard; }\n  #endif\n  #ifdef AOROOT\n  { vec3 q = vObj - uAoR.xyz; float al = dot(q, uAoA.xyz); if (dot(cameraPosition - uAoR.xyz, uAoA.xyz) > uAoA.w && al > 0.15 * uAoA.w && al < 1.05 * uAoA.w && length(q - uAoA.xyz * al) < uAoR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; } }\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -684,6 +684,11 @@ export async function buildHeart(onProgress) {
       // repliée entre l'infundibulum et l'aorte, y passait et barrait la vue chirurgicale de la valve
       uPulR: { value: (() => { const d = header.valves['valve-pulmonaire']; return new THREE.Vector4(d.center[0], d.center[1], d.center[2], d.radius * 0.97); })() },
       uPulA: { value: (() => { const d = header.valves['valve-pulmonaire'], a = v3(d.axis).normalize(); return new THREE.Vector4(a.x, a.y, a.z, d.height * 1.15); })() },
+      // sinus aortiques (de 0,15 à 1,05 hauteur de cuspide) : la cavité du VG de BodyParts3D y remonte en poches, au-dessus
+      // des cuspides, dont on voyait la paroi rouge flotter dans l'aorte en vue chirurgicale. Retirées seulement quand on
+      // regarde depuis l'aorte (vue depuis le ventricule inchangée)
+      uAoR: { value: (() => { const d = header.valves['valve-aortique']; return new THREE.Vector4(d.center[0], d.center[1], d.center[2], d.radius * 0.95); })() },
+      uAoA: { value: (() => { const d = header.valves['valve-aortique'], a = v3(d.axis).normalize(); return new THREE.Vector4(a.x, a.y, a.z, d.height); })() },
       uOst: { value: [new THREE.Vector4(0, 0, 0, -1), new THREE.Vector4(0, 0, 0, -1)] }, uOstN: { value: [new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 1)] } };
   })();
   const depthCache = new Map();
@@ -692,7 +697,7 @@ export async function buildHeart(onProgress) {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, fossa = false, pulroot = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, fossa = false, pulroot = false, aoroot = false, ostia = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -704,6 +709,8 @@ export async function buildHeart(onProgress) {
     if (occl) m.defines = { ...m.defines, OCCL: '' };
     if (fossa) m.defines = { ...m.defines, FOSSE: '' };
     if (pulroot) m.defines = { ...m.defines, PULROOT: '' };
+    if (aoroot) m.defines = { ...m.defines, AOROOT: '' };
+    if (ostia) m.defines = { ...m.defines, OSTENV: '' };
     if (roots) m.defines = { ...m.defines, RACINES: '' };
     const uniforms = {
       uSel: envelope ? selUniform : { value: -1 }, uHi: { value: 0 }, uTis: { value: new THREE.Vector4(...tis) },
@@ -712,7 +719,7 @@ export async function buildHeart(onProgress) {
       ...cutU, uCutExtra: { value: 0 }, ...rootU, uRootSel: { value: rootSel },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
-    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', fossa && 'fosse', pulroot && 'racpulm', roots && 'racine'].filter(Boolean).join('-');
+    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', fossa && 'fosse', pulroot && 'racpulm', aoroot && 'racao', ostia && 'ostia', roots && 'racine'].filter(Boolean).join('-');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
     materials.push(m); tissueMats.push(m);
@@ -748,7 +755,8 @@ export async function buildHeart(onProgress) {
   const register = (id, mesh) => { mesh.userData.id = id; root.add(mesh); reg(id).meshes.push(mesh); return mesh; };
 
   /* ── Enveloppe continue ── */
-  const envMat = tissue(0xffffff, { envelope: true, fossa: true, pulroot: true, rim: 0.45 }); // fossa : la surface externe s'enfonce dans le sillon interauriculaire, ouverte à la fosse ovale
+  // ostia : la surface externe passe juste sous l'intima au départ des coronaires et cachait une partie de l'entonnoir
+  const envMat = tissue(0xffffff, { envelope: true, fossa: true, pulroot: true, ostia: true, rim: 0.45 }); // fossa : la surface externe s'enfonce dans le sillon interauriculaire, ouverte à la fosse ovale
   const envelope = new THREE.Mesh(geos.enveloppe.geometry, envMat);
   envelope.userData.envelope = true;
   envelope.castShadow = true; envelope.receiveShadow = true;
@@ -812,7 +820,7 @@ export async function buildHeart(onProgress) {
     }
     if (!fromFile) { g.setAttribute('col', new THREE.BufferAttribute(col, 4, true)); g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true)); }
     // endocarde : film humide brillant sur le relief des trabécules
-    const cavMat = tissue(0xffffff, { envelope: true, fossa: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
+    const cavMat = tissue(0xffffff, { envelope: true, fossa: true, aoroot: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
     const cav = new THREE.Mesh(g, cavMat);
     cav.userData.id = 'cavites';
     cav.userData.sid = sid; // clic : cavité touchée (oreillette ou ventricule)
@@ -925,7 +933,7 @@ export async function buildHeart(onProgress) {
   // sinus coronaire droit). Elle est prolongée, à son calibre, de son extrémité au point le plus proche de l'intima, et
   // l'ostium est posé là : orifice sombre bordé d'un liseré clair, tourné vers la lumière. L'ostium est ainsi dans la
   // continuité exacte de l'artère. Déformés comme la paroi (même fonction du battement).
-  const ostia = {};
+  const ostia = {}, ostFrames = [];
   if (header.valves['valve-aortique'] && geos['lumiere-artere']) {
     const d = header.valves['valve-aortique'], C = v3(d.center), A = v3(d.axis).normalize();
     const lg = geos['lumiere-artere'].geometry, lp = lg.attributes.position, li = lg.index.array, tris = [];
@@ -935,7 +943,7 @@ export async function buildHeart(onProgress) {
       if (al > -0.5 && al < 3.5 && q.addScaledVector(A, -al).length() < 2.6) tris.push(new THREE.Triangle(a, b, c));
     }
     const cp = new THREE.Vector3();
-    const closest = (p) => { let best = { d: 1e9 }; for (const T of tris) { T.closestPointToPoint(p, cp); const dd = cp.distanceTo(p); if (dd < best.d) best = { d: dd, p: cp.clone(), n: T.getNormal(new THREE.Vector3()) }; } return best; };
+    const closest = (p) => { let best = { d: 1e9 }; for (const T of tris) { T.closestPointToPoint(p, cp); const dd = cp.distanceTo(p); if (dd < best.d) best = { d: dd, p: cp.clone(), n: T.getNormal(new THREE.Vector3()), T }; } return best; };
     for (const [id, side] of [['tronc-commun', 'gauche'], ['coronaire-droite', 'droite']]) {
       if (!registry[id] || !tris.length) continue;
       const pts = [];
@@ -959,21 +967,30 @@ export async function buildHeart(onProgress) {
       stub.castShadow = true; stub.receiveShadow = true;
       register(id, stub);
       // ostium : l'intima est percée (inOstium) ; par le trou, la lumière de l'artère s'enfonce dans la paroi en
-      // entonnoir sombre (paroi interne de l'artère, fond plus sombre) ; liseré clair de l'intima autour de l'orifice
+      // entonnoir sombre (paroi interne de l'artère, fond plus sombre) ; liseré clair de l'intima autour de l'orifice.
+      // L'entonnoir part sous l'intima, plus large que le trou : vu en biais, le regard ne passe jamais à côté (il
+      // tombait sinon, sur un bord, sur la surface externe du cœur, tache grise qui bougeait avec le battement)
       const os = new THREE.Group();
-      const funnel = new THREE.Mesh(new THREE.CylinderGeometry(rEnd * 0.97, rEnd * 0.85, depth, 40, 1, true), tissue(0x8e3038, { roughness: 0.45, clearcoat: 0.5, sss: 0.3, rim: 0, bump: 0.05 }));
-      funnel.position.set(0, -depth / 2, 0); // axe Y du cylindre vers le sang, bord haut sur l'intima
-      const bottom = new THREE.Mesh(new THREE.CircleGeometry(rEnd * 0.88, 32), tissue(0x2a0c0f, { roughness: 0.7, sss: 0, rim: 0, bump: 0 }));
+      // porté par le triangle d'intima qui le contient (ostFrames, syncOstia) : l'intima, maillage grossier, est déformée
+      // sommet par sommet (linéaire dans chaque triangle) ; déformé point par point, l'entonnoir s'en décalait d'≈ 1 mm
+      // pendant le battement et le trou laissait voir, sur un bord, la surface externe du cœur
+      const funnel = new THREE.Mesh(new THREE.CylinderGeometry(rEnd * 1.3, rEnd * 0.85, depth, 40, 1, true), tissue(0x8e3038, { deformOn: false, roughness: 0.45, clearcoat: 0.5, sss: 0.3, rim: 0, bump: 0.05 }));
+      funnel.position.set(0, -depth / 2 - 0.006, 0); // axe Y du cylindre vers le sang, bord haut juste sous l'intima
+      const bottom = new THREE.Mesh(new THREE.CircleGeometry(rEnd * 0.88, 32), tissue(0x3a1216, { deformOn: false, roughness: 0.7, sss: 0, rim: 0, bump: 0 }));
       bottom.position.set(0, -depth + 0.01, 0); bottom.rotation.x = -Math.PI / 2; // couvre le bout du prolongement
-      const lip = new THREE.Mesh(new THREE.TorusGeometry(rEnd * 1.04, 0.018, 8, 48), tissue(0xe2aca6, { roughness: 0.38, clearcoat: 0.6, bump: 0.05, sss: 0.4, rim: 0.1 }));
+      const lip = new THREE.Mesh(new THREE.TorusGeometry(rEnd * 0.94, 0.018, 8, 48), tissue(0xe2aca6, { deformOn: false, roughness: 0.38, clearcoat: 0.6, bump: 0.05, sss: 0.4, rim: 0.1 }));
       lip.rotation.x = Math.PI / 2;
       os.add(funnel, bottom, lip);
       os.position.copy(O);
       os.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), nSurf);
+      os.updateMatrix(); os.matrixAutoUpdate = false;
+      { const { a, b, c } = hit.T, e1 = b.clone().sub(a), e2 = c.clone().sub(a), n = e1.clone().cross(e2).normalize();
+        const rest = new THREE.Matrix4().makeBasis(e1, e2, n).setPosition(a);
+        ostFrames.push({ os, a, b, c, rest: rest.invert(), base: os.matrix.clone() }); }
       for (const m of [funnel, bottom, lip]) { m.userData.id = id; m.userData.ostium = true; reg(id).meshes.push(m); cutOnly.push(m); }
       root.add(os);
       const k = side === 'gauche' ? 0 : 1;
-      rootU.uOst.value[k].set(O.x, O.y, O.z, rEnd * 1.02); rootU.uOstN.value[k].copy(nSurf);
+      rootU.uOst.value[k].set(O.x, O.y, O.z, rEnd * 0.94); rootU.uOstN.value[k].copy(nSurf);
       ostia[side] = { point: O.clone(), normal: nSurf.clone(), radius: rEnd, height: O.clone().sub(C).dot(A) };
     }
   }
@@ -1242,7 +1259,19 @@ export async function buildHeart(onProgress) {
   // posée — l'anneau descend davantage (≈ 13 mm) que la racine au-dessus de la jonction (≈ 5 mm)
   const rootRef = ['valve-aortique', 'valve-pulmonaire'].map((id, i) => header.valves[id].height * (i ? 0.95 : 2.0));
   const _rr = new THREE.Vector3(), _rd = new THREE.Vector3();
+  // ostia : application affine qui envoie le triangle d'intima au repos sur le triangle déformé, appliquée à l'ostium
+  const _oa = new THREE.Vector3(), _ob = new THREE.Vector3(), _oc = new THREE.Vector3(), _oM = new THREE.Matrix4();
+  function syncOstia() {
+    for (const f of ostFrames) {
+      deformPoint(_oa.copy(f.a)); deformPoint(_ob.copy(f.b)); deformPoint(_oc.copy(f.c));
+      _ob.sub(_oa); _oc.sub(_oa);
+      const n = new THREE.Vector3().crossVectors(_ob, _oc).normalize();
+      _oM.makeBasis(_ob, _oc, n).setPosition(_oa).multiply(f.rest);
+      f.os.matrix.multiplyMatrices(_oM, f.base); f.os.matrixWorldNeedsUpdate = true;
+    }
+  }
   function syncRootHoles() {
+    syncOstia();
     const H = rootU.uHoleC.value, Ax = rootU.uHoleA.value, W = rootU.uHoleCw.value;
     for (let i = 0; i < 2; i++) {
       _rr.set(H[i].x + Ax[i].x * rootRef[i], H[i].y + Ax[i].y * rootRef[i], H[i].z + Ax[i].z * rootRef[i]);

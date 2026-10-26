@@ -252,6 +252,29 @@ button { font: inherit; color: inherit; }
 }
 .compare-tags .cmp-l { left: 25%; } .compare-tags .cmp-r { left: 75%; color: var(--accent); }
 .compare-tags i { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: rgba(255, 253, 249, .9); box-shadow: 0 0 6px rgba(0,0,0,.15); }
+/* légende du Doppler couleur (vues des valves) */
+.doppler-legend {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 4; pointer-events: none; width: 168px;
+  background: rgba(255, 253, 249, .94); border: 1px solid var(--line-strong); border-radius: 12px; padding: 10px 12px; font-size: 12.5px; line-height: 1.3;
+}
+.doppler-legend b { display: block; font-size: 13.5px; }
+.doppler-legend small { display: block; color: var(--muted, #6b6b6b); margin-bottom: 8px; }
+.dl-scale { position: relative; height: 128px; padding-left: 26px; }
+.dl-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 14px; border-radius: 3px;
+  background: linear-gradient(#fded61 0%, #ed1208 22%, #520005 49%, #000552 51%, #0f52ff 78%, #8cffff 100%); }
+.dl-scale span { position: absolute; left: 26px; font-weight: 600; }
+.dl-scale em { display: block; font-style: normal; font-weight: 400; color: var(--muted, #6b6b6b); }
+.dl-top { top: 0; } .dl-bot { bottom: 0; }
+.dl-mos { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.dl-mos em { font-style: normal; }
+.dl-mos i { flex: none; width: 14px; height: 14px; border-radius: 3px;
+  background: conic-gradient(#fded61 0 25%, #8cffff 0 50%, #40f259 0 75%, #ed1208 0); }
+@media (max-width: 640px) {
+  .doppler-legend { top: auto; bottom: 112px; right: 8px; transform: none; width: 112px; padding: 7px 9px; font-size: 11px; }
+  .doppler-legend b { font-size: 12px; } .doppler-legend small { margin-bottom: 5px; }
+  .dl-scale { height: 70px; padding-left: 20px; } .dl-bar { width: 11px; } .dl-scale span { left: 20px; }
+  .dl-mos { margin-top: 6px; gap: 6px; } .dl-mos em { display: none; }
+}
 /* message bref (lien copié) */
 .toast {
   position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); z-index: 8; pointer-events: none; max-width: calc(100% - 28px);

@@ -26,7 +26,10 @@ une liste numérotée des structures, et une fiche explicative par structure.
   grande veine du cœur contre l'oreillette gauche) ; la coupe, faite en position de repos, suit la contraction.
   **Ostia coronaires** : chaque artère (tronc commun, coronaire droite) est prolongée à son calibre jusqu'à l'intima
   de son sinus aortique ; l'intima y est percée et l'orifice s'enfonce dans la paroi (vue chirurgicale de la valve
-  aortique, repères « Ostium coronaire gauche / droite »).
+  aortique, repères « Ostium coronaire gauche / droite »). L'ostium est porté par le triangle d'intima qui le contient
+  (même déformation que lui, à chaque instant) : trou et entonnoir restent l'un dans l'autre pendant tout le cycle.
+  L'orifice du sinus coronaire n'est montré que dans les coupes et les vues qui regardent l'oreillette droite
+  (tricuspide, fosse ovale, FOP).
   Contrôlé sur tout le cycle (repos, contraction des oreillettes, systole, diastole) : aucune artère coronaire n'entre
   dans une cavité ni dans l'aorte, la déformation du battement étant une même fonction de l'espace pour la paroi et les
   vaisseaux.
@@ -94,6 +97,20 @@ une liste numérotée des structures, et une fiche explicative par structure.
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
   doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
   gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
+  **Doppler couleur** (js/doppler.js) : les flux de la valve regardée, en volume dans le cœur qui bat, colorés comme à
+  l'ETT en voie apicale (sonde à la pointe) : rouge vers la sonde, bleu en s'éloignant, plus clair quand c'est plus
+  rapide ; limite de Nyquist ± 0,7 m/s, au-delà repliement ; jets de fuite et de rétrécissement turbulents en
+  « mosaïque » (repliements, vert de la variance) près de l'orifice, couleur du sens du flux à la périphérie (jet
+  libre : vitesse maximale sur le premier dixième, puis en 1/distance, profil en cloche) ; zone de convergence (PISA)
+  en amont de l'orifice, coquilles d'isovitesse v = Q / 2πr², changement de couleur à la coquille où v atteint la
+  limite de Nyquist. Chronologie du cycle du modèle : fuites mitrale et tricuspide holosystoliques, fuite aortique
+  holodiastolique décroissante, remplissage en ondes E et A, éjection maximale au premier tiers. Flux : remplissage
+  mitral et tricuspide, éjection aortique et pulmonaire (laminaires, sans repliement) ; insuffisance aortique
+  (centrale, ≈ 4 m/s), mitrale par prolapsus de P2 (jet excentré vers l'avant, opposé au feuillet qui prolabe,
+  ≈ 5 m/s), tricuspide fonctionnelle (centrale, ≈ 2,8 m/s) ; rétrécissements aortique (≈ 4,5 m/s), mitral
+  (≈ 1,9 m/s, dôme de convergence côté oreillette) et pulmonaire. Jets entiers (ils sortent de la cavité ouverte
+  vers l'observateur), parties cachées par les tissus visibles en transparence ; en écran partagé, flux de chaque
+  moitié. Légende sur le côté (lien de la vue : `doppler=1`).
   - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif (calcifié au stade évolué : amas
     calcaires sur toute la cuspide jusqu'aux commissures, bord libre épaissi, festonné et rétracté par endroits,
     commissures libres, petit orifice irrégulier), insuffisance par dilatation de la
@@ -173,6 +190,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles) et Coronaires (infarctus de l'IVA) |
+| `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
