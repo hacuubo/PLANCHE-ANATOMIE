@@ -94,7 +94,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
   doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
   gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
-  - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif, insuffisance par dilatation de la
+  - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif (calcifié au stade évolué : amas
+    calcaires sur toute la cuspide jusqu'aux commissures, bord libre épaissi, festonné et rétracté par endroits,
+    commissures libres, petit orifice irrégulier), insuffisance par dilatation de la
     racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²), TAVI
     (bioprothèse à ballonnet de type SAPIEN 3, taille 29 : armature en cobalt-chrome de 22,5 mm à cellules en losange
     et grandes cellules hautes, jupe en tissu, feuillets en péricarde bovin, commissures alignées, cuspides natives
@@ -107,14 +109,17 @@ une liste numérotée des structures, et une fiche explicative par structure.
     bombé en diastole, bords libres épaissis, calcifications commissurales, cordages épaissis, soudés et raccourcis).
   - **Pulmonaire** (cuspide antérieure à 12 h ; vue C depuis le tronc pulmonaire, vue V depuis l'infundibulum du VD) :
     normale (cuspides antérieure, droite et gauche), rétrécissement congénital en dôme (commissures soudées, raphés,
-    dôme systolique percé d'un orifice central de ≈ 6,5 mm).
+    dôme systolique percé d'un orifice central de ≈ 6,5 mm). La racine pulmonaire est creusée de l'anneau au début de la
+    lumière du tronc (≈ 1,1 cm plus haut dans BodyParts3D) : ni tranche de muscle ni surface externe repliée devant
+    les cuspides ; vue C coupée à 1,12 hauteur de cuspide.
   - **Tricuspide** (feuillet septal en bas) : normale, insuffisance fonctionnelle par
     dilatation de l'anneau (anneau, oreillette et ventricule droits élargis sur la paroi libre par la déformation du
     cœur, feuillets attirés vers le ventricule, défaut de coaptation central).
 - **FOP** (js/special-views.js) : **fosse ovale normale** vue de l'oreillette droite (paroi libre retirée) — fosse
   placée sur la zone la plus mince du septum (19 × 16 mm, plancher mince du septum primum, limbe en fer à cheval ouvert
   vers le bas, Naqvi 2018) ; **FOP · test aux bulles** : coupe bicave comme en ETO (OG en haut, veine cave supérieure à
-  droite), tunnel au quadrant antéro-supérieur de la fosse (≈ 3 mm, Goel 2009) ; les bulles du sérum salé agité arrivent
+  droite), postérieure : elle passe par la fosse ovale (plancher et limbe en coupe) et par le tunnel, au bord supérieur
+  de la fosse, un peu en avant (≈ 3 mm, Goel 2009) ; 1 280 bulles du sérum salé agité arrivent
   par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
   (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015).
 - **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de

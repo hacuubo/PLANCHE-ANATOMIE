@@ -10,9 +10,11 @@
 //     et gauche fusionnées en une cuspide unique plus grande, crête de fusion (raphé) partiellement calcifiée, ligne
 //     d'attache abaissée au niveau du raphé, deux commissures ; fermeture sur une ligne, ouverture en « bouche de
 //     poisson » ;
-//   - rétrécissement aortique serré dégénératif : trois cuspides séparées (commissures libres) mais épaissies et
-//     rigides, nodules calcaires sur la face aortique, d'abord à la base puis le long de la ligne de fermeture, bord
-//     libre épargné ; ouverture réduite à un petit orifice ;
+//   - rétrécissement aortique serré dégénératif (calcifié, stade évolué) : trois cuspides séparées (commissures
+//     libres, à la différence de l'atteinte rhumatismale) mais épaissies, rigides et calcifiées sur toute leur
+//     étendue : amas calcaires sur la face aortique, plus gros à la base et dans le corps des cuspides, jusque dans
+//     les commissures ; bord libre épaissi, irrégulier, festonné et rétracté par endroits, nodulaire ; ouverture
+//     réduite à un petit orifice irrégulier ;
 //   - insuffisance aortique par dilatation de la racine (type I d'El Khoury, le plus fréquent) : cuspides normales,
 //     écartées par la jonction sino-tubulaire et l'anneau élargis ; hauteur de coaptation réduite et défaut de
 //     fermeture central triangulaire (orifice régurgitant ≈ 0,4 cm², IA importante au-delà de 0,30 cm²) ;
@@ -86,9 +88,11 @@ export function buildSLView(heart, kind = 'aortique') {
   // Options : rA (rayon d'attache, en fraction de l'anneau : feuillets d'une prothèse dans son armature), h0 et hS
   // (hauteur de la base et échelle de hauteur), coapt (hauteur de coaptation, en fraction de Hc), gap (écart du bord
   // libre au centre : défaut de coaptation central), pinned (ouverte : plaquée contre la paroi du sinus, à pinR),
-  // dome (ouverte : orifice central de rayon dome × R, cuspides fusionnées bombées en dôme).
+  // dome (ouverte : orifice central de rayon dome × R, cuspides fusionnées bombées en dôme), ragged (bord libre abîmé :
+  // ragged(u) → [abaissement, recul vers le sinus], en fraction de Hc et de R, appliqué au voisinage du bord, valve
+  // ouverte comme fermée ; nu, nv : finesse du maillage).
   const makeCusp = (spec) => {
-    const { t0, t1, raphe = null, chord = false, rA = 1, h0 = 0, hS = 1, coapt = 0.8, gap = 0, pinned = false, pinR = 0.95, dome = 0 } = spec;
+    const { t0, t1, raphe = null, chord = false, rA = 1, h0 = 0, hS = 1, coapt = 0.8, gap = 0, pinned = false, pinR = 0.95, dome = 0, ragged = null } = spec;
     const span = t1 - t0, Ra = R * rA;
     const attach = (u) => {
       if (raphe === null) return Hc * 0.95 * (1 - Math.sin(Math.PI * u));
@@ -133,9 +137,13 @@ export function buildSLView(heart, kind = 'aortique') {
       out.addScaledVector(A, -0.3 * hS * Hc * b * (1 - open)); // ventre vers le ventricule, valve fermée
       if (dome) out.addScaledVector(A, 0.32 * Hc * Math.sin(Math.PI * v) * open); // voûte du dôme, convexe vers l'artère
       else if (!pinned) out.addScaledVector(tD, 0.06 * Ra * b * open); // ventre vers le sinus, sans toucher la paroi
+      if (ragged) { // indépendant de open : point() reste linéaire en open
+        const [dn, dr] = ragged(u), e = smooth(0.55, 1, v) * Math.sqrt(Math.sin(Math.PI * u)); // commissures tenues
+        out.addScaledVector(A, -dn * hS * Hc * e).addScaledVector(Wv, dr * Ra * e);
+      }
       return out;
     };
-    const shell = new Shell(44, 28, spec.mat ?? valveMat, spec.shade, spec.thick, spec.bulge ?? null);
+    const shell = new Shell(spec.nu ?? 44, spec.nv ?? 28, spec.mat ?? valveMat, spec.shade, spec.thick, spec.bulge ?? null);
     shell.cache(point);
     shell.mesh.castShadow = true; shell.mesh.receiveShadow = true;
     return { shell, point };
@@ -153,25 +161,42 @@ export function buildSLView(heart, kind = 'aortique') {
   // cuspide calcifiée (rétrécissement dégénératif ; cuspides natives sous une prothèse)
   const calcified = (s, i, pin) => { // pin : cuspide native plaquée par une prothèse (plus mince, au ras de la paroi)
     const r = rng(97 + i * 31), arc = (s.t1 - s.t0) * R, hv = Hc * 1.05;
-    // nodules calcaires : surtout à la base (attache), puis le long de la ligne de fermeture ; bord libre épargné
+    // amas calcaires sur toute la cuspide : gros à la base et dans le corps (sinus), en traînées le long de la ligne de
+    // fermeture, jusque dans les commissures, et nodules sur le bord libre (stade évolué)
     const nods = [];
-    for (let k = 0; k < 6; k++) nods.push({ u: 0.15 + 0.7 * r(), v: 0.1 + 0.32 * r(), s: 0.22 + 0.16 * r(), h: 0.16 + 0.14 * r() });
-    for (let k = 0; k < 3; k++) nods.push({ u: 0.2 + 0.6 * r(), v: 0.6 + 0.14 * r(), s: 0.14 + 0.1 * r(), h: 0.09 + 0.08 * r() });
+    for (let k = 0; k < 9; k++) nods.push({ u: 0.08 + 0.84 * r(), v: 0.08 + 0.4 * r(), s: 0.2 + 0.18 * r(), h: 0.15 + 0.15 * r() });
+    for (let k = 0; k < 6; k++) nods.push({ u: 0.12 + 0.76 * r(), v: 0.5 + 0.3 * r(), s: 0.12 + 0.12 * r(), h: 0.1 + 0.1 * r() });
+    for (let k = 0; k < 5; k++) nods.push({ u: 0.1 + 0.8 * r(), v: 0.86 + 0.12 * r(), s: 0.07 + 0.07 * r(), h: 0.06 + 0.07 * r() });
+    for (const uc of [0.04, 0.96]) nods.push({ u: uc, v: 0.2 + 0.25 * r(), s: 0.18, h: 0.1 + 0.06 * r() }); // commissures
+    const ph = [r(), r(), r(), r(), r()].map((x) => 2 * Math.PI * x);
+    const noise = (u, v) => Math.sin(37 * u + 11 * v + ph[0]) * Math.sin(23 * v + 5 * u + ph[1]);
     const calc = (u, v) => {
       let c = 0;
       for (const n of nods) c += n.h * Math.exp(-(((u - n.u) * arc) ** 2 + ((v - n.v) * hv) ** 2) / (n.s * n.s));
-      return c * (0.8 + 0.2 * Math.sin(37 * u + 11 * v) * Math.sin(23 * v + 5 * u)) * (1 - smooth(0.82, 0.95, v));
+      return c * (0.75 + 0.25 * noise(u, v));
     };
+    // bord libre abîmé : festons irréguliers, encoches de rétraction, petites dents (déformation fixe)
+    const notches = [0, 1].map(() => ({ u: 0.18 + 0.64 * r(), w: 0.04 + 0.04 * r(), d: 0.07 + 0.07 * r() }));
+    const ragged = (u) => {
+      let dn = 0.035 * Math.sin(2 * Math.PI * 2.5 * u + ph[2]) + 0.022 * Math.sin(2 * Math.PI * 6.5 * u + ph[3]) + 0.012 * Math.sin(2 * Math.PI * 13 * u + ph[4]);
+      let dr = 0.025 * Math.sin(2 * Math.PI * 3.5 * u + ph[3]);
+      for (const n of notches) { const g = gauss(u - n.u, n.w); dn += n.d * g; dr += 0.6 * n.d * g; }
+      return [dn, dr];
+    };
+    const rim = (u) => 0.6 + 0.4 * Math.sin(2 * Math.PI * 9 * u + ph[0]) * Math.sin(2 * Math.PI * 4 * u + ph[1]);
     const shade = (u, v) => {
-      const k = Math.min(1, calc(u, v) / 0.12);
-      let c = mix([0.88, 0.8, 0.66], [0.95, 0.94, 0.9], k);                 // cuspide fibreuse → calcaire crayeux
-      c = mix(c, ENDO, 1 - smooth(0, 0.08, v));
-      const foot = Math.min(1, calc(u, v) / 0.03) * (1 - k);              // pied des nodules : ombre de contact
-      const ao = 0.62 + 0.38 * (1 - Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * 0.5) - 0.3 * foot;
+      const k = Math.min(1, calc(u, v) / 0.1);
+      let c = mix([0.82, 0.74, 0.6], [0.95, 0.94, 0.89], k);                // cuspide fibreuse jaunâtre → calcaire crayeux
+      c = mix(c, [0.72, 0.62, 0.5], 0.35 * smooth(0.88, 1, v) * (1 - k));  // bord libre épaissi, remanié
+      c = mix(c, ENDO, 1 - smooth(0, 0.07, v));
+      const foot = Math.min(1, calc(u, v) / 0.025) * (1 - k);             // pied des amas : ombre de contact
+      const ao = 0.6 + 0.4 * (1 - Math.sin(Math.PI * v) * Math.sin(Math.PI * u) * 0.5) - 0.35 * foot;
       return [...c, ao];
     };
     const k = pin ? 0.5 : 1;
-    return makeCusp({ t0: s.t0, t1: s.t1, shade, thick: (u, v) => k * (0.11 + 0.03 * (1 - smooth(0, 0.2, v)) + calc(u, v)), bulge: (u, v) => k * 0.5 * calc(u, v), pinned: pin, pinR: 0.975 });
+    return makeCusp({ t0: s.t0, t1: s.t1, shade, nu: 72, nv: 32, ragged: pin ? null : ragged, pinned: pin, pinR: 0.975,
+      thick: (u, v) => k * (0.12 + 0.03 * (1 - smooth(0, 0.2, v)) + 0.05 * smooth(0.82, 1, v) * rim(u) + calc(u, v)),
+      bulge: (u, v) => k * 0.55 * calc(u, v) });
   };
 
   const variants = {}, list = [['normale', 'Normale']];
@@ -309,7 +334,7 @@ export function buildSLView(heart, kind = 'aortique') {
       // coronaires, qui restent visibles dans leurs sinus ; pulmonaire : le tronc de BodyParts3D n'est pas dans l'axe de
       // la valve ; coupe juste au-dessus des cuspides, qui restent entières car coupées 1,5 cm plus loin, pour regarder
       // la valve de face et non un tube oblique)
-      C: { camDir: A.clone(), center: C.clone().addScaledVector(A, Hc * (aortic ? 0.8 : 0.5)), dist: aortic ? 11 : 10, up, cut: { normal: A.clone().negate(), def: A.dot(C) + Hc * (aortic ? 2.0 : 0.95) }, interior: 1.5,
+      C: { camDir: A.clone(), center: C.clone().addScaledVector(A, Hc * (aortic ? 0.8 : 0.5)), dist: aortic ? 11 : 10, up, cut: { normal: A.clone().negate(), def: A.dot(C) + Hc * (aortic ? 2.0 : 1.12) }, interior: 1.5,
         orient: `Vue depuis ${where[0]} · <b>${names}</b>` },
       V: { camDir: A.clone().negate(), center: C.clone().addScaledVector(A, Hc * 0.2), dist: 10, up, cut: { normal: A.clone(), def: -A.dot(C) + 1.0 }, interior: 0.3,
         orient: `Vue depuis ${where[1]} · <b>${names}</b>` },

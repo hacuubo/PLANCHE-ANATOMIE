@@ -329,7 +329,7 @@ export const VALVE_AORTIQUE = {
   rao: {
     titre: 'Rétrécissement aortique serré dégénératif',
     sousTitre: 'Valve tricuspide calcifiée',
-    texte: "Avec l'âge, les cuspides de la valve aortique s'épaississent et se chargent de calcium. Les nodules calcaires apparaissent d'abord à leur base, sur la face tournée vers l'aorte, puis gagnent la ligne de fermeture. Les cuspides restent séparées, mais devenues rigides, elles ne s'ouvrent plus qu'en un petit orifice : le cœur doit forcer pour éjecter le sang.",
+    texte: "Avec l'âge, les cuspides de la valve aortique s'épaississent et se chargent de calcium. Les amas calcaires apparaissent d'abord à leur base, sur la face tournée vers l'aorte, puis gagnent le corps des cuspides, la ligne de fermeture et le bord libre, qui devient épais, irrégulier et rétracté par endroits. Les cuspides restent séparées, mais devenues rigides, elles ne s'ouvrent plus qu'en un petit orifice irrégulier : le cœur doit forcer pour éjecter le sang.",
     details: [
       "Le rétrécissement est dit serré quand la surface d'ouverture est inférieure à 1 cm² ; le plus souvent, le jet de sang atteint au moins 4 m/s et le gradient de pression moyen au moins 40 mmHg à l'échographie.",
       "Il peut entraîner un essoufflement à l'effort, des douleurs dans la poitrine ou des malaises.",

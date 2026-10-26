@@ -332,7 +332,7 @@ export const VALVE_AORTIQUE = {
   rao: {
     titre: 'Severe degenerative aortic stenosis',
     sousTitre: 'Calcified tricuspid valve',
-    texte: "With age, the cusps of the aortic valve thicken and become loaded with calcium. Calcified nodules first appear at their base, on the side facing the aorta, then spread along the line of closure. The cusps remain separate, but having become stiff, they open only to a small orifice: the heart has to work harder to eject blood.",
+    texte: "With age, the cusps of the aortic valve thicken and become loaded with calcium. Calcium deposits first appear at their base, on the side facing the aorta, then spread to the body of the cusps, the line of closure and the free edge, which becomes thick, irregular and retracted in places. The cusps remain separate, but having become stiff, they open only to a small irregular orifice: the heart has to work harder to eject blood.",
     details: [
       "Stenosis is called severe when the valve area is less than 1 cm²; in most cases the jet of blood reaches at least 4 m/s and the mean pressure gradient at least 40 mmHg on echocardiography.",
       "It may cause breathlessness on exertion, chest pain or fainting spells.",

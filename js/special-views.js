@@ -5,7 +5,8 @@
 //   - « Fosse ovale normale » : septum interauriculaire vu de l'oreillette droite (paroi libre retirée) : fosse ovale
 //     (plancher mince, septum primum), limbe en fer à cheval (septum secundum), abouchement des veines caves ;
 //   - « FOP · test aux bulles » : coupe bicave des deux oreillettes, comme en ETO (≈ 90–110°, oreillette gauche en
-//     haut, veine cave supérieure à droite). Schéma du test aux bulles : le sérum salé agité arrive par les veines
+//     haut, veine cave supérieure à droite), postérieure : elle passe par la fosse ovale (plancher, limbe) et par le
+//     tunnel du FOP à son bord antéro-supérieur. Schéma du test aux bulles : le sérum salé agité arrive par les veines
 //     caves et opacifie l'oreillette droite ; à chaque cycle, quand la pression de l'oreillette droite dépasse celle
 //     de la gauche (contraction auriculaire, début de systole ; Langholz 1991), des bulles passent par le tunnel du FOP
 //     dans l'oreillette gauche. Test positif : bulles dans l'OG dans les 3 cycles qui suivent l'opacification de l'OD
@@ -76,7 +77,7 @@ export function buildCoronaryView(heart) {
 export function createBubbles(heart) {
   const fo = heart.fossa;
   if (!fo) return { update() {}, setActive() {}, mesh: null };
-  const N = 320; // assez pour opacifier l'oreillette droite
+  const N = 1280; // opacification dense de l'oreillette droite, passage bien visible dans l'oreillette gauche
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x8c97a3, emissiveIntensity: 0.45, roughness: 0.22, metalness: 0 });
   const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), mat, N);
   mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 2;
