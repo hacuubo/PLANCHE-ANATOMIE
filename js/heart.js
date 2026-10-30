@@ -1351,6 +1351,7 @@ export async function buildHeart(onProgress) {
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve, ostia,
     infarct, setInfarct, fossa, setPFO,
+    structureIds: ids, // indice de structure (attribut sid des cavités) → nom
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
     landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k, cut) => addDeformTo(mat, deformU, k, cut),

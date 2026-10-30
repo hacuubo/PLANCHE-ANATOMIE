@@ -129,12 +129,15 @@ une liste numérotée des structures, et une fiche explicative par structure.
     calcifiées plaquées contre les sinus). **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
     (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : vue dans le plan de la crosse aortique (coupe passant
     par le centre de la valve, aorte ouverte sur toute sa longueur), cœur arrêté en diastole ; guide qui remonte
-    l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule (« queue de cochon ») ;
-    cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet et le cône jaune ; centrage sur l'anneau ;
-    gonflement (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ;
-    retrait du guide ; retour à la vue chirurgicale, la nouvelle valve bat. Caméra : plan large sur la crosse, rapproché
-    sur la valve pour le déploiement ; légende de chaque étape (7) au-dessus du cycle. Trajet : ligne centrale de la
-    lumière aortique (barycentres successifs, lissée), puis chambre de chasse et ventricule gauche.
+    l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche (« queue de cochon ») ;
+    cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
+    ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement
+    (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;
+    puis directement la vue chirurgicale (bref fondu), la nouvelle valve bat. Caméra : plan large sur la crosse,
+    rapproché sur la valve du positionnement jusqu'au retrait du guide ; légende de chaque étape (7) au-dessus du
+    cycle. Trajet : ligne centrale de la lumière aortique (barycentres successifs, lissée), puis chambre de chasse et
+    ventricule gauche par le milieu de sa cavité, dans la moitié gardée par la coupe (barycentres de tranches de la
+    cavité, recentrés par la distance signée à l'endocarde : le guide ne passe ni dans le septum ni devant sa tranche).
     Ouvertes, les cuspides normales restent à distance de la paroi des sinus
     (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ; à travers l'orifice, on voit la
     chambre de chasse et le ventricule.

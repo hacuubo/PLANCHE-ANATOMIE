@@ -384,8 +384,8 @@ export function buildSLView(heart, kind = 'aortique') {
   return view;
 }
 // Trajet du guide et du cathéter (voie fémorale rétrograde) : ligne centrale de l'aorte, de l'aorte descendante à la
-// valve en passant par la crosse (barycentres successifs de la lumière), puis chambre de chasse et ventricule gauche
-// jusqu'à la pointe, où le guide se termine en boucle (« queue de cochon »). Plan de la crosse : plan moyen de la ligne
+// valve en passant par la crosse (barycentres successifs de la lumière), puis chambre de chasse et ventricule gauche,
+// au milieu de sa cavité, où le guide se termine en boucle (« queue de cochon »). Plan de la crosse : plan moyen de la ligne
 // centrale (aorte ascendante, crosse).
 function aorticPath(heart, C, A) {
   let lum = null;
@@ -412,14 +412,65 @@ function aorticPath(heart, C, A) {
   const n = new THREE.Vector3(0.3, 0.2, 1).normalize();
   for (let i = 0; i < 30; i++) n.applyMatrix3(inv).normalize();
   if (n.z < 0) n.negate(); // caméra du côté antérieur
-  // ventricule : chambre de chasse, puis vers la pointe ; boucle terminale du guide dans le plan (axe du VG, n)
-  const apex = heart.landmarks.apex, toApex = apex.clone().sub(C), L = toApex.length(), u = toApex.clone().normalize();
-  const lv = [C.clone().addScaledVector(A, 0.15), C.clone().addScaledVector(A, -0.9).lerp(C.clone().addScaledVector(u, 1.6), 0.5), C.clone().addScaledVector(u, L * 0.55), C.clone().addScaledVector(u, L * 0.78)];
-  const end = lv[lv.length - 1], side = new THREE.Vector3().crossVectors(u, n).normalize(), rL = 0.55;
-  const loop = [];
-  for (let k = 1; k <= 14; k++) { const a = (k / 14) * Math.PI * 1.8; loop.push(end.clone().addScaledVector(u, rL * Math.sin(a)).addScaledVector(side, rL * (1 - Math.cos(a)))); }
-  const route = [...sm.slice().reverse(), ...lv, ...loop];
-  const curve = new THREE.CatmullRomCurve3(route, false, 'centripetal');
-  return { curve, length: curve.getLength(), archNormal: n, aortaEnd: sm.length - 1 };
+  // ventricule (calculé au premier lancement de l'animation) : le guide reste dans la cavité du VG, au large des
+  // parois (septum compris). Endocarde du VG au repos (le cœur est arrêté pendant l'animation).
+  let route = null;
+  const ventricle = () => {
+    let cav = null;
+    heart.root.traverse((o) => { if (!cav && o.userData.id === 'cavites') cav = o; });
+    const cp = cav.geometry.attributes.position, cn = cav.geometry.attributes.normal, cs = cav.userData.sid, W = [], WN = [];
+    for (let k = 0; k < cs.length; k++) if (heart.structureIds[cs[k]] === 'ventricule-gauche') { W.push(new THREE.Vector3().fromBufferAttribute(cp, k)); WN.push(new THREE.Vector3().fromBufferAttribute(cn, k)); }
+    // distance signée à l'endocarde du VG (normales vers l'extérieur de la cavité) : positive dans la cavité, négative
+    // au-delà de la paroi (septum, VD) ; grad : direction qui l'augmente (vers l'intérieur)
+    const grad = new THREE.Vector3();
+    const clear = (p) => {
+      let m = Infinity, j = 0;
+      for (let i = 0; i < W.length; i++) { const d2 = W[i].distanceToSquared(p); if (d2 < m) { m = d2; j = i; } }
+      grad.copy(WN[j]).negate();
+      return p.clone().sub(W[j]).dot(WN[j]) > 0 ? -Math.sqrt(m) : Math.sqrt(m);
+    };
+    // Vu dans la vue L (coupe dans le plan de la crosse, caméra du côté +n), le guide doit rester dans la moitié gardée
+    // du VG : juste derrière le plan de coupe (sinon, dans la moitié retirée, il se dessine devant la tranche du septum
+    // et semble le traverser). Profondeur DL derrière le plan.
+    const DL = 0.35, behind = (p) => p.addScaledVector(n, n.dot(C) - DL - n.dot(p));
+    // recentrage : éloigne le point de la paroi la plus proche (ou l'y ramène s'il est au-delà), dans le plan de coupe
+    // et perpendiculairement à t
+    const recenter = (p, t) => {
+      behind(p);
+      const tp = t.clone().projectOnPlane(n).normalize();
+      for (let it = 0; it < 60; it++) {
+        const c0 = clear(p), step = grad.clone().projectOnPlane(n).projectOnPlane(tp);
+        if (step.lengthSq() < 1e-8) break;
+        const q2 = p.clone().addScaledVector(step.normalize(), 0.06);
+        if (clear(q2) <= c0) break;
+        p.copy(q2);
+      }
+      return p;
+    };
+    // ligne centrale : barycentres de tranches de la cavité, le long de l'axe propre du VG (base → pointe)
+    const B = heart.deformUniforms.uDB.value, Ad = heart.deformUniforms.uDA.value, Ld = heart.deformUniforms.uDL.value;
+    const slice = (f) => { const c2 = new THREE.Vector3(); let nb = 0; for (const w of W) if (Math.abs(w.clone().sub(B).dot(Ad) - f * Ld) < 0.25) { c2.add(w); nb++; } return nb > 20 ? c2.multiplyScalar(1 / nb) : null; };
+    const lv = [C.clone().addScaledVector(A, 0.15)];
+    const lvot = recenter(C.clone().addScaledVector(A, -1.0), A); // chambre de chasse, sous la valve
+    lv.push(lvot);
+    for (const f of [0.28, 0.4, 0.5]) { const s = slice(f); if (s) lv.push(recenter(s, Ad)); }
+    // boucle terminale (« queue de cochon ») : dans le prolongement du guide, de face (dans le plan de coupe), du côté
+    // et à la taille qui la gardent à distance des parois
+    const end = lv[lv.length - 1], tE = end.clone().sub(lv[lv.length - 2]).projectOnPlane(n).normalize();
+    const e1 = new THREE.Vector3().crossVectors(tE, n).normalize();
+    let loop = null, bestScore = -Infinity;
+    for (const rL of [0.6, 0.5, 0.42, 0.35]) {
+      for (const sgn of [1, -1]) {
+        const pts2 = [];
+        for (let k = 1; k <= 14; k++) { const a = (k / 14) * Math.PI * 1.8; pts2.push(end.clone().addScaledVector(tE, rL * Math.sin(a)).addScaledVector(e1, sgn * rL * (1 - Math.cos(a)))); }
+        const score = Math.min(...pts2.map(clear));
+        if (score > bestScore) { bestScore = score; loop = pts2; }
+      }
+      if (bestScore >= 0.33) break;
+    }
+    const curve = new THREE.CatmullRomCurve3([...sm.slice().reverse(), ...lv, ...loop], false, 'centripetal');
+    return { curve, length: curve.getLength() };
+  };
+  return { get curve() { return (route ??= ventricle()).curve; }, get length() { return (route ??= ventricle()).length; }, archNormal: n, aortaEnd: sm.length - 1 };
 }
 export const buildAorticView = (heart) => buildSLView(heart, 'aortique');

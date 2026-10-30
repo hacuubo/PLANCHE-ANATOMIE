@@ -631,8 +631,8 @@ const tavi = createTaviAnimation(heart, VALVE_VIEWS.aortique, {
     taviCap.querySelector('p').textContent = text;
     syncTaviBtn();
   },
-  finish() { // dernière étape : vue chirurgicale, cœur qui bat, la nouvelle valve fonctionne
-    setValveSide('C');
+  finish() { // dernière étape : directement la vue chirurgicale, cœur qui bat, la nouvelle valve fonctionne
+    setValveSide('C', true);
     if (!state.battement) toggle('battement', true);
     syncTaviBtn(); syncDoppler(); syncLocator();
   },
@@ -781,15 +781,22 @@ function goValve(key, after) {
   runSteps(steps, () => { syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true; after?.(); });
 }
 // Change de côté (C ↔ V) : la coupe remonte, la caméra fait le tour de la valve par le côté, la coupe redescend
-function setValveSide(side) {
-  if (trans) { pendingAction = () => setValveSide(side); return; }
+// direct : passage immédiat (fondu bref), sans le recul de la transition — fin de l'animation de la TAVI
+function setValveSide(side, direct = false) {
+  if (trans) { pendingAction = () => setValveSide(side, direct); return; }
   if (side === valveSide) return;
   if (side !== 'L' && tavi.playing) { tavi.stop(); heart.useValve('valve-aortique', VALVE_VIEWS.aortique.valveFor(VALVE_VIEWS.aortique.variant)); syncTaviBtn(); }
   const v = state.valve && VALVE_VIEWS[state.valve], from = valveSide;
   valveSide = side;
   syncValveUI();
   if (!v) return;
-  const a = sideOf(v, from), mid = () => ({ target: a.center.clone().lerp(sideOf(v, side).center, 0.5), dir: new THREE.Vector3().crossVectors(a.up, a.camDir).normalize(), dist: a.dist * 1.9 * portrait(), up: a.up.clone() });
+  if (direct) {
+    const c = closeCam(v); applyCam(c, c, 1); controls.update();
+    valveCut(v, 0); viewOffset(); restPose(); renderer.shadowMap.needsUpdate = true;
+    if (!reduced.matches) renderer.domElement.animate?.([{ opacity: 0.2 }, { opacity: 1 }], { duration: 700, easing: 'ease-out' });
+    return;
+  }
+  const a = sideOf(v, from), mid =() => ({ target: a.center.clone().lerp(sideOf(v, side).center, 0.5), dir: new THREE.Vector3().crossVectors(a.up, a.camDir).normalize(), dist: a.dist * 1.9 * portrait(), up: a.up.clone() });
   runSteps([
     { dur: 1.0, to: mid, onUpdate: (e) => valveCut(v, FAR * smooth01(0, 0.8, e), from) },
     { dur: 1.2, to: () => closeCam(v), onUpdate: (e) => valveCut(v, FAR * (1 - smooth01(0.2, 0.95, e))), onEnd: () => viewOffset() },

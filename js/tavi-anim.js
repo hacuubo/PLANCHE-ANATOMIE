@@ -8,7 +8,8 @@
 //      l'armature se déploie et plaque la valve native contre la paroi ;
 //   5. le ballonnet est dégonflé, puis retiré avec le cathéter ; la prothèse reste fixée par sa force radiale ;
 //   6. le guide est retiré ;
-//   7. retour à la vue chirurgicale : la nouvelle valve s'ouvre et se ferme à chaque battement.
+//   7. passage direct à la vue chirurgicale (sans recul de la caméra) : la nouvelle valve s'ouvre et se ferme à chaque
+//      battement.
 // Matériel : guide de ≈ 0,9 mm, cathéter de ≈ 5,5 mm (14 F), cône d'introduction, bioprothèse sertie à ≈ 7 mm puis
 // déployée à la taille de l'anneau (armature de la valve finale, js/aortic-view.js). Le cœur est arrêté en diastole
 // pendant la mise en place (pose sans déformation : le matériel et la valve sertie sont placés au repos).
@@ -60,11 +61,22 @@ export function createTaviAnimation(heart, view, hooks) {
     let iv = 0; samples.forEach((p, i) => { if (p.distanceTo(kit.center) < samples[iv].distanceTo(kit.center)) iv = i; });
     const uV = (iv / S) * L, h = kit.height, crimp = 0.36 / kit.Rs; // sertie : ≈ 7 mm de diamètre
     const Y = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), Tg = new THREE.Vector3(), q = new THREE.Quaternion(), qA = new THREE.Quaternion().setFromUnitVectors(Y, kit.axis);
+    const qF = new THREE.Quaternion().setFromUnitVectors(Y, kit.axis.clone().negate()); // pièces de révolution sur l'anneau : vers l'avant
     const at = (u) => { const f = Math.min(1, Math.max(0, u / L)); curve.getPointAt(f, P); curve.getTangentAt(f, Tg); return f; };
-    // pose d'un objet centré en u sur le trajet, axe le long du trajet (blend : vers la pose exacte sur l'anneau)
-    const place = (o, u, blend = 0) => {
-      at(u); q.setFromUnitVectors(Y, Tg);
-      if (blend > 0) { P.lerp(kit.center, blend); q.slerp(qA, blend); }
+    // orientation de la valve sertie le long du trajet : déjà dans le sens final (sortie, côté aorte, vers l'arrière ;
+    // entrée, côté ventricule, vers l'avant), transportée sans torsion depuis sa pose sur l'anneau — elle arrive
+    // sur l'anneau sans pivoter
+    const tan = samples.map((_, i) => curve.getTangentAt(i / S).negate()), qs = new Array(S + 1), qd = new THREE.Quaternion();
+    qs[iv] = new THREE.Quaternion().setFromUnitVectors(kit.axis, tan[iv]).multiply(qA);
+    for (let i = iv - 1; i >= 0; i--) qs[i] = qd.setFromUnitVectors(tan[i + 1], tan[i]).clone().multiply(qs[i + 1]);
+    for (let i = iv + 1; i <= S; i++) qs[i] = qd.setFromUnitVectors(tan[i - 1], tan[i]).clone().multiply(qs[i - 1]);
+    const frameQ = (u, out) => { const x = Math.min(S, Math.max(0, (u / L) * S)), i = Math.min(S - 1, Math.floor(x)); return out.slerpQuaternions(qs[i], qs[i + 1], x - i); };
+    // pose d'un objet centré en u sur le trajet, axe le long du trajet (blend : vers la pose exacte sur l'anneau) ;
+    // carried : orientation transportée de la valve (sinon axe Y vers l'avant, pour les pièces de révolution)
+    const place = (o, u, blend = 0, carried = false) => {
+      at(u);
+      if (carried) frameQ(u, q); else q.setFromUnitVectors(Y, Tg);
+      if (blend > 0) { P.lerp(kit.center, blend); q.slerp(carried ? qA : qF, blend); }
       o.position.copy(P); o.quaternion.copy(q);
     };
     return { kit, group, wire, cath, shaft, cone, rig, bal, range, place, at, L, uV, h, crimp, P, Tg };
@@ -97,15 +109,16 @@ export function createTaviAnimation(heart, view, hooks) {
     const deployed = ph(3) > 0;
     b.rig.visible = ph(1) > 0 && k < 6 && (deployed || uc > -h);
     if (deployed) { b.rig.position.copy(built.kit.center); b.rig.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), built.kit.axis); }
-    else if (b.rig.visible) b.place(b.rig, uc, blend);
+    else if (b.rig.visible) b.place(b.rig, uc, blend, true);
     const s = crimp + (1 - crimp) * e;
     b.rig.scale.set(s, 1, s);
     return { k, e };
   };
   // cadrage (vue L) : plan large sur la crosse pendant la montée du matériel, rapproché sur la valve pour le
-  // positionnement et le déploiement, intermédiaire pour les retraits ; [instant (s), hauteur du centre au-dessus de
-  // l'anneau (cm), distance (cm)] — le premier est celui de la vue L (js/aortic-view.js)
-  const SHOTS = [[0, 2.6, 30], [7.5, 2.6, 30], [10.2, 0.4, 13], [15.6, 0.4, 13], [18, 1.4, 20]];
+  // positionnement et le déploiement, puis jusqu'à la fin des retraits (on reste sur la valve ; la fin passe
+  // directement à la vue chirurgicale) ; [instant (s), hauteur du centre au-dessus de l'anneau (cm), distance (cm)]
+  // — le premier est celui de la vue L (js/aortic-view.js)
+  const SHOTS = [[0, 2.6, 30], [7.5, 2.6, 30], [10.2, 0.4, 13]];
   const frameAt = () => {
     let i = 0; while (i < SHOTS.length - 1 && t >= SHOTS[i + 1][0]) i++;
     const a = SHOTS[i], b = SHOTS[Math.min(i + 1, SHOTS.length - 1)], f = b === a ? 0 : ease((t - a[0]) / (b[0] - a[0]));
