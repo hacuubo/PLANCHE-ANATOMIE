@@ -10,6 +10,7 @@ import { buildAVView } from './av-views.js';
 import { buildFOPViews, buildCoronaryView, createBubbles } from './special-views.js';
 import { createDoppler, restTime, NYQUIST } from './doppler.js';
 import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.js';
+import { createTaviAnimation, TAVI_STEPS } from './tavi-anim.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -299,7 +300,7 @@ function withRootHoles(mat, rootSel = -1) {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vHoleW;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvHoleW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vHoleW;\n${GLSL_ROOTS}`)
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (inRootW(vHoleW, 0.0)) discard;'); // racine à sa place du moment
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (inRootW(vHoleW, 0.0) || (uOpenAo > 0.5 && uRootSel < 0.5)) discard;'); // racine à sa place du moment ; aorte ouverte (TAVI)
   };
   const key = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : () => '';
   mat.customProgramCacheKey = () => key() + '|racines';
@@ -521,6 +522,7 @@ const splitHooks = {
   },
 };
 function setCompare(on) {
+  if (on) stopTavi();
   const v = state.valve && VALVE_VIEWS[state.valve];
   on = !!(on && v);
   state.comparer = on;
@@ -582,7 +584,7 @@ sideStack.className = 'side-stack';
 sideStack.append(locator, dopLegend);
 canvasWrap.appendChild(sideStack);
 function syncLocator() {
-  const L = state.valve && LOCATOR[state.valve];
+  const L = state.valve && !tavi.playing && LOCATOR[state.valve]; // animation de la TAVI : vue propre, sans repère
   if (state.valve) sideStack.style.setProperty('--stack-top', `${valveShift().top + 10}px`); // sous le panneau des réglages
   locator.classList.toggle('hidden', !L);
   locKey = L ? state.valve : null; locShown = -1;
@@ -606,10 +608,59 @@ function updateLocator(phase) {
   for (const c of locRings) { c.setAttribute('cx', x.toFixed(2)); c.setAttribute('cy', (y * 0.75).toFixed(2)); }
 }
 function syncDoppler() {
-  const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.doppler && v && v.group === 'valves');
+  const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.doppler && v && v.group === 'valves' && !tavi.playing);
   doppler.setView(on ? state.valve : null, v?.variant, state.comparer);
   doppler.setActive(on);
   dopLegend.classList.toggle('hidden', !on);
+}
+// Animation de l'implantation de la TAVI (js/tavi-anim.js) : lancée au choix de la variante « TAVI » de la valve
+// aortique, dans la vue L (plan de la crosse), cœur arrêté ; légende de chaque étape au-dessus du cycle ; à la fin,
+// retour à la vue chirurgicale, cœur qui bat
+const taviCap = document.createElement('div');
+taviCap.className = 'tavi-caption hidden'; taviCap.setAttribute('aria-live', 'polite');
+taviCap.innerHTML = '<div class="tc-steps"></div><p></p>';
+canvasWrap.appendChild(taviCap);
+const taviBtn = document.createElement('button');
+taviBtn.type = 'button'; taviBtn.className = 'tool option hidden'; taviBtn.dataset.action = 'tavi';
+document.getElementById('valve-tools').appendChild(taviBtn);
+const tavi = createTaviAnimation(heart, VALVE_VIEWS.aortique, {
+  caption(k, text) {
+    taviCap.classList.toggle('hidden', k < 0);
+    if (k < 0) return;
+    taviCap.querySelector('.tc-steps').innerHTML = TAVI_STEPS.map((_, i) => `<i class="${i < k ? 'done' : i === k ? 'on' : ''}"></i>`).join('');
+    taviCap.querySelector('p').textContent = text;
+    syncTaviBtn();
+  },
+  finish() { // dernière étape : vue chirurgicale, cœur qui bat, la nouvelle valve fonctionne
+    setValveSide('C');
+    if (!state.battement) toggle('battement', true);
+    syncTaviBtn(); syncDoppler(); syncLocator();
+  },
+});
+function syncTaviBtn() {
+  const v = state.valve === 'aortique' && VALVE_VIEWS.aortique;
+  taviBtn.classList.toggle('hidden', !(v && v.variant === 'tavi'));
+  taviBtn.innerHTML = tavi.playing
+    ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg><span class="lbl">Arrêter</span>'
+    : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg><span class="lbl">Voir l’implantation</span>';
+}
+function startTavi() {
+  if (trans) { pendingAction = startTavi; return; }
+  if (state.comparer) setCompare(false);
+  if (state.battement) toggle('battement', false);
+  frozenPhase = null; valveOpen = true; syncPhaseButtons(); // valve native ouverte (petit orifice), cœur sans déformation
+  tavi.play();
+  syncDoppler(); syncTaviBtn(); syncLocator();
+  setValveSide('L');
+  restPose();
+}
+function stopTavi() {
+  if (!tavi.playing) return;
+  tavi.stop();
+  const v = VALVE_VIEWS.aortique;
+  if (v.active) heart.useValve(v.heartValveId, v.valveFor(v.variant)); // valve de la variante choisie
+  if (valveSide === 'L') { if (state.valve === 'aortique') setValveSide('C'); else valveSide = 'C'; }
+  syncDoppler(); syncTaviBtn(); syncLocator();
 }
 const FAR = 15; // coupe repoussée hors du cœur (rien n'est retiré)
 // états de caméra : cible, direction (de la cible vers l'œil), distance, verticale
@@ -733,6 +784,7 @@ function goValve(key, after) {
 function setValveSide(side) {
   if (trans) { pendingAction = () => setValveSide(side); return; }
   if (side === valveSide) return;
+  if (side !== 'L' && tavi.playing) { tavi.stop(); heart.useValve('valve-aortique', VALVE_VIEWS.aortique.valveFor(VALVE_VIEWS.aortique.variant)); syncTaviBtn(); }
   const v = state.valve && VALVE_VIEWS[state.valve], from = valveSide;
   valveSide = side;
   syncValveUI();
@@ -762,6 +814,8 @@ function syncValveUI() {
   canvasWrap.classList.toggle('is-valve', !!v);
   document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v || v.compare === false);
   document.querySelector('[data-toggle="doppler"]').classList.toggle('hidden', !v || !isValve);
+  if (tavi.playing && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
+  syncTaviBtn();
   syncCutOnly();
   syncDoppler(); syncLocator();
   document.querySelectorAll('[data-valve]').forEach((b) => b.classList.toggle('active', b.dataset.valve === state.valve));
@@ -772,6 +826,7 @@ function syncValveUI() {
       v.setVariant(b.dataset.variant);
       if (state.comparer && v.variant === 'normale') setCompare(false); // normale contre normale : comparaison close
       syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true;
+      if (b.dataset.variant === 'tavi' && state.valve === 'aortique') startTavi(); // TAVI : l'implantation, d'emblée
     }));
   }
   viewOffset();
@@ -983,7 +1038,7 @@ function viewParams() {
   const q = new URLSearchParams();
   if (state.valve) {
     const v = VALVE_VIEWS[state.valve];
-    q.set('valve', state.valve); q.set('cote', valveSide === 'C' ? 'chirurgien' : 'ventricule');
+    q.set('valve', state.valve); q.set('cote', valveSide === 'V' ? 'ventricule' : 'chirurgien');
     if (v.variant !== 'normale') q.set('variante', v.variant);
   } else if (state.coupe) q.set('coupe', state.modeCoupe);
   if (!state.battement) {
@@ -1087,6 +1142,7 @@ function buildPanel() {
   });
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelector('[data-action="recentrer"]').addEventListener('click', recenter);
+  taviBtn.addEventListener('click', () => (tavi.playing ? stopTavi() : startTavi()));
   document.querySelector('[data-action="partager"]').addEventListener('click', shareView);
   document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
   document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => goValve(b.dataset.valve)));
@@ -1216,6 +1272,11 @@ function animate() {
     if ((frame & 1) === 0) syncCycleUI();
   }
   else if (!beatIdle) { beatIdle = true; restPose(); }
+  tavi.update(Math.min(dt, 0.1));
+  if (tavi.playing && !trans && valveSide === 'L') { // caméra de l'animation (plan large, rapproché…)
+    const f = tavi.frame(), sd = VALVE_VIEWS.aortique.sides.L;
+    controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(sd.camDir, f.dist * portrait()); setCameraUp(sd.up);
+  }
   if (trans) stepTrans(dt); // zoom vers une valve
   else if (state.valve && state.battement) valveCut(VALVE_VIEWS[state.valve], 0); // la coupe suit la valve qui bat
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe et dans les vues des valves)
@@ -1236,4 +1297,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
+window.__planche = { tavi, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };

@@ -287,6 +287,17 @@ button { font: inherit; color: inherit; }
   .dl-scale { height: 70px; padding-left: 20px; } .dl-bar { width: 11px; } .dl-scale span { left: 20px; }
   .dl-mos { margin-top: 6px; gap: 6px; } .dl-mos em { display: none; }
 }
+/* légende de l'animation de la TAVI : étape en cours, au-dessus du cycle */
+.tavi-caption {
+  position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); z-index: 5; pointer-events: none;
+  width: min(560px, calc(100% - 28px)); background: rgba(255, 253, 249, .96); border: 1px solid var(--line-strong);
+  border-radius: 12px; padding: 10px 14px; box-shadow: 0 6px 20px rgba(60, 40, 30, .12);
+}
+.tavi-caption p { margin: 6px 0 0; font-size: 14px; line-height: 1.4; }
+.tc-steps { display: flex; gap: 5px; }
+.tc-steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--line-strong); opacity: .35; }
+.tc-steps i.done { opacity: .8; } .tc-steps i.on { background: var(--accent); opacity: 1; }
+@media (max-width: 640px) { .tavi-caption { bottom: 104px; padding: 8px 10px; } .tavi-caption p { font-size: 12.5px; } }
 /* message bref (lien copié) */
 .toast {
   position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); z-index: 8; pointer-events: none; max-width: calc(100% - 28px);

@@ -123,7 +123,18 @@ une liste numérotée des structures, et une fiche explicative par structure.
   - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif (calcifié au stade évolué : amas
     calcaires sur toute la cuspide jusqu'aux commissures, bord libre épaissi, festonné et rétracté par endroits,
     commissures libres, petit orifice irrégulier), insuffisance par dilatation de la
-    racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²).
+    racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²), TAVI
+    (bioprothèse à ballonnet de type SAPIEN 3, taille 29 : armature en cobalt-chrome de 22,5 mm à cellules en losange
+    et grandes cellules hautes, jupe en tissu, feuillets en péricarde bovin, commissures alignées, cuspides natives
+    calcifiées plaquées contre les sinus). **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
+    (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : vue dans le plan de la crosse aortique (coupe passant
+    par le centre de la valve, aorte ouverte sur toute sa longueur), cœur arrêté en diastole ; guide qui remonte
+    l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule (« queue de cochon ») ;
+    cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet et le cône jaune ; centrage sur l'anneau ;
+    gonflement (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ;
+    retrait du guide ; retour à la vue chirurgicale, la nouvelle valve bat. Caméra : plan large sur la crosse, rapproché
+    sur la valve pour le déploiement ; légende de chaque étape (7) au-dessus du cycle. Trajet : ligne centrale de la
+    lumière aortique (barycentres successifs, lissée), puis chambre de chasse et ventricule gauche.
     Ouvertes, les cuspides normales restent à distance de la paroi des sinus
     (bord libre à ≈ 0,76 rayon : orifice 41 % plus petit que l'anneau, Lansac 2019) ; à travers l'orifice, on voit la
     chambre de chasse et le ventricule.
@@ -199,7 +210,8 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles) et Coronaires (infarctus de l'IVA) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
-| `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante ; rétrécissement pulmonaire en dôme) |
+| `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
+| `js/tavi-anim.js` | Animation de l'implantation d'une TAVI (guide, cathéter, valve sertie, ballonnet, déploiement, retraits) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
