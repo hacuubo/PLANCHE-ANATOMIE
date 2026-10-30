@@ -9,6 +9,7 @@ import { buildSLView } from './aortic-view.js';
 import { buildAVView } from './av-views.js';
 import { buildFOPViews, buildCoronaryView, createBubbles } from './special-views.js';
 import { createDoppler, restTime, NYQUIST } from './doppler.js';
+import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -501,7 +502,7 @@ const splitHooks = {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
     if (v.applyHalf) { v.applyHalf(i); renderer.shadowMap.needsUpdate = true; halfCamera(true); return; }
     const name = i === 0 ? 'normale' : v.variant, valve = v.valveFor(name), dil = v.dilationOf(name);
-    if (state.doppler) doppler.setView(state.valve, name);
+    if (state.doppler) doppler.show(name);
     heart.showValve(v.heartValveId, valve);
     if (v.dilationOf('normale') !== v.dilationOf(v.variant)) { // anneau dilaté d'un seul côté : cœur et valve redessinés
       heart.setDilation(dil);
@@ -515,7 +516,7 @@ const splitHooks = {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
     if (v.applyHalf) { v.applyHalf(null); halfCamera(false); return; }
     heart.showValve(v.heartValveId, v.valveFor(v.variant)); heart.setDilation(v.dilationOf(v.variant));
-    if (state.doppler) doppler.setView(state.valve, v.variant);
+    if (state.doppler) doppler.show(v.variant);
     halfCamera(false);
   },
 };
@@ -567,37 +568,46 @@ const nq = NYQUIST.toFixed(1).replace('.', ',');
 dopLegend.innerHTML = `<b>Doppler couleur</b><small>Sonde à la pointe du cœur</small>
   <div class="dl-scale"><i class="dl-bar"></i><span class="dl-top">+${nq} m/s<em>vers la sonde</em></span><span class="dl-bot">−${nq} m/s<em>s'éloigne</em></span></div>
   <div class="dl-mos"><i></i><span>Mosaïque<em> : flux rapide et turbulent (fuite, rétrécissement)</em></span></div>`;
-// Repère des vues des valves : petite coupe fixe où la valve regardée est entourée (image pré-rendue depuis le modèle,
-// cœur en diastole, assets/reperes ; position et rayon du cercle en % de la largeur de l'image). Mitrale et tricuspide :
-// coupe 4 cavités ; aortique : coupe 5 cavités ; pulmonaire : coupe frontale passant par la voie d'éjection du VD.
-const LOCATOR = {
-  mitrale: { img: 'coupe-4-cavites', cut: 'Coupe 4 cavités', x: 64.5, y: 47.3, r: 11.9 },
-  tricuspide: { img: 'coupe-4-cavites', cut: 'Coupe 4 cavités', x: 36.1, y: 36.4, r: 11.5 },
-  aortique: { img: 'coupe-5-cavites', cut: 'Coupe 5 cavités', x: 51.8, y: 44.5, r: 11.9 },
-  pulmonaire: { img: 'coupe-frontale', cut: 'Coupe frontale (voie d’éjection du VD)', x: 50.8, y: 27.5, r: 13.0 },
-};
+// Repère des vues des valves (js/reperes.js) : petite coupe fixe du cœur qui bat, où la valve regardée est entourée ;
+// mitrale et tricuspide : coupe 4 cavités ; aortique : 5 cavités ; pulmonaire : frontale par la voie d'éjection du VD.
+// Séquence pré-rendue sur un cycle, calée sur l'instant du cœur principal ; fondu entre deux images voisines.
 const locator = document.createElement('figure');
 locator.className = 'locator hidden';
-locator.innerHTML = `<div class="loc-img"><img alt="" width="180" height="135"><svg viewBox="0 0 100 75" aria-hidden="true">
+locator.innerHTML = `<div class="loc-img" role="img"><i class="loc-a"></i><i class="loc-b"></i><svg viewBox="0 0 100 75" aria-hidden="true">
   <circle class="loc-halo"/><circle class="loc-ring"/></svg></div><figcaption></figcaption>`;
+const locA = locator.querySelector('.loc-a'), locB = locator.querySelector('.loc-b'), locRings = locator.querySelectorAll('circle');
+let locKey = null, locShown = -1;
 const sideStack = document.createElement('div');
 sideStack.className = 'side-stack';
 sideStack.append(locator, dopLegend);
 canvasWrap.appendChild(sideStack);
 function syncLocator() {
-  const L = state.valve && LOCATOR[state.valve], on = !!(L && !state.comparer); // écran partagé : place laissée aux deux vues
+  const L = state.valve && LOCATOR[state.valve];
   if (state.valve) sideStack.style.setProperty('--stack-top', `${valveShift().top + 10}px`); // sous le panneau des réglages
-  locator.classList.toggle('hidden', !on);
-  if (!on) return;
-  const img = locator.querySelector('img');
-  img.src = `assets/reperes/${L.img}.jpg`;
-  img.alt = `${L.cut} : ${VALVE_VIEWS[state.valve].title.toLowerCase()} entourée`;
-  for (const c of locator.querySelectorAll('circle')) { c.setAttribute('cx', L.x); c.setAttribute('cy', L.y * 0.75); c.setAttribute('r', L.r); }
+  locator.classList.toggle('hidden', !L);
+  locKey = L ? state.valve : null; locShown = -1;
+  if (!L) return;
+  for (const el of [locA, locB]) el.style.backgroundImage = `url(assets/reperes/${L.img}.jpg)`;
+  locator.querySelector('.loc-img').setAttribute('aria-label', `${L.cut} : ${VALVE_VIEWS[state.valve].title.toLowerCase()} entourée`);
+  for (const c of locRings) c.setAttribute('r', L.r);
   locator.querySelector('figcaption').textContent = L.cut;
+}
+// image k de la planche (8 × 4) dans un calque
+const locFrame = (el, k) => { el.style.backgroundPosition = `${(k % LOCATOR_COLS) / (LOCATOR_COLS - 1) * 100}% ${Math.floor(k / LOCATOR_COLS) / (LOCATOR_ROWS - 1) * 100}%`; };
+// phase : instant du cycle (0 → 1) du cœur principal
+function updateLocator(phase) {
+  if (!locKey) return;
+  const f = (((phase % 1) + 1) % 1) * LOCATOR_FRAMES, k0 = Math.floor(f) % LOCATOR_FRAMES, k1 = (k0 + 1) % LOCATOR_FRAMES, t = f - Math.floor(f);
+  const key = k0 * 1000 + Math.round(t * 50);
+  if (key === locShown) return;
+  locShown = key;
+  locFrame(locA, k0); locFrame(locB, k1); locB.style.opacity = t.toFixed(2);
+  const P = LOCATOR[locKey].pts, x = P[k0][0] + (P[k1][0] - P[k0][0]) * t, y = P[k0][1] + (P[k1][1] - P[k0][1]) * t;
+  for (const c of locRings) { c.setAttribute('cx', x.toFixed(2)); c.setAttribute('cy', (y * 0.75).toFixed(2)); }
 }
 function syncDoppler() {
   const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.doppler && v && v.group === 'valves');
-  doppler.setView(on ? state.valve : null, v?.variant);
+  doppler.setView(on ? state.valve : null, v?.variant, state.comparer);
   doppler.setActive(on);
   dopLegend.classList.toggle('hidden', !on);
 }
@@ -998,7 +1008,7 @@ function applyURL() {
   if (q.get('reperes') === '1') toggle('reperes', true);
   if (q.get('doppler') === '1') toggle('doppler', true);
   const sp = parseFloat(q.get('vitesse'));
-  if ([0.5, 0.25].includes(sp)) { beatSpeed = sp; document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('active', parseFloat(x.dataset.speed) === sp)); }
+  if (sp === 0.25) { beatSpeed = sp; document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('active', parseFloat(x.dataset.speed) === sp)); }
   const inst = parseFloat(q.get('instant')), pos = q.get('position');
   if (Number.isFinite(inst) || pos || q.get('battement') === 'pause') {
     toggle('battement', false);
@@ -1212,8 +1222,10 @@ function animate() {
   if (state.coupe && heart.stepValves(dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   bubbles.update(Math.min(dt, 0.1) * beatSpeed, state.battement ? beatPhase : frozenPhase ?? 0, state.battement);
   // Doppler : instant du cycle ; vue figée (valve ouverte ou fermée) : instant représentatif de cette position
+  // repère : même instant que le cœur ; vue figée (valve ouverte ou fermée) : instant représentatif de cette position
+  updateLocator(state.battement ? beatPhase : frozenPhase ?? restTime(state.valve && VALVE_VIEWS[state.valve]?.phase, valveOpen) / 940);
   doppler.update(state.battement ? Math.min(dt, 0.1) * beatSpeed : 0,
-    state.battement ? beatPhase * 940 : frozenPhase !== null ? frozenPhase * 940 : restTime(state.valve && VALVE_VIEWS[state.valve].phase, valveOpen), camera.position);
+    state.battement ? beatPhase * 940 : frozenPhase !== null ? frozenPhase * 940 : restTime(state.valve && VALVE_VIEWS[state.valve].phase, valveOpen), camera, renderer.domElement.height);
   controls.update();
   if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
   if (frame % 30 === 0) syncURL();

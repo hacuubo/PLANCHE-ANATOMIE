@@ -80,7 +80,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
   battement automatique dès l'ouverture, bouton « Pause » (le cœur reste à l'instant où on l'arrête).
 - **Cycle cardiaque** (barre du bas) : curseur sur un cycle de 940 ms, contraction des oreillettes, systole (de la
   fermeture mitrale à la fermeture aortique) et diastole marquées ; glisser arrête le cœur à cet instant, valves
-  comprises ; ralenti ½ et ¼.
+  comprises ; ralenti ¼.
 - **Repères** (bouton, à la demande) : côtés du patient, et dans les vues des valves noms des feuillets, des cuspides et
   de l'aorte. **Recentrer** : cadrage de départ de la vue en cours. **Partager** : lien de la vue en cours (valve, côté,
   variante, position ou instant du cycle, coupe, vitesse, repères, comparaison), tenu à jour dans la barre d'adresse et
@@ -97,25 +97,29 @@ une liste numérotée des structures, et une fiche explicative par structure.
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
   doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
   gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
-  **Repère** : en haut à droite (en bas à gauche sur téléphone), une petite coupe fixe où la valve regardée est
-  entourée — coupe 4 cavités pour la mitrale et la tricuspide, 5 cavités pour l'aortique, frontale passant par la voie
-  d'éjection du VD pour la pulmonaire (images pré-rendues depuis le modèle, cœur en diastole : `assets/reperes`,
-  ≈ 12 Ko chacune). Les variantes pathologiques ne sont construites qu'à leur premier affichage (démarrage plus court
+  **Repère** : en haut à droite (en bas à gauche sur téléphone), une petite coupe du cœur qui bat, sous un angle fixe,
+  où la valve regardée est entourée (le cercle suit la valve) — coupe 4 cavités pour la mitrale et la tricuspide,
+  5 cavités pour l'aortique, frontale passant par la voie d'éjection du VD pour la pulmonaire. Séquence de 32 images
+  pré-rendues depuis le modèle sur un cycle (`assets/reperes`, planches de 8 × 4, ≈ 270 Ko chacune ; positions du
+  cercle : `js/reperes.js`), calée sur l'instant du cœur principal (battement, ralenti, curseur, pause), fondu entre
+  deux images voisines. Les variantes pathologiques ne sont construites qu'à leur premier affichage (démarrage plus court
   d'≈ 0,3 s sur ordinateur, davantage sur téléphone).
   **Doppler couleur** (js/doppler.js) : les flux de la valve regardée, en volume dans le cœur qui bat, colorés comme à
   l'ETT en voie apicale (sonde à la pointe) : rouge vers la sonde, bleu en s'éloignant, plus clair quand c'est plus
   rapide ; limite de Nyquist ± 0,7 m/s, au-delà repliement ; jets de fuite et de rétrécissement turbulents en
   « mosaïque » (repliements, vert de la variance) près de l'orifice, couleur du sens du flux à la périphérie (jet
   libre : vitesse maximale sur le premier dixième, puis en 1/distance, profil en cloche) ; zone de convergence (PISA)
-  en amont de l'orifice, coquilles d'isovitesse v = Q / 2πr², changement de couleur à la coquille où v atteint la
+  en amont de l'orifice, sang aspiré de plus en plus vite (v = Q / 2πr²), changement de couleur là où v atteint la
   limite de Nyquist. Chronologie du cycle du modèle : fuites mitrale et tricuspide holosystoliques, fuite aortique
   holodiastolique décroissante, remplissage en ondes E et A, éjection maximale au premier tiers. Flux : remplissage
   mitral et tricuspide, éjection aortique et pulmonaire (laminaires, sans repliement) ; insuffisance aortique
   (centrale, ≈ 4 m/s), mitrale par prolapsus de P2 (jet excentré vers l'avant, opposé au feuillet qui prolabe,
   ≈ 5 m/s), tricuspide fonctionnelle (centrale, ≈ 2,8 m/s) ; rétrécissements aortique (≈ 4,5 m/s), mitral
-  (≈ 1,9 m/s, dôme de convergence côté oreillette) et pulmonaire. Jets entiers (ils sortent de la cavité ouverte
-  vers l'observateur), parties cachées par les tissus visibles en transparence ; en écran partagé, flux de chaque
-  moitié. Légende sur le côté (lien de la vue : `doppler=1`).
+  (≈ 1,9 m/s, dôme de convergence côté oreillette) et pulmonaire. Rendu en **jets de fumée** : bouffées floues et
+  grumeleuses qui naissent à l'orifice, s'élargissent, tourbillonnent et s'estompent, chacune colorée par sa vitesse
+  réelle ; elles avancent bien moins vite que le sang (quelques dixièmes de seconde pour parcourir le jet) pour que le
+  mouvement se lise. Jets entiers (ils sortent de la cavité ouverte vers l'observateur), parties cachées par les tissus
+  visibles en transparence ; cœur arrêté : nuage établi à cet instant ; en écran partagé, flux de chaque moitié. Légende sur le côté (lien de la vue : `doppler=1`).
   - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif (calcifié au stade évolué : amas
     calcaires sur toute la cuspide jusqu'aux commissures, bord libre épaissi, festonné et rétracté par endroits,
     commissures libres, petit orifice irrégulier), insuffisance par dilatation de la

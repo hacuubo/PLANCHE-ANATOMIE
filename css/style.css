@@ -255,8 +255,9 @@ button { font: inherit; color: inherit; }
 /* colonne de droite des vues des valves : repère (coupe où la valve est entourée), légende du Doppler */
 .side-stack { position: absolute; right: 14px; top: var(--stack-top, 14px); z-index: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: none; }
 .locator { margin: 0; width: 180px; background: rgba(255, 253, 249, .94); border: 1px solid var(--line-strong); border-radius: 12px; padding: 5px; }
-.loc-img { position: relative; border-radius: 8px; overflow: hidden; line-height: 0; }
-.loc-img img { width: 100%; height: auto; display: block; }
+.loc-img { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4 / 3; }
+.loc-img i { position: absolute; inset: 0; background-size: 800% 400%; background-repeat: no-repeat; } /* planche de 8 × 4 images */
+.loc-b { opacity: 0; }
 .loc-img svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .loc-halo { fill: none; stroke: rgba(255, 255, 255, .9); stroke-width: 3.2; }
 .loc-ring { fill: none; stroke: var(--accent); stroke-width: 1.6; }
