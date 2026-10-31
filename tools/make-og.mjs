@@ -2,7 +2,8 @@
 // 1. Fait dessiner le cœur en coupe 5 cavités par l'appli elle-même (Edge sans interface, tools/lib/edge.mjs),
 //    interface masquée et fond transparent, en haute densité (fenêtre portrait : cœur entier dans le cadre).
 // 2. Compose la carte : fond studio, logo (icons/icon.svg sans sa tuile), titre, boutons Coupe / Valves /
-//    Circulation, adresse du site ; le cœur est recadré sur ses pixels opaques et placé à droite.
+//    Circulation, adresse du site ; le cœur, recadré sur ses pixels opaques, est posé entier à droite dans un halo
+//    de lumière de studio, ses vaisseaux fantômes débordant du cadre.
 // Usage : servir le dépôt (npx --yes http-server . -p 8765 -c-1) puis node tools/make-og.mjs [adresse locale]
 import { readFileSync, writeFileSync } from 'node:fs';
 import { openBrowser, sleep } from './lib/edge.mjs';
@@ -18,7 +19,7 @@ try {
   // 1. rendu du cœur
   const app = await nav.page(700, 1000, 2); // en portrait, l'appli recule la caméra : le cœur entre en entier
   await app.goto(APP);
-  await app.waitFor('document.querySelector("#scene.ready")');
+  await app.waitFor('document.querySelector("#scene.ready")', 240000); // rendu logiciel : le chargement peut être long
   await app.eval('document.querySelector("[data-toggle=coupe]").click()');
   await sleep(9000);
   await app.eval(`(() => {
@@ -39,20 +40,26 @@ try {
   body { margin: 0; width: 1200px; height: 630px; overflow: hidden; position: relative; color: #14213a;
     font-family: 'Source Sans 3', sans-serif;
     background: radial-gradient(110% 100% at 72% 50%, #f6f8fb 0%, #e3e9f0 50%, #cdd7e3 100%); }
-  .coeur { position: absolute; right: 30px; top: 35px; width: 560px; height: 560px; }
+  .halo { position: absolute; left: 560px; top: -80px; width: 760px; height: 760px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255,255,255,.85) 0%, rgba(255,255,255,.35) 45%, rgba(255,255,255,0) 100%); }
+  .ombre { position: absolute; left: 700px; top: 548px; width: 360px; height: 60px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(20,33,58,.18), rgba(20,33,58,0)); }
+  .coeur { position: absolute; left: 600px; top: 10px; width: 600px; height: 600px; }
   .coeur img { position: absolute; }
-  .texte { position: absolute; left: 64px; top: 64px; bottom: 64px; width: 560px; display: flex; flex-direction: column; gap: 28px; }
+  .texte { position: absolute; left: 64px; top: 64px; bottom: 64px; width: 540px; display: flex; flex-direction: column; gap: 28px; }
   .marque { display: flex; align-items: center; gap: 12px; font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 28px; }
-  h1 { margin: 0; font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 58px; line-height: 1.03; letter-spacing: -1px; }
+  h1 { margin: 0; font-family: 'Source Serif 4', serif; font-weight: 600; font-size: 56px; line-height: 1.05; letter-spacing: -1px; }
   .boutons { display: flex; gap: 8px; }
   .boutons span { border-radius: 999px; padding: 9px 18px; font-size: 17px; font-weight: 600; background: #fff; border: 1px solid #b9c4d3; }
   .boutons span:first-child { background: #14213a; border-color: #14213a; color: #fff; }
   .site { margin-top: auto; font-size: 22px; font-weight: 600; color: #34405a; }
 </style></head><body>
+  <div class="halo"></div>
+  <div class="ombre"></div>
   <div class="coeur"><img id="rendu" alt="" src="data:image/png;base64,${rendu}"></div>
   <div class="texte">
-    <div class="marque">${marque}Planche cœur</div>
-    <h1>Le cœur en 3D, pour l’expliquer aux patients.</h1>
+    <div class="marque">${marque}Cœur 3D</div>
+    <h1>Montrez-leur leur cœur.</h1>
     <div class="boutons"><span>Coupe</span><span>Valves</span><span>Circulation</span></div>
     <div class="site">${SITE}</div>
   </div>
@@ -67,10 +74,11 @@ try {
       for (let y = 0; y < c.height; y += 2) for (let x = 0; x < c.width; x += 2)
         if (data[(y * c.width + x) * 4 + 3] > 230) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       if (x1 - x0 < 200 || y1 - y0 < 200) { window.pret = "vide"; return; } // contexte WebGL perdu : rendu vide
-      const k = 540 / Math.max(x1 - x0, y1 - y0);
+      // cœur entier dans la carte : hauteur opaque calée sur 500 px, centré sur la moitié droite
+      const k = 500 / (y1 - y0);
       img.style.width = c.width * k + 'px';
       img.style.left = (280 - (x0 + x1) / 2 * k) + 'px';
-      img.style.top = (280 - (y0 + y1) / 2 * k) + 'px';
+      img.style.top = (300 - (y0 + y1) / 2 * k) + 'px';
       window.pret = true;
     });
   </script>

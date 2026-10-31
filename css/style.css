@@ -250,9 +250,21 @@ button { font: inherit; color: inherit; }
 @media (max-width: 900px) {
   .only-mobile { display: inline-flex; }
   .layout { grid-template-columns: 1fr; }
-  .menu { position: absolute; top: 0; right: 0; bottom: 0; width: min(300px, 82vw); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(20, 33, 58, .16);
-    transform: translateX(105%); transition: transform .25s ease; z-index: 12; }
+  /* tiroir compact : une carte étroite en haut à droite, à la hauteur de son contenu, qui laisse voir le cœur */
+  .menu { position: absolute; top: 8px; right: 8px; bottom: auto; max-height: calc(100% - 140px); width: min(236px, 66vw); gap: 6px; padding: 8px 10px 12px;
+    border: 1px solid var(--line); border-radius: 8px; box-shadow: -6px 6px 22px rgba(20, 33, 58, .18);
+    transform: translateX(calc(100% + 16px)); transition: transform .25s ease; z-index: 12; }
   .menu.open { transform: none; }
+  .menu-top { min-height: 34px; }
+  .menu-title { font-size: 16px; }
+  .menu-back { min-height: 34px; padding: 5px 9px 5px 5px; font-size: 13px; }
+  .menu-page { gap: 6px; }
+  .mtile { min-height: 0; padding: 11px 12px; }
+  .mtile b { font-size: 15.5px; }
+  .mtile small { display: none; }
+  .mitem { min-height: 40px; padding: 8px 12px; font-size: 14px; }
+  .mlabel { margin-top: 4px; font-size: 11px; }
+  .menu .seg button { min-height: 38px; }
   .panel {
     position: absolute; left: 0; right: 0; bottom: 0; height: 62%;
     border-left: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; box-shadow: 0 -6px 20px rgba(43,36,32,.10);

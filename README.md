@@ -1,4 +1,4 @@
-# Planche d'anatomie — Le cœur
+# Cœur 3D — le cœur en 3D, pour l'expliquer aux patients
 
 Application web progressive (PWA) destinée à expliquer aux patients l'anatomie du cœur
 et de ses vaisseaux, à la manière d'une planche d'atlas : un modèle 3D interactif,
@@ -78,7 +78,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
   mouvement ; valves et cordages côté processeur, à l'identique.
 - **Modèle visuel** : la scène, sans texte, légende ni nom de structure ; coronaires toujours affichées ; battement
   automatique dès l'ouverture, bouton « Pause » (le cœur reste à l'instant où on l'arrête).
-- **Menu** (à droite ; tiroir sur téléphone, bouton « Menu » en haut) : les rubriques en rectangles de couleur — **Plan
+- **Menu** (à droite ; sur téléphone, une carte compacte en haut à droite, ouverte par le bouton « Menu » et refermée en touchant la scène à côté) : les rubriques en rectangles de couleur — **Plan
   en coupe**, **Valves**, **FOP**, **Coronaires** ; un clic sur l'une fait place à ses sous-rubriques (coupe 5 cavités,
   frontale et profondeur ; la liste des valves, puis pour la valve choisie son état, la vue, la position, le Doppler ;
   les trois vues du FOP ; normale ou infarctus), une flèche « Retour » ramène en arrière (de la valve à la liste des

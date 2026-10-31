@@ -925,6 +925,14 @@ menuEl.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', 
 }));
 // téléphone : le menu se referme quand on choisit une vue (il recouvre la scène)
 menuEl.addEventListener('click', (e) => { if (narrow.matches && e.target.closest('[data-close], [data-variant]')) menuEl.classList.remove('open'); });
+// téléphone : toucher hors du menu le referme, sans tourner le cœur ni actionner ce qui est dessous
+let swallowClick = false;
+document.addEventListener('pointerdown', (e) => {
+  if (!narrow.matches || !menuEl.classList.contains('open') || menuEl.contains(e.target) || e.target.closest('#panel-toggle')) return;
+  menuEl.classList.remove('open'); e.stopPropagation(); e.preventDefault();
+  swallowClick = true; setTimeout(() => { swallowClick = false; }, 700);
+}, true);
+document.addEventListener('click', (e) => { if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
 
 /* ─────────── étiquettes ─────────── */
 const labels = {};
