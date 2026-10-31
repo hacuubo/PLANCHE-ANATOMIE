@@ -6,7 +6,8 @@
 //     (plancher mince, septum primum), limbe en fer à cheval (septum secundum), abouchement des veines caves ;
 //   - « FOP · test aux bulles » : coupe bicave des deux oreillettes, comme en ETO (≈ 90–110°, oreillette gauche en
 //     haut, veine cave supérieure à droite), postérieure : elle passe par la fosse ovale (plancher, limbe) et par le
-//     tunnel du FOP à son bord antéro-supérieur. Schéma du test aux bulles : le sérum salé agité arrive par les veines
+//     tunnel du FOP, au bord supérieur de la fosse, dans toute sa longueur (fente entre le rabat du septum primum et
+//     le septum secundum, js/heart.js). Schéma du test aux bulles : le sérum salé agité arrive par les veines
 //     caves et opacifie l'oreillette droite ; à chaque cycle, quand la pression de l'oreillette droite dépasse celle
 //     de la gauche (contraction auriculaire, début de systole ; Langholz 1991), des bulles passent par le tunnel du FOP
 //     dans l'oreillette gauche. Test positif : bulles dans l'OG dans les 3 cycles qui suivent l'opacification de l'OD
@@ -50,7 +51,8 @@ export function buildFOPViews(heart) {
   });
   const fop = make('fop', 'FOP · test aux bulles', bicave(), true);
   // fermeture percutanée (prothèse à double disque) : même coupe ; animation de la mise en place (js/pfo-closure.js)
-  const fermeture = make('fermeture', 'Fermeture du FOP', bicave(), true);
+  // (cadrage rapproché : la prothèse sur la cloison)
+  const fermeture = make('fermeture', 'Fermeture du FOP', { ...bicave(), center: T1.clone().addScaledVector(fo.n, -0.3), dist: 10 }, true);
   return { fosse, fop, fermeture };
 }
 

@@ -630,11 +630,7 @@ const procCaption = (steps) => (k, text) => {
 };
 const tavi = createTaviAnimation(heart, VALVE_VIEWS.aortique, {
   caption: procCaption(TAVI_STEPS),
-  finish() { // dernière étape : directement la vue chirurgicale, cœur qui bat, la nouvelle valve fonctionne
-    setValveSide('C', true);
-    if (!state.battement) toggle('battement', true);
-    syncTaviBtn(); syncDoppler(); syncLocator();
-  },
+  finish() { taviToSurgical(); }, // dernière étape : vers la vue chirurgicale, sans coupure
 });
 // Animation de la fermeture du FOP (js/pfo-closure.js) : lancée à l'ouverture de la vue « Fermeture du FOP » (coupe
 // bicave), cœur arrêté ; à la fin, le cœur bat et le test aux bulles de contrôle est négatif
@@ -673,6 +669,30 @@ function stopClosure() {
   syncTaviBtn();
   if (wasPlaying && state.valve === 'fermeture') runSteps([{ dur: 0.8, to: () => closeCam(VALVE_VIEWS.fermeture) }], () => { restPose(); renderer.shadowMap.needsUpdate = true; });
 }
+// Fin de l'animation de la TAVI : de la vue de la crosse (L) à la vue chirurgicale (C), sans coupure. La caméra tourne
+// autour de la valve ; le plan de coupe tourne avec elle, face au regard, juste devant la valve (de la coupe de la crosse,
+// qui passe par la valve, à la coupe chirurgicale, au-dessus des cuspides) : la valve reste dégagée, le ventricule et
+// l'aorte ouverts se referment peu à peu. La prothèse de l'animation reste à l'image jusqu'à l'arrivée, puis la valve
+// finale (même forme) prend sa place.
+function taviToSurgical() {
+  if (trans) { pendingAction = taviToSurgical; return; }
+  const v = VALVE_VIEWS.aortique, sL = v.sides.L, sC = v.sides.C;
+  const done = () => { tavi.release(); if (!state.battement) toggle('battement', true); syncTaviBtn(); syncDoppler(); syncLocator(); };
+  if (state.valve !== 'aortique' || valveSide !== 'L') { done(); return; }
+  // plans u·x = h (u : vers l'observateur), placés à δ devant le centre visé (cible de la caméra)
+  const uL = sL.cut.normal.clone().negate(), uC = sC.cut.normal.clone().negate(), hL = sL.cut.def, hC = sC.cut.def;
+  const t0 = controls.target.clone(), t1 = closeCam(v, 'C').target, dL = hL - uL.dot(t0), dC = hC - uC.dot(t1);
+  const qd = new THREE.Quaternion().setFromUnitVectors(uL, uC), q = new THREE.Quaternion(), u = new THREE.Vector3();
+  const i0 = INTERIOR_OFF['v-aortique-L'] ?? 0.25, i1 = INTERIOR_OFF['v-aortique-C'] ?? 1.5;
+  runSteps([{ dur: 1.9, to: () => closeCam(v, 'C'), onUpdate: (e) => {
+    q.identity().slerp(qd, e); u.copy(uL).applyQuaternion(q);
+    interiorOff = i0 + (i1 - i0) * e;
+    cutPlane.normal.copy(u).negate(); setCutDepth(u.dot(controls.target) + dL + (dC - dL) * e);
+  } }], () => {
+    valveSide = 'C'; valveCut(v, 0); syncValveUI(); viewOffset();
+    done(); restPose(); renderer.shadowMap.needsUpdate = true;
+  });
+}
 function startTavi() {
   if (trans) { pendingAction = startTavi; return; }
   if (state.comparer) setCompare(false);
@@ -684,7 +704,7 @@ function startTavi() {
   restPose();
 }
 function stopTavi() {
-  if (!tavi.playing) return;
+  if (!tavi.playing && !tavi.held) return;
   tavi.stop();
   const v = VALVE_VIEWS.aortique;
   if (v.active) heart.useValve(v.heartValveId, v.valveFor(v.variant)); // valve de la variante choisie
@@ -810,22 +830,15 @@ function goValve(key, after) {
   runSteps(steps, () => { syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true; after?.(); });
 }
 // Change de côté (C ↔ V) : la coupe remonte, la caméra fait le tour de la valve par le côté, la coupe redescend
-// direct : passage immédiat (fondu bref), sans le recul de la transition — fin de l'animation de la TAVI
-function setValveSide(side, direct = false) {
-  if (trans) { pendingAction = () => setValveSide(side, direct); return; }
+function setValveSide(side) {
+  if (trans) { pendingAction = () => setValveSide(side); return; }
   if (side === valveSide) return;
-  if (side !== 'L' && tavi.playing) { tavi.stop(); heart.useValve('valve-aortique', VALVE_VIEWS.aortique.valveFor(VALVE_VIEWS.aortique.variant)); syncTaviBtn(); }
+  if (side !== 'L' && (tavi.playing || tavi.held)) { tavi.stop(); heart.useValve('valve-aortique', VALVE_VIEWS.aortique.valveFor(VALVE_VIEWS.aortique.variant)); syncTaviBtn(); }
   const v = state.valve && VALVE_VIEWS[state.valve], from = valveSide;
   valveSide = side;
   syncValveUI();
   if (!v) return;
-  if (direct) {
-    const c = closeCam(v); applyCam(c, c, 1); controls.update();
-    valveCut(v, 0); viewOffset(); restPose(); renderer.shadowMap.needsUpdate = true;
-    if (!reduced.matches) renderer.domElement.animate?.([{ opacity: 0.2 }, { opacity: 1 }], { duration: 700, easing: 'ease-out' });
-    return;
-  }
-  const a = sideOf(v, from), mid =() => ({ target: a.center.clone().lerp(sideOf(v, side).center, 0.5), dir: new THREE.Vector3().crossVectors(a.up, a.camDir).normalize(), dist: a.dist * 1.9 * portrait(), up: a.up.clone() });
+  const a = sideOf(v, from), mid = () => ({ target: a.center.clone().lerp(sideOf(v, side).center, 0.5), dir: new THREE.Vector3().crossVectors(a.up, a.camDir).normalize(), dist: a.dist * 1.9 * portrait(), up: a.up.clone() });
   runSteps([
     { dur: 1.0, to: mid, onUpdate: (e) => valveCut(v, FAR * smooth01(0, 0.8, e), from) },
     { dur: 1.2, to: () => closeCam(v), onUpdate: (e) => valveCut(v, FAR * (1 - smooth01(0.2, 0.95, e))), onEnd: () => viewOffset() },
@@ -850,7 +863,7 @@ function syncValveUI() {
   canvasWrap.classList.toggle('is-valve', !!v);
   document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v || v.compare === false);
   document.querySelector('[data-toggle="doppler"]').classList.toggle('hidden', !v || !isValve);
-  if (tavi.playing && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
+  if ((tavi.playing || tavi.held) && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
   if (closure.shown && state.valve !== 'fermeture') stopClosure();
   syncTaviBtn();
   syncCutOnly();
@@ -935,8 +948,12 @@ const valveMarks = {};
   if (fo) {
     valveMarks.fosse = [mark('Fosse ovale', fo.F.clone().addScaledVector(fo.n, -0.2)), mark('Limbe (septum secundum)', fo.F.clone().addScaledVector(fo.up, fo.a * 1.25).addScaledVector(fo.n, -0.3)),
       mark('Veine cave supérieure', fo.svc, 'struct'), mark('Veine cave inférieure', fo.ivc, 'struct')];
-    valveMarks.fop = [mark('Oreillette droite', fo.ra, 'struct'), mark('Oreillette gauche', fo.la, 'struct'), mark('FOP', fo.tunnel[1].clone().addScaledVector(fo.up, 0.4))];
-    valveMarks.fermeture = [mark('Oreillette droite', fo.ra, 'struct'), mark('Oreillette gauche', fo.la, 'struct'), mark('Veine cave inférieure', fo.ivc, 'struct')];
+    valveMarks.fop = [mark('Oreillette droite', fo.ra, 'struct'), mark('Oreillette gauche', fo.la, 'struct')];
+    // anatomie du FOP (coupe bicave) : rabat du septum primum côté OG, septum secundum côté OD, tunnel entre les deux
+    const anat = () => [mark('Septum primum (rabat)', fo.tunnel[1].clone().addScaledVector(fo.n, 0.55)), mark('Septum secundum (limbe)', fo.tunnel[1].clone().addScaledVector(fo.n, -0.6)),
+      mark('Tunnel du FOP', fo.tunnel[1].clone().addScaledVector(fo.tunnelDir, 0.95).addScaledVector(fo.n, 0.15))].map((o) => Object.assign(o, { userData: { anat: true } }));
+    valveMarks.fop.push(...anat());
+    valveMarks.fermeture = [mark('Oreillette droite', fo.ra, 'struct'), mark('Oreillette gauche', fo.la, 'struct'), mark('Veine cave inférieure', fo.ivc, 'struct'), ...anat()];
   }
   const inf = heart.infarct;
   valveMarks.coronaires = [];
@@ -949,7 +966,9 @@ const valveMarks = {};
 function syncMarks() {
   for (const [key, list] of Object.entries(valveMarks)) {
     const on = state.reperes && state.valve === key && !trans && !state.comparer; // pas de noms en écran partagé
-    list.forEach((o) => { o.visible = on && (!o.userData.variant || o.userData.variant === VALVE_VIEWS[key].variant); });
+    // animation de la fermeture du FOP : noms de l'anatomie d'office pendant l'étape qui la présente
+    const anat = key === 'fermeture' && state.valve === key && closure.playing && closure.step === 0;
+    list.forEach((o) => { o.visible = !!((on || (anat && o.userData.anat)) && (!o.userData.variant || o.userData.variant === VALVE_VIEWS[key].variant)); });
   }
 }
 

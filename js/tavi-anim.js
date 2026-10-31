@@ -8,8 +8,8 @@
 //      l'armature se déploie et plaque la valve native contre la paroi ;
 //   5. le ballonnet est dégonflé, puis retiré avec le cathéter ; la prothèse reste fixée par sa force radiale ;
 //   6. le guide est retiré ;
-//   7. passage direct à la vue chirurgicale (sans recul de la caméra) : la nouvelle valve s'ouvre et se ferme à chaque
-//      battement.
+//   7. sans coupure, la caméra tourne de la vue de la crosse à la vue chirurgicale pendant que le plan de coupe pivote
+//      avec elle (js/app.js) ; puis la nouvelle valve s'ouvre et se ferme à chaque battement.
 // Matériel : guide de ≈ 0,9 mm, cathéter de ≈ 5,5 mm (14 F), cône d'introduction, bioprothèse sertie à ≈ 7 mm puis
 // déployée à la taille de l'anneau (armature de la valve finale, js/aortic-view.js). Le cœur est arrêté en diastole
 // pendant la mise en place (pose sans déformation : le matériel et la valve sertie sont placés au repos).
@@ -122,7 +122,7 @@ export function createTaviAnimation(heart, view, hooks) {
     if (b.bal.visible) b.place(b.bal, uc, blend);
     // armature : sertie sur le ballonnet jusqu'au gonflement, puis déployée et fixe sur l'anneau
     const deployed = ph(3) > 0;
-    b.rig.visible = ph(1) > 0 && k < 6 && (deployed || uc > -h);
+    b.rig.visible = ph(1) > 0 && (deployed || uc > -h);
     if (deployed) { b.rig.position.copy(built.kit.center); b.rig.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), built.kit.axis); }
     else if (b.rig.visible) b.place(b.rig, uc, blend, true);
     const s = crimp + (1 - crimp) * e;
@@ -140,7 +140,9 @@ export function createTaviAnimation(heart, view, hooks) {
     const k = built.kit;
     return { center: k.annulus.clone().addScaledVector(k.axis, a[1] + (b[1] - a[1]) * f), dist: a[2] * Math.pow(b[2] / a[2], f) };
   };
-  const native = (e, k) => (k >= 6 ? 'post' : e > 0.35 ? 'mid' : 'pre');
+  // valve native ; la valve finale (post) n'est posée qu'à la fin du passage à la vue chirurgicale (release)
+  const native = (e) => (e > 0.35 ? 'mid' : 'pre');
+  let held = false; // fin de l'animation : prothèse de l'animation gardée à l'image jusqu'à release()
   let shownValve = null;
   const api = {
     get playing() { return playing; },
@@ -155,16 +157,23 @@ export function createTaviAnimation(heart, view, hooks) {
       api.syncValve(0, 0);
       hooks.caption(0, TAVI_STEPS[0].text);
     },
-    syncValve(e, k) {
-      const which = native(e, k);
+    syncValve(e) {
+      const which = native(e);
       if (which === shownValve) return;
       shownValve = which;
       heart.useValve(view.heartValveId, built.kit[which]);
     },
     // arrêt (autre vue, autre variante) : matériel retiré, aorte refermée ; la valve de la variante est remise par l'appelant
+    get held() { return held; },
+    // fin du passage à la vue chirurgicale : matériel retiré, aorte refermée, valve finale (elle prend la même place)
+    release() {
+      if (!built || !held) return;
+      held = false; built.group.visible = false; heart.rootUniforms.uOpenAo.value = 0;
+      shownValve = 'post'; heart.useValve(view.heartValveId, built.kit.post);
+    },
     stop() {
       if (!built) return;
-      playing = false; step = -1;
+      playing = false; step = -1; held = false;
       built.group.visible = false;
       heart.rootUniforms.uOpenAo.value = 0;
       hooks.caption(-1, '');
@@ -182,7 +191,7 @@ export function createTaviAnimation(heart, view, hooks) {
       api.syncValve(e, k);
       if (k !== step) {
         step = k; hooks.caption(k, TAVI_STEPS[k].text);
-        if (k === 6) { built.group.visible = false; heart.rootUniforms.uOpenAo.value = 0; playing = false; tail = 0; hooks.finish(); }
+        if (k === 6) { playing = false; held = true; tail = 0; hooks.finish(); }
       }
     },
   };

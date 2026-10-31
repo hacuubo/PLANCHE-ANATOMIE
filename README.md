@@ -135,7 +135,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
     cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
     ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement
     (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;
-    puis directement la vue chirurgicale (bref fondu), la nouvelle valve bat. Caméra : plan large sur la crosse,
+    puis, sans coupure, la caméra tourne vers la vue chirurgicale pendant que le plan de coupe tourne avec elle, face au
+    regard, juste devant la valve (la valve reste dégagée, le ventricule et l'aorte ouverts se referment peu à peu) ; à
+    l'arrivée, la nouvelle valve bat. Caméra : plan large sur la crosse,
     rapproché sur la valve du positionnement jusqu'au retrait du guide ; légende de chaque étape (7) au-dessus du
     cycle. Trajet : ligne centrale de la lumière aortique (barycentres successifs, lissée), puis chambre de chasse et
     ventricule gauche par le milieu de sa cavité, dans la moitié gardée par la coupe (barycentres de tranches de la
@@ -158,19 +160,29 @@ une liste numérotée des structures, et une fiche explicative par structure.
 - **FOP** (js/special-views.js) : **fosse ovale normale** vue de l'oreillette droite (paroi libre retirée) — fosse
   placée sur la zone la plus mince du septum (19 × 16 mm, plancher mince du septum primum, limbe en fer à cheval ouvert
   vers le bas, Naqvi 2018) ; **FOP · test aux bulles** : coupe bicave comme en ETO (OG en haut, veine cave supérieure à
-  droite), postérieure : elle passe par la fosse ovale (plancher et limbe en coupe) et par le tunnel, au bord supérieur
-  de la fosse, un peu en avant (≈ 3 mm, Goel 2009) ; 1 280 bulles du sérum salé agité arrivent
+  droite), postérieure : elle passe par la fosse ovale (plancher et limbe en coupe) et par le FOP dans toute sa longueur.
+  FOP (Goel 2009 ; Hara 2005) : le septum primum (plancher de la fosse) se prolonge côté OG en un rabat mince (≈ 0,8 mm,
+  pâle) qui chevauche le septum secundum (limbe) au-delà du bord supérieur de la fosse, vers la veine cave supérieure,
+  sans y être soudé ; entre les deux, une fente plate (le tunnel : ≈ 12 mm de long, ≈ 9 mm de large, ≈ 2,4 mm de haut),
+  ouverte dans l'OD par la fosse et dans l'OG au bord libre du rabat (trou dans l'endocarde de l'OG) ; fente et rabat
+  creusent la tranche du septum, qui montre en coupe, de l'OD à l'OG, le limbe, la fente, le rabat. Niveaux mesurés sur
+  l'endocarde de l'OG. Noms (Repères) : septum primum (rabat), septum secundum (limbe), tunnel du FOP. 1 280 bulles du
+  sérum salé agité arrivent
   par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
   (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015) ; **Fermeture du FOP** (js/pfo-closure.js) : même
   coupe, animation de la fermeture percutanée lancée à l'ouverture de l'onglet (bouton « Voir la fermeture » pour la
-  revoir, « Arrêter ») — cœur arrêté en diastole ; gaine bleue (≈ 8 F) qui remonte la veine cave inférieure, traverse
-  l'OD, passe par le tunnel et débouche dans l'OG ; prothèse à double disque de type Amplatzer PFO Occluder 25 mm
-  (disque gauche 18 mm, disque droit 25 mm, treillis tressé en spirale sur tissu de polyester, col court, moyeux) :
-  disque gauche poussé hors de la gaine et ouvert dans l'OG, tiré contre la cloison ; gaine reculée dans l'OD, disque
-  droit libéré de l'autre côté ; les deux disques centrés sur le milieu du tunnel, chacun contre une face de la cloison
-  (mesurée par lancer de rayons), le col à travers le tunnel ; largage (câble dévissé, retiré avec la gaine), tunnel
-  refermé. Caméra : coupe bicave pour la montée de la gaine, puis inclinée côté OG (disque gauche de trois quarts),
-  côté OD (disque droit), retour à la coupe ; légende de chaque étape (6). Fin : cœur qui bat, la prothèse suit la
+  revoir, « Arrêter ») — cœur arrêté en diastole ; d'abord le FOP en gros plan, avec ses noms ; gaine bleue (≈ 8 F) qui
+  remonte la veine cave inférieure, traverse l'OD, aborde la fosse par en dessous, suit le tunnel et débouche dans l'OG ;
+  prothèse à double disque de type Amplatzer PFO Occluder 25 mm (disque gauche 18 mm, disque droit 25 mm, treillis
+  tressé en spirale sur tissu de polyester, col court, moyeux) : disque gauche poussé hors de la gaine et ouvert dans
+  l'OG, au point choisi pour que le disque ouvert reste à distance des parois (≥ 2 mm ; distance signée à l'endocarde
+  de l'OG), tiré contre la cloison ; gaine reculée dans l'OD, disque droit libéré de l'autre côté ; le rabat est pris
+  contre le limbe et la fente s'écrase à mesure que le disque droit s'applique ; les deux disques centrés sur le milieu
+  du tunnel, chacun contre une face de la cloison (lancer de rayons) et conformés à son relief comme un treillis souple
+  (recul de leurs points le long de leur axe, plafonné à 3,5 mm : légère cuvette du disque droit sur le bombement
+  antérieur de la cloison) ; largage (câble dévissé, retiré avec la gaine). Caméra : gros plan sur le tunnel, coupe
+  bicave pour la montée de la gaine, puis inclinée côté OG (disque gauche de trois quarts), côté OD (disque droit),
+  retour à la coupe, rapprochée sur la prothèse ; légende de chaque étape (7). Fin : cœur qui bat, la prothèse suit la
   cloison, test aux bulles de contrôle négatif (les bulles restent à droite).
 - **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de
   l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),
