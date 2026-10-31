@@ -10,7 +10,9 @@
 //     caves et opacifie l'oreillette droite ; à chaque cycle, quand la pression de l'oreillette droite dépasse celle
 //     de la gauche (contraction auriculaire, début de systole ; Langholz 1991), des bulles passent par le tunnel du FOP
 //     dans l'oreillette gauche. Test positif : bulles dans l'OG dans les 3 cycles qui suivent l'opacification de l'OD
-//     (Silvestry, ASE/SCAI 2015).
+//     (Silvestry, ASE/SCAI 2015) ;
+//   - « Fermeture du FOP » : même coupe bicave ; animation de la fermeture percutanée par une prothèse à double disque
+//     (js/pfo-closure.js).
 // Coronaires (vue de face du cœur qui bat) :
 //   - « Normale » ;
 //   - « Infarctus (IVA) » : IVA occluse à partir de l'IVA moyenne (après la 1re diagonale), aval assombri (pas de
@@ -41,12 +43,15 @@ export function buildFOPViews(heart) {
   const cav = fo.svc.clone().sub(fo.ivc); cav.addScaledVector(fo.n, -cav.dot(fo.n)).normalize();
   const fwd = new THREE.Vector3().crossVectors(fo.n, cav).normalize(); // vu ainsi : OG en haut, VCS à droite
   const T1 = fo.tunnel[1];
-  const fop = make('fop', 'FOP · test aux bulles', {
+  const bicave = () => ({
     camDir: fwd.clone().negate(), center: T1.clone().addScaledVector(fo.n, -0.6), dist: 13, up: fo.n.clone(),
     cut: { normal: fwd.clone(), def: -fwd.dot(T1) }, interior: 0.6,
     orient: 'Coupe bicave, comme en ETO · <b>oreillette gauche en haut, veine cave supérieure à droite</b>',
-  }, true);
-  return { fosse, fop };
+  });
+  const fop = make('fop', 'FOP · test aux bulles', bicave(), true);
+  // fermeture percutanée (prothèse à double disque) : même coupe ; animation de la mise en place (js/pfo-closure.js)
+  const fermeture = make('fermeture', 'Fermeture du FOP', bicave(), true);
+  return { fosse, fop, fermeture };
 }
 
 export function buildCoronaryView(heart) {

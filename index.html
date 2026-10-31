@@ -61,7 +61,7 @@
           <span class="tool-group" aria-label="Modes">
             <button class="tool mode" data-toggle="coupe" type="button" aria-pressed="false" title="Ouvrir le cœur pour voir les cavités"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="11.5" r="2"/><circle cx="4.5" cy="4.5" r="2"/><path d="M6 6l8 7M6 10l8-7"/></svg>Coupe</button>
             <button class="tool mode" data-toggle="valves" type="button" aria-pressed="false" title="Voir chaque valve en gros plan, côté chirurgien ou côté ventricule : normale ou malade"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 8V2.2M8 8l5 2.9M8 8l-5 2.9"/></svg>Valves</button>
-            <button class="tool mode" data-toggle="fop" type="button" aria-pressed="false" title="Foramen ovale perméable : fosse ovale vue de l'oreillette droite, test aux bulles"><svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="4.5" ry="5.5"/><path d="M5 4.5c2-2 4-2 6 0"/><circle cx="12.5" cy="12.5" r="1.1"/><circle cx="3.5" cy="12" r="0.9"/></svg>FOP</button>
+            <button class="tool mode" data-toggle="fop" type="button" aria-pressed="false" title="Foramen ovale perméable : fosse ovale vue de l'oreillette droite, test aux bulles, fermeture percutanée"><svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="4.5" ry="5.5"/><path d="M5 4.5c2-2 4-2 6 0"/><circle cx="12.5" cy="12.5" r="1.1"/><circle cx="3.5" cy="12" r="0.9"/></svg>FOP</button>
             <button class="tool mode" data-toggle="coro" type="button" aria-pressed="false" title="Artères coronaires : cœur normal, infarctus dans le territoire de l'IVA"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14C3 10.5 1.5 8 1.5 5.5 1.5 3.5 3 2 5 2c1.3 0 2.3.7 3 1.7C8.7 2.7 9.7 2 11 2c2 0 3.5 1.5 3.5 3.5C14.5 8 13 10.5 8 14z"/><path d="M8 3.7c-.3 3 1 5.5 0 9"/></svg>Coronaires</button>
           </span>
           <span class="tool-sep" aria-hidden="true"></span>
@@ -83,6 +83,7 @@
           <div class="seg" role="group" aria-label="Vue du FOP" data-group="fop">
             <button data-valve="fosse" type="button" title="Septum interauriculaire vu de l'oreillette droite : fosse ovale, limbe">Fosse ovale normale</button>
             <button data-valve="fop" type="button" title="Coupe bicave comme en ETO : le contraste passe de l'oreillette droite à la gauche par le FOP">FOP · test aux bulles</button>
+            <button data-valve="fermeture" type="button" title="Fermeture percutanée : mise en place d'une prothèse à double disque à travers le FOP">Fermeture du FOP</button>
           </div>
           <div class="seg" role="group" aria-label="Valve" data-group="valves">
             <button data-valve="aortique" type="button">Aortique</button>

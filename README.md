@@ -159,7 +159,17 @@ une liste numérotée des structures, et une fiche explicative par structure.
   droite), postérieure : elle passe par la fosse ovale (plancher et limbe en coupe) et par le tunnel, au bord supérieur
   de la fosse, un peu en avant (≈ 3 mm, Goel 2009) ; 1 280 bulles du sérum salé agité arrivent
   par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
-  (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015).
+  (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015) ; **Fermeture du FOP** (js/pfo-closure.js) : même
+  coupe, animation de la fermeture percutanée lancée à l'ouverture de l'onglet (bouton « Voir la fermeture » pour la
+  revoir, « Arrêter ») — cœur arrêté en diastole ; gaine bleue (≈ 8 F) qui remonte la veine cave inférieure, traverse
+  l'OD, passe par le tunnel et débouche dans l'OG ; prothèse à double disque de type Amplatzer PFO Occluder 25 mm
+  (disque gauche 18 mm, disque droit 25 mm, treillis tressé en spirale sur tissu de polyester, col court, moyeux) :
+  disque gauche poussé hors de la gaine et ouvert dans l'OG, tiré contre la cloison ; gaine reculée dans l'OD, disque
+  droit libéré de l'autre côté ; les deux disques centrés sur le milieu du tunnel, chacun contre une face de la cloison
+  (mesurée par lancer de rayons), le col à travers le tunnel ; largage (câble dévissé, retiré avec la gaine), tunnel
+  refermé. Caméra : coupe bicave pour la montée de la gaine, puis inclinée côté OG (disque gauche de trois quarts),
+  côté OD (disque droit), retour à la coupe ; légende de chaque étape (6). Fin : cœur qui bat, la prothèse suit la
+  cloison, test aux bulles de contrôle négatif (les bulles restent à droite).
 - **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de
   l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),
   akinésie des segments 7, 8, 13, 14 et 17 du modèle AHA (ni épaississement, ni mouvement vers le centre, ni torsion),
@@ -210,7 +220,8 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
-| `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles) et Coronaires (infarctus de l'IVA) |
+| `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles, fermeture) et Coronaires (infarctus de l'IVA) |
+| `js/pfo-closure.js` | Animation de la fermeture percutanée du FOP (gaine, prothèse à double disque, largage) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
