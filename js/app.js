@@ -8,7 +8,7 @@ import { sectionMaterial, setSectionPlane, setSectionFrame } from './cut-surface
 import { buildSLView } from './aortic-view.js';
 import { buildAVView } from './av-views.js';
 import { buildFOPViews, buildCoronaryView, createBubbles } from './special-views.js';
-import { createDoppler, restTime, NYQUIST } from './doppler.js';
+import { createDoppler, restTime } from './doppler.js';
 import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.js';
 import { createTaviAnimation, TAVI_STEPS } from './tavi-anim.js';
 import { createClosureAnimation } from './pfo-closure.js';
@@ -566,14 +566,8 @@ for (const v of Object.values(VALVE_VIEWS)) for (const [side, sd] of Object.entr
   INTERIOR_OFF[mode] = sd.interior; NO_GHOST.add(mode);
 }
 if (bubbles.mesh) bubbles.mesh.material.clippingPlanes = [cutPlane]; // bulles coupées avec le cœur (vue bicave)
-// Doppler couleur (js/doppler.js) : flux de la valve regardée, sonde à la pointe ; légende sur le côté de la vue
+// Doppler couleur (js/doppler.js) : flux de la valve regardée, en fumée rouge sang
 const doppler = createDoppler(heart);
-const dopLegend = document.createElement('div');
-dopLegend.className = 'doppler-legend hidden'; dopLegend.setAttribute('role', 'note');
-const nq = NYQUIST.toFixed(1).replace('.', ',');
-dopLegend.innerHTML = `<b>Doppler couleur</b><small>Sonde à la pointe du cœur</small>
-  <div class="dl-scale"><i class="dl-bar"></i><span class="dl-top">+${nq} m/s<em>vers la sonde</em></span><span class="dl-bot">−${nq} m/s<em>s'éloigne</em></span></div>
-  <div class="dl-mos"><i></i><span>Mosaïque<em> : flux rapide et turbulent (fuite, rétrécissement)</em></span></div>`;
 // Repère des vues des valves (js/reperes.js) : petite coupe fixe du cœur qui bat, où la valve regardée est entourée ;
 // mitrale et tricuspide : coupe 4 cavités ; aortique : 5 cavités ; pulmonaire : frontale par la voie d'éjection du VD.
 // Séquence pré-rendue sur un cycle, calée sur l'instant du cœur principal ; fondu entre deux images voisines.
@@ -585,7 +579,7 @@ const locA = locator.querySelector('.loc-a'), locB = locator.querySelector('.loc
 let locKey = null, locShown = -1;
 const sideStack = document.createElement('div');
 sideStack.className = 'side-stack';
-sideStack.append(locator, dopLegend);
+sideStack.append(locator);
 canvasWrap.appendChild(sideStack);
 function syncLocator() {
   const L = state.valve && !tavi.playing && LOCATOR[state.valve]; // animation de la TAVI : vue propre, sans repère
@@ -615,7 +609,6 @@ function syncDoppler() {
   const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.doppler && v && v.group === 'valves' && !tavi.playing);
   doppler.setView(on ? state.valve : null, v?.variant, state.comparer);
   doppler.setActive(on);
-  dopLegend.classList.toggle('hidden', !on);
 }
 // Animation de l'implantation de la TAVI (js/tavi-anim.js) : lancée au choix de la variante « TAVI » de la valve
 // aortique, dans la vue L (plan de la crosse), cœur arrêté ; légende de chaque étape au-dessus du cycle ; à la fin,

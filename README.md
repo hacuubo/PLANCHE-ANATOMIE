@@ -104,29 +104,31 @@ une liste numérotée des structures, et une fiche explicative par structure.
   cercle : `js/reperes.js`), calée sur l'instant du cœur principal (battement, ralenti, curseur, pause), fondu entre
   deux images voisines. Les variantes pathologiques ne sont construites qu'à leur premier affichage (démarrage plus court
   d'≈ 0,3 s sur ordinateur, davantage sur téléphone).
-  **Doppler couleur** (js/doppler.js) : les flux de la valve regardée, en volume dans le cœur qui bat, colorés comme à
-  l'ETT en voie apicale (sonde à la pointe) : rouge vers la sonde, bleu en s'éloignant, plus clair quand c'est plus
-  rapide ; limite de Nyquist ± 0,7 m/s, au-delà repliement ; jets de fuite et de rétrécissement turbulents en
-  « mosaïque » (repliements, vert de la variance) près de l'orifice, couleur du sens du flux à la périphérie (jet
-  libre : vitesse maximale sur le premier dixième, puis en 1/distance, profil en cloche) ; zone de convergence (PISA)
-  en amont de l'orifice, sang aspiré de plus en plus vite (v = Q / 2πr²), changement de couleur là où v atteint la
-  limite de Nyquist. Chronologie du cycle du modèle : fuites mitrale et tricuspide holosystoliques, fuite aortique
+  **Doppler couleur** (js/doppler.js) : les flux de la valve regardée, en volume dans le cœur qui bat, en fumée **rouge
+  sang** (pour les patients, sans les couleurs conventionnelles de l'échographe ni légende) : rouge sombre pour un flux
+  lent, vif pour un jet rapide ; jets de fuite et de rétrécissement turbulents plus denses et grumeleux (jet libre :
+  vitesse maximale sur le premier dixième, puis en 1/distance, profil en cloche) ; zone de convergence (PISA) en amont
+  de l'orifice, sang aspiré de plus en plus vite (v = Q / 2πr²), à partir du rayon où il atteint 0,7 m/s. Chronologie du cycle du modèle : fuites mitrale et tricuspide holosystoliques, fuite aortique
   holodiastolique décroissante, remplissage en ondes E et A, éjection maximale au premier tiers. Flux : remplissage
-  mitral et tricuspide, éjection aortique et pulmonaire (laminaires, sans repliement) ; insuffisance aortique
+  mitral et tricuspide, éjection aortique et pulmonaire (laminaires) ; insuffisance aortique
   (centrale, ≈ 4 m/s), mitrale par prolapsus de P2 (jet excentré vers l'avant, opposé au feuillet qui prolabe,
   ≈ 5 m/s), tricuspide fonctionnelle (centrale, ≈ 2,8 m/s) ; rétrécissements aortique (≈ 4,5 m/s), mitral
   (≈ 1,9 m/s, dôme de convergence côté oreillette) et pulmonaire. Rendu en **jets de fumée** : bouffées floues et
-  grumeleuses qui naissent à l'orifice, s'élargissent, tourbillonnent et s'estompent, chacune colorée par sa vitesse
+  grumeleuses qui naissent à l'orifice, s'élargissent, tourbillonnent et s'estompent, chacune teintée par sa vitesse
   réelle ; elles avancent bien moins vite que le sang (quelques dixièmes de seconde pour parcourir le jet) pour que le
   mouvement se lise. Jets entiers (ils sortent de la cavité ouverte vers l'observateur), parties cachées par les tissus
-  visibles en transparence ; cœur arrêté : nuage établi à cet instant ; en écran partagé, flux de chaque moitié. Légende sur le côté (lien de la vue : `doppler=1`).
+  visibles en transparence ; cœur arrêté : nuage établi à cet instant ; en écran partagé, flux de chaque moitié (lien de la vue : `doppler=1`).
   - **Aortique** : normale, bicuspidie type 1 L-R (Sievers), RAo serré dégénératif (calcifié au stade évolué : amas
     calcaires sur toute la cuspide jusqu'aux commissures, bord libre épaissi, festonné et rétracté par endroits,
     commissures libres, petit orifice irrégulier), insuffisance par dilatation de la
     racine (type I d'El Khoury : cuspides normales, coaptation basse, défaut de fermeture central d'≈ 0,4 cm²), TAVI
     (bioprothèse à ballonnet de type SAPIEN 3, taille 29 : armature en cobalt-chrome de 22,5 mm à cellules en losange
     et grandes cellules hautes, jupe en tissu, feuillets en péricarde bovin, commissures alignées, cuspides natives
-    calcifiées plaquées contre les sinus). **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
+    calcifiées plaquées contre les sinus). La prothèse déployée épouse la racine de ce cœur, qui n'est ni ronde ni
+    centrée sur l'axe de la valve (≈ 0,85 à 1,45 cm de l'axe à l'anneau) : profil de la lumière mesuré par lancer de
+    rayons (bord de l'espace sanguin, de la chambre de chasse au haut des sinus), ajusté à chaque hauteur en cercle
+    décentré et ovalisé (forme d'une armature dilatée dans un anneau ovale), lissé le long de l'axe ; armature contre les
+    cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
     (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : vue dans le plan de la crosse aortique (coupe passant
     par le centre de la valve, aorte ouverte sur toute sa longueur), cœur arrêté en diastole ; guide qui remonte
     l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche (« queue de cochon ») ;

@@ -62,6 +62,22 @@ export function createTaviAnimation(heart, view, hooks) {
     const uV = (iv / S) * L, h = kit.height, crimp = 0.36 / kit.Rs; // sertie : ≈ 7 mm de diamètre
     const Y = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), Tg = new THREE.Vector3(), q = new THREE.Quaternion(), qA = new THREE.Quaternion().setFromUnitVectors(Y, kit.axis);
     const qF = new THREE.Quaternion().setFromUnitVectors(Y, kit.axis.clone().negate()); // pièces de révolution sur l'anneau : vers l'avant
+    // ballonnet gonflé : à la forme de l'armature déployée, plaquée sur la racine (rayon sous chaque sommet, ballonnet
+    // posé sur l'anneau, axe Y local vers le ventricule) ; serti et dégonflé : rond
+    const bp = bal.geometry.attributes.position, bBase = Float32Array.from(bp.array), bFr = new Float32Array(bp.count);
+    const zc = kit.center.clone().sub(kit.annulus).dot(kit.axis), w = new THREE.Vector3();
+    for (let i = 0; i < bp.count; i++) {
+      w.set(bBase[3 * i], 0, bBase[3 * i + 2]);
+      bFr[i] = w.lengthSq() < 1e-10 ? kit.Rs : kit.frameR(kit.angleOf(w.normalize().applyQuaternion(qF)), zc - bBase[3 * i + 1]);
+    }
+    let bEff = -1;
+    const inflate = (eff) => {
+      if (Math.abs(eff - bEff) < 1e-4) return;
+      bEff = eff;
+      const cr = crimp * kit.Rs;
+      for (let i = 0; i < bp.count; i++) { const r = Math.max(cr * 0.85, cr + (1.03 * bFr[i] - cr) * eff); bp.setX(i, bBase[3 * i] * r); bp.setZ(i, bBase[3 * i + 2] * r); }
+      bp.needsUpdate = true; bal.geometry.computeVertexNormals();
+    };
     const at = (u) => { const f = Math.min(1, Math.max(0, u / L)); curve.getPointAt(f, P); curve.getTangentAt(f, Tg); return f; };
     // orientation de la valve sertie le long du trajet : déjà dans le sens final (sortie, côté aorte, vers l'arrière ;
     // entrée, côté ventricule, vers l'avant), transportée sans torsion depuis sa pose sur l'anneau — elle arrive
@@ -79,7 +95,7 @@ export function createTaviAnimation(heart, view, hooks) {
       if (blend > 0) { P.lerp(kit.center, blend); q.slerp(carried ? qA : qF, blend); }
       o.position.copy(P); o.quaternion.copy(q);
     };
-    return { kit, group, wire, cath, shaft, cone, rig, bal, range, place, at, L, uV, h, crimp, P, Tg };
+    return { kit, group, wire, cath, shaft, cone, rig, bal, range, place, at, L, uV, h, crimp, P, Tg, inflate };
   };
   // état de la scène au temps t (s) depuis le début
   const pose = () => {
@@ -100,10 +116,9 @@ export function createTaviAnimation(heart, view, hooks) {
     b.range(b.shaft, 0, visible ? uNose : 0); // tige interne : visible de la fin du cathéter au cône
     b.cone.visible = visible && uNose > 0.5;
     if (b.cone.visible) b.place(b.cone, uNose);
-    // ballonnet : serti avec la valve, gonflé à la taille de l'armature, dégonflé, retiré avec le cathéter
+    // ballonnet : serti avec la valve, gonflé à la forme de l'armature, dégonflé, retiré avec le cathéter
     b.bal.visible = visible && uc > 0;
-    const rb = (crimp + (1.03 - crimp) * e * (1 - deflate)) * built.kit.Rs;
-    b.bal.scale.set(Math.max(rb, crimp * built.kit.Rs * 0.85), 1, Math.max(rb, crimp * built.kit.Rs * 0.85));
+    b.inflate(e * (1 - deflate));
     if (b.bal.visible) b.place(b.bal, uc, blend);
     // armature : sertie sur le ballonnet jusqu'au gonflement, puis déployée et fixe sur l'anneau
     const deployed = ph(3) > 0;

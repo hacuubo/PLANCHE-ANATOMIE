@@ -47,12 +47,14 @@ const rng = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed -
 // Variante : jeu de cuspides animé comme une valve du cœur (consigne d'ouverture, ressort, vibration dans le flux).
 // max : ouverture maximale (rétrécissement : petit orifice) ; wob : amplitude de la vibration du bord libre ;
 // fixed : pièces immobiles (cuspides natives plaquées, armature, jupe) redessinées avec la déformation du cœur ;
-// frame : armature (fonction qui renvoie ses tronçons, déformés par xf).
-function asValve(cusps, max, wob, { fixed = [], frame = null } = {}) {
+// frame : armature (fonction qui renvoie ses tronçons, déformés par xf) ; warp : déformation au repos propre à la
+// variante (TAVI : prothèse plaquée sur la lumière de la racine), appliquée avant celle du cœur.
+function asValve(cusps, max, wob, { fixed = [], frame = null, warp = null } = {}) {
   const op = new Opening([14, 0.75], [9, 0.65], 0);
   let flow = 0;
   // pièces immobiles redessinées seulement quand le cœur se déforme (pas quand seuls les feuillets bougent)
-  const draw = (xf, time, dirty = true) => {
+  const draw = (xf0, time, dirty = true) => {
+    const xf = warp ? (p, k) => { warp(p); if (xf0) xf0(p, k); } : xf0;
     const w = flow > 0 && wob ? (u, v) => flow * wob * v * v * Math.sin(2 * Math.PI * 9 * time + 12 * u) * Math.max(0, op.tip.x) : null;
     for (const c of cusps) c.shell.updateOpen((v) => op.at(v), xf, 0.04, w);
     if (!dirty) return;
@@ -247,10 +249,118 @@ export function buildSLView(heart, kind = 'aortique') {
     variants.ia = () => ({ max: 1, wob: 0.03, cusps: cusps3.map((s) => makeCusp({ t0: s.t0, t1: s.t1, shade: shadeNormal, thick: thickNormal, coapt: 0.7, gap: 0.28 })) });
     list.push(['ia', 'Insuffisance']);
     // — TAVI : bioprothèse à expansion par ballonnet (type SAPIEN 3) dans la valve native rétrécie —
+    // armature : taille 29 (anneau de ce cœur ≈ 28,8 mm), hauteur 22,5 mm, de 3,5 mm sous l'anneau au haut des sinus ;
+    // construite comme un cylindre de rayon Rs, puis plaquée sur la racine (taviWarp)
+    const Rs = R * 0.88, z0 = -0.35, zTop = z0 + 2.25;
+    // Profil de la lumière de la racine, de la chambre de chasse au haut des sinus : distance de l'axe de la valve à la
+    // paroi (bord de l'espace sanguin : union des volumes « creux » des coupes — lumière de l'aorte, cavité du VG et ses
+    // poches dans les sinus), sur une grille angle × hauteur. La racine de ce cœur n'est ni ronde ni centrée sur l'axe
+    // de la valve (≈ 0,85 à 1,45 cm à l'anneau). Calcul au premier usage (≈ 0,3 s) : un rayon complet en bas et
+    // par volume pour savoir si l'axe y est, puis des rayons sur les seuls triangles proches de la racine.
+    const NT = 24, PZ0 = z0 - 0.15, DZ = 0.2, NZ = Math.ceil((zTop + 0.15 - PZ0) / DZ) + 1;
+    let profile = null;
+    const rootProfile = () => profile ??= (() => {
+      const inv = new THREE.Matrix4(), E = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      heart.root.updateMatrixWorld(true); inv.copy(heart.root.matrixWorld).invert();
+      const q = new THREE.Vector3();
+      const sec = (v) => Math.floor((((angleOf(v) / (2 * Math.PI)) % 1 + 1) % 1) * NT) % NT;
+      // triangles de chaque volume creux près de la racine (rayon 2,6 cm), rangés par secteur d'angle et par niveau
+      const vols = heart.solids.filter((x) => x.hole).map((x) => {
+        const rel = inv.clone().multiply(x.mesh.matrixWorld), g = x.mesh.geometry, pa = g.attributes.position, ix = g.index;
+        const tris = [], bins = Array.from({ length: NZ * NT }, () => []), nT = ix ? ix.count / 3 : pa.count / 3;
+        let full = null; // volume entier : seulement pour savoir si l'axe y est, en bas
+        for (let t = 0; t < nT; t++) {
+          let keep = false, zl = Infinity, zh = -Infinity, rMin = Infinity;
+          const ss = [];
+          for (let j = 0; j < 3; j++) {
+            E[j].fromBufferAttribute(pa, ix ? ix.getX(3 * t + j) : 3 * t + j).applyMatrix4(rel);
+            q.copy(E[j]).sub(C); const z = q.dot(A); q.addScaledVector(A, -z);
+            const r2 = q.lengthSq();
+            if (z > PZ0 - 0.5 && z < zTop + 0.7 && r2 < 6.8) keep = true;
+            zl = Math.min(zl, z); zh = Math.max(zh, z); rMin = Math.min(rMin, r2); ss.push(sec(q));
+          }
+          if (!keep) continue;
+          const k = tris.length / 9; tris.push(E[0].x, E[0].y, E[0].z, E[1].x, E[1].y, E[1].z, E[2].x, E[2].y, E[2].z);
+          // secteurs couverts (arc le plus court entre les sommets, ± 1) ; près de l'axe : tous
+          let list;
+          if (rMin < 0.09) list = [...Array(NT).keys()];
+          else {
+            ss.sort((m, n) => m - n);
+            const gaps = [ss[1] - ss[0], ss[2] - ss[1], ss[0] + NT - ss[2]], gi = gaps.indexOf(Math.max(...gaps)), from = ss[(gi + 1) % 3], len = NT - gaps[gi];
+            list = []; for (let i = -1; i <= len + 1; i++) list.push((from + i + NT) % NT);
+          }
+          for (let iz = 0; iz < NZ; iz++) { const z = PZ0 + iz * DZ; if (z >= zl - 0.01 && z <= zh + 0.01) for (const it of list) bins[iz * NT + it].push(k); }
+        }
+        return { tris, bins, full: () => full ??= Object.assign(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })), { matrixWorld: rel }) };
+      });
+      // intersection rayon-triangle (Möller–Trumbore, deux faces) : distance, ou −1
+      const P1 = new THREE.Vector3(), P2 = new THREE.Vector3(), Pv = new THREE.Vector3(), Sv = new THREE.Vector3(), Qv = new THREE.Vector3(), V0 = new THREE.Vector3();
+      const hit = (T, k, o, d) => {
+        V0.fromArray(T, 9 * k); P1.fromArray(T, 9 * k + 3).sub(V0); P2.fromArray(T, 9 * k + 6).sub(V0);
+        Pv.crossVectors(d, P2); const det = P1.dot(Pv); if (Math.abs(det) < 1e-12) return -1;
+        const iv = 1 / det; Sv.subVectors(o, V0); const u = Sv.dot(Pv) * iv; if (u < 0 || u > 1) return -1;
+        Qv.crossVectors(Sv, P1); const v = d.dot(Qv) * iv; if (v < 0 || u + v > 1) return -1;
+        const t = P2.dot(Qv) * iv; return t > 1e-6 ? t : -1;
+      };
+      const cross = (vol, list, o, d) => { const out = []; for (const k of list) { const t = hit(vol.tris, k, o, d); if (t > 0) out.push(t); } out.sort((m, n) => m - n); return out.filter((x, i) => i === 0 || x - out[i - 1] > 1e-4); };
+      // l'axe est-il dans chaque volume ? En bas : rayon sur le volume entier ; plus haut : traversées le long de l'axe
+      const o = new THREE.Vector3().copy(C).addScaledVector(A, PZ0), dv = new THREE.Vector3(), rc = new THREE.Raycaster(o, dir(0.1));
+      const base = vols.map((v) => { const h = rc.intersectObject(v.full(), false).map((x) => x.distance); return h.filter((x, i) => i === 0 || x - h[i - 1] > 1e-4).length % 2 === 1; });
+      const up = vols.map((v) => cross(v, v.tris.map((_, i) => i).slice(0, v.tris.length / 9), o, A));
+      const grid = [];
+      for (let iz = 0; iz < NZ; iz++) {
+        o.copy(C).addScaledVector(A, PZ0 + iz * DZ);
+        const in0 = base.map((b0, k) => (up[k].filter((t) => t < iz * DZ).length % 2 === 1) !== b0);
+        const row = [];
+        for (let it = 0; it < NT; it++) {
+          dir(((it + 0.5) * 2 * Math.PI) / NT, dv);
+          const ev = []; vols.forEach((v, k) => { for (const t of cross(v, v.bins[iz * NT + it], o, dv)) if (t < 2.2) ev.push([t, k]); });
+          ev.sort((m, n) => m[0] - n[0]);
+          const st = in0.slice(); let wall = NaN;
+          if (st.some(Boolean)) for (const [t, k] of ev) { st[k] = !st[k]; if (!st.some(Boolean)) { wall = t; break; } }
+          row.push(wall);
+        }
+        // trous (ostium coronaire, orifice mitral sous l'anneau) et mesures manquantes : bornés par la médiane du tour
+        const ok = row.filter((x) => x > 0).sort((m, n) => m - n), med = ok.length ? ok[ok.length >> 1] : R;
+        grid.push(row.map((x) => Math.min(x > 0 ? x : med, med * 1.25, R * 1.15)));
+      }
+      // forme régulière, celle d'une armature dilatée dans un anneau ovale et excentré : à chaque hauteur, cercle
+      // décentré et ovalisé (harmoniques 0 à 2 du tour), coefficients lissés le long de l'axe (moyenne sur ± 2 niveaux)
+      const H = [0, 1, 2], co = grid.map((row) => H.flatMap((h) => {
+        let a = 0, b = 0;
+        row.forEach((r, it) => { const th = ((it + 0.5) * 2 * Math.PI) / NT; a += r * Math.cos(h * th); b += r * Math.sin(h * th); });
+        return h ? [(2 * a) / NT, (2 * b) / NT] : [a / NT, 0];
+      }));
+      const cs = co.map((_, iz) => co[0].map((__, j) => { let s = 0, n = 0; for (let b = -2; b <= 2; b++) { const z2 = iz + b; if (z2 >= 0 && z2 < NZ) { s += co[z2][j]; n++; } } return s / n; }));
+      return cs.map((c) => Array.from({ length: NT }, (_, it) => { const th = (2 * Math.PI * it) / NT; return H.reduce((s, h) => s + c[2 * h] * Math.cos(h * th) + c[2 * h + 1] * Math.sin(h * th), 0); }));
+    })();
+    // rayon de la paroi à l'angle th (repère E1, E2), à la hauteur z au-dessus de l'anneau (interpolation bilinéaire)
+    const wallAt = (th, z) => {
+      const g = rootProfile(), x = ((((th / (2 * Math.PI)) % 1) + 1) % 1) * NT, y = Math.min(NZ - 1, Math.max(0, (z - PZ0) / DZ));
+      const i0 = Math.floor(x) % NT, i1 = (i0 + 1) % NT, j0 = Math.min(NZ - 2, Math.floor(y)), fx = x - Math.floor(x), fy = y - j0;
+      const r0 = g[j0][i0] + (g[j0][i1] - g[j0][i0]) * fx, r1 = g[j0 + 1][i0] + (g[j0 + 1][i1] - g[j0 + 1][i0]) * fx;
+      return r0 + (r1 - r0) * fy;
+    };
+    // déformation de la prothèse déployée, au repos : l'armature (rayon Rs) vient contre les cuspides natives, elles-mêmes
+    // plaquées contre la paroi (épaisseur ≈ 1,1 mm) ; ce qui est en dedans de l'armature (feuillets) suit à
+    // proportion, ce qui est au dehors (jupe, cuspides natives à 0,975 R) se resserre de moitié
+    // angle (sens de dir()) d'une direction perpendiculaire à l'axe
+    const angleOf = (() => {
+      const e1 = E1.clone().projectOnPlane(A).normalize(), e2 = new THREE.Vector3().crossVectors(A, e1), flip = e2.dot(E2) < 0 ? -1 : 1;
+      return (v) => Math.atan2(flip * v.dot(e2), v.dot(e1));
+    })();
+    const taviWarp = (() => {
+      const q = new THREE.Vector3(), rv = new THREE.Vector3();
+      return (p) => {
+        q.copy(p).sub(C); const z = q.dot(A); rv.copy(q).addScaledVector(A, -z);
+        const rho = rv.length(); if (rho < 1e-5) return p;
+        const T = Math.max(R * 0.5, wallAt(angleOf(rv), z) - 0.11);
+        p.copy(C).addScaledVector(A, z).addScaledVector(rv, (rho <= Rs ? (rho * T) / Rs : T + (rho - Rs) * 0.5) / rho);
+        return p;
+      };
+    })();
     // taviParts(native) : feuillets, jupe, armature (déformés avec le cœur) et cuspides natives plaquées (native)
     taviParts = (withNatives = true) => {
-      // armature : taille 29 (anneau de ce cœur ≈ 28,8 mm), hauteur 22,5 mm, de 3,5 mm sous l'anneau au haut des sinus
-      const Rs = R * 0.88, z0 = -0.35, zTop = z0 + 2.25; // en dedans des cuspides natives plaquées (0,975 R)
       const metal = heart.material(id, 'metal');
       // feuillets en péricarde bovin : lames minces, régulières, d'un blanc crème uniforme, sans nodule d'Arantius
       const shadePeri = (u, v) => {
@@ -290,9 +400,9 @@ export function buildSLView(heart, kind = 'aortique') {
         mesh: cords.mesh,
         update: (xf) => cords.update(struts.map(([a, b, r]) => { const p = a.clone(), q = b.clone(); if (xf) { xf(p, 0.04); xf(q, 0.04); } return [p, q, r, r]; })),
       };
-      return { leaflets, natives, skirt, frame, struts, Rs, z0, zTop, metal, shadePeri };
+      return { leaflets, natives, skirt, frame, struts, Rs, z0, zTop, metal, shadePeri, warp: taviWarp, wallAt, angleOf };
     };
-    variants.tavi = () => { const t = taviParts(); return { max: 1, wob: 0.015, cusps: t.leaflets, fixed: [...t.natives, t.skirt], frame: t.frame }; };
+    variants.tavi = () => { const t = taviParts(); return { max: 1, wob: 0.015, cusps: t.leaflets, fixed: [...t.natives, t.skirt], frame: t.frame, warp: taviWarp }; };
     list.push(['tavi', 'TAVI']);
   } else {
     // Valve pulmonaire : cuspides droite et gauche face à l'aorte, antérieure à l'opposé (nomenclature actuelle ;
@@ -325,7 +435,7 @@ export function buildSLView(heart, kind = 'aortique') {
   const built = {};
   const valveOf = (name) => {
     if (!variants[name]) return null;
-    if (!built[name]) { const v = variants[name](); built[name] = heart.addValve(id, asValve(v.cusps, v.max, v.wob, { fixed: v.fixed, frame: v.frame })); }
+    if (!built[name]) { const v = variants[name](); built[name] = heart.addValve(id, asValve(v.cusps, v.max, v.wob, { fixed: v.fixed, frame: v.frame, warp: v.warp })); }
     return built[name];
   };
   let current = 'normale';
@@ -367,18 +477,20 @@ export function buildSLView(heart, kind = 'aortique') {
       const pre = valveOf('rao'), post = valveOf('tavi');
       // pendant le déploiement : cuspides natives plaquées seules (l'armature est celle de l'animation)
       const tm = taviParts(true);
-      const mid = heart.addValve(id, asValve([], 1, 0, { fixed: tm.natives }));
-      // armature, jupe et feuillets de l'animation : à la taille déployée, au repos (le cœur est arrêté en diastole,
-      // déformation nulle), dans un repère local d'axe Y centré sur la valve déployée — l'animation les sertit
+      const mid = heart.addValve(id, asValve([], 1, 0, { fixed: tm.natives, warp: tm.warp }));
+      // armature, jupe et feuillets de l'animation : déployés (plaqués sur la racine), au repos (le cœur est arrêté en
+      // diastole, déformation nulle), dans un repère local d'axe Y centré sur la valve déployée — l'animation les sertit
       // (échelle radiale) et les déplace le long du trajet
-      const ta = taviParts(false), zc = (ta.z0 + ta.zTop) / 2, Cv = C.clone().addScaledVector(A, zc);
-      ta.frame.update(null);
-      for (const l of ta.leaflets) l.shell.updateOpen(() => 0, null, 0.04, null);
-      ta.skirt.shell.updateOpen(() => 0, null, 0.04, null);
+      const ta = taviParts(false), zc = (ta.z0 + ta.zTop) / 2, Cv = C.clone().addScaledVector(A, zc), w = (p) => ta.warp(p);
+      ta.frame.update(w);
+      for (const l of ta.leaflets) l.shell.updateOpen(() => 0, w, 0.04, null);
+      ta.skirt.shell.updateOpen(() => 0, w, 0.04, null);
       const toLocal = new THREE.Matrix4().compose(Cv, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), A), new THREE.Vector3(1, 1, 1)).invert();
       const inner = new THREE.Group(); inner.matrixAutoUpdate = false; inner.matrix.copy(toLocal);
       inner.add(ta.frame.mesh, ta.skirt.shell.mesh, ...ta.leaflets.map((l) => l.shell.mesh));
-      return { pre, mid, post, inner, Rs: ta.Rs, height: ta.zTop - ta.z0, center: Cv, annulus: C.clone(), axis: A.clone(), path };
+      // rayon de l'armature déployée à l'angle th et à la hauteur z (ballonnet gonflé à sa forme)
+      const frameR = (th, z) => Math.max(R * 0.5, ta.wallAt(th, z) - 0.11);
+      return { pre, mid, post, inner, Rs: ta.Rs, height: ta.zTop - ta.z0, center: Cv, annulus: C.clone(), axis: A.clone(), angleOf: ta.angleOf, frameR, path };
     })();
   }
   return view;

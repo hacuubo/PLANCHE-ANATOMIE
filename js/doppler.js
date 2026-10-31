@@ -1,15 +1,10 @@
-// Doppler couleur (mode « couleur » de l'ETT), adapté aux vues des valves : les flux à travers la valve regardée sont
-// dessinés en volume dans le cœur qui bat, comme des jets de fumée colorés à la manière de l'échographie.
-//   - Sonde à la pointe du cœur (voie apicale, celle des coupes 4 et 5 cavités) : rouge = le sang va vers la sonde,
-//     bleu = il s'en éloigne (convention BART) ; plus la vitesse est grande, plus la couleur s'éclaircit (rouge →
-//     jaune, bleu → cyan). Seule la composante de la vitesse dans l'axe de la sonde compte : un flux perpendiculaire
-//     à l'axe s'éteint.
-//   - Limite de Nyquist ± 0,7 m/s : au-delà, la couleur se replie (jaune → cyan) ; un jet de fuite ou de
-//     rétrécissement (2 à 5 m/s), turbulent, donne une « mosaïque » (repliements en tous sens, vert de la variance).
-//     Les flux normaux (remplissage, éjection) restent sous la limite à l'échelle choisie : couleur homogène.
-//   - Zone de convergence (PISA) en amont d'un orifice étroit : le sang y accélère vers l'orifice, v = Q / (2π r²)
-//     (vitesse égale sur chaque demi-sphère centrée sur l'orifice) ; là où v atteint la limite de Nyquist, la couleur
-//     change brusquement (repliement).
+// Doppler couleur (mode « couleur » de l'ETT), adapté aux vues des valves et aux patients : les flux à travers la
+// valve regardée sont dessinés en volume dans le cœur qui bat, comme des jets de fumée rouge sang (pas les couleurs
+// conventionnelles de l'échographe, rouge et bleu selon le sens par rapport à la sonde, qui demandent une légende).
+//   - Plus le sang va vite, plus la fumée est d'un rouge vif ; lente, d'un rouge sombre. Un jet de fuite ou de
+//     rétrécissement (2 à 5 m/s), turbulent, est plus dense, vif et grumeleux qu'un flux normal (≈ 0,6 m/s), régulier.
+//   - Zone de convergence (PISA) en amont d'un orifice étroit : nuage aspiré vers l'orifice, de plus en plus vite,
+//     v = Q / (2π r²) (vitesse égale sur chaque demi-sphère centrée sur l'orifice) ; il s'avive en approchant.
 // Chronologie : celle du cycle du modèle (heart.cycle, adulte à 64/min) — fuite mitrale et tricuspide pendant toute la
 // systole (holosystolique, de la fermeture de la valve auriculo-ventriculaire à sa réouverture), fuite aortique
 // pendant toute la diastole, plus forte au début (protodiastolique) ; remplissage en deux ondes E et A ; éjection
@@ -18,7 +13,7 @@
 // des fuites valvulaires ; ESC/EACTS 2021).
 import * as THREE from 'three';
 
-export const NYQUIST = 0.7; // m/s
+export const NYQUIST = 0.7; // m/s : limite de Nyquist usuelle ; la zone de convergence dessinée part du rayon où le sang l'atteint
 const P_MS = 940;
 const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const wrap = (t) => ((t % P_MS) + P_MS) % P_MS;
@@ -45,11 +40,10 @@ const T = {
 export const restTime = (phase, open) => (phase === 'av' ? (open ? 650 : 330) : (open ? 300 : 650));
 
 // Rendu « fumée » : chaque flux est un nuage de bouffées floues (particules) qui naissent à l'orifice, s'élargissent,
-// tourbillonnent et s'estompent ; chaque bouffée prend la couleur Doppler de sa vitesse (repliement, variance). La zone
-// de convergence est un nuage aspiré vers l'orifice, de plus en plus vite (v = Q / 2πr²) : la couleur change là où la
-// vitesse atteint la limite de Nyquist. Les bouffées vont bien moins vite que le sang (quelques dixièmes de seconde
-// pour parcourir le jet, au lieu de quelques centièmes) : le mouvement reste lisible ; la couleur, elle, vient de la
-// vitesse réelle. Bouffées cachées par les tissus : visibles en transparence.
+// tourbillonnent et s'estompent ; chaque bouffée prend la teinte de sa vitesse. La zone de convergence est un nuage
+// aspiré vers l'orifice, de plus en plus vite (v = Q / 2πr²). Les bouffées vont bien moins vite que le sang (quelques
+// dixièmes de seconde pour parcourir le jet, au lieu de quelques centièmes) : le mouvement reste lisible ; la teinte,
+// elle, vient de la vitesse réelle. Bouffées cachées par les tissus : visibles en transparence.
 const GLSL_V = /* glsl */`
 uniform float uScale;
 attribute vec3 color; attribute float aAlpha; attribute float aSize; attribute float aSeed;
@@ -75,15 +69,9 @@ void main() {
   float a = vA * smoothstep(1.0, 0.15, sqrt(r2) + 0.35 * (n - 0.5)) * (0.45 + 0.9 * n) * (uGhost > 0.5 ? 0.25 : 1.0);
   gl_FragColor = vec4(vC, a);
 }`;
-// carte BART (même que l'échographe) : x = vitesse / Nyquist, déjà repliée dans [-1, 1]
+// rouge sang : sombre pour un flux lent, vif pour un jet rapide (v en m/s) ; k : variation propre à la bouffée (−1 → 1)
 const mixc = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-const bart = (x) => {
-  if (x >= 0) return mixc(mixc([0.5, 0, 0.03], [0.95, 0.06, 0.03], sm(0, 0.5, x)), [1, 0.92, 0.3], sm(0.55, 1, x));
-  const y = -x;
-  return mixc(mixc([0, 0.04, 0.5], [0.05, 0.3, 1], sm(0, 0.5, y)), [0.5, 1, 1], sm(0.55, 1, y));
-};
-const GREEN = [0.25, 0.95, 0.35];
-const fold = (x) => ((((x + 1) % 2) + 2) % 2) - 1; // repliement au-delà de la limite de Nyquist
+const blood = (v, k = 0) => { const c = mixc([0.42, 0.015, 0.03], [0.82, 0.04, 0.05], sm(0.2, 4, v)), f = 1 + 0.14 * k; return [c[0] * f, c[1] * f, c[2] * f]; };
 
 export function createDoppler(heart) {
   const group = new THREE.Group(); group.visible = false;
@@ -94,7 +82,7 @@ export function createDoppler(heart) {
     transparent: true, depthWrite: false, depthTest: !ghost,
   });
   const matMain = material(false), matGhost = material(true);
-  const probe = new THREE.Vector3(), tmp = new THREE.Vector3(), toP = new THREE.Vector3();
+  const tmp = new THREE.Vector3();
   const rnd = (a = 1) => (Math.random() * 2 - 1) * a;
 
   // un flux : spec (origin, dir, len, r0, r1, v0, turb, laminar, bend, time, pisa : { center, up, q }) → nuage
@@ -153,30 +141,26 @@ export function createDoppler(heart) {
     // positions, couleurs, tailles, opacités dans les attributs (repère du cœur au repos ; translation du battement à part)
     const write = () => {
       let k = 0;
-      toP.copy(probe);
       for (const b of J) {
         if (!b.alive) continue;
-        const i = frame(b.s), r = rad(b.s), P = pts[i], N = fr.normals[i], B = fr.binormals[i], Tg = fr.tangents[i];
+        const i = frame(b.s), r = rad(b.s), P = pts[i], N = fr.normals[i], B = fr.binormals[i];
         tmp.copy(P).addScaledVector(N, b.x * r).addScaledVector(B, b.y * r);
         pos[k * 3] = tmp.x; pos[k * 3 + 1] = tmp.y; pos[k * 3 + 2] = tmp.z;
         // vitesse réelle : maximale sur le premier dixième du jet, puis en 1/distance ; en cloche vers le bord
         const e2 = b.x * b.x + b.y * b.y, turb = f.turb ?? 0;
         let v = f.v0 * (f.laminar ? 1 - 0.4 * b.s : Math.min(1, 0.1 / Math.max(b.s, 0.01))) * Math.exp(-1.6 * e2);
         v *= Math.max(0.15, 1 + turb * 0.55 * b.jit);
-        const vt = v * Tg.dot(tmp.sub(toP).negate().normalize()), x = vt / NYQUIST;
-        let c = bart(fold(x));
-        if (turb && b.s < 0.6 && b.jit > 0.55) c = mixc(c, GREEN, 0.55 * turb); // variance (turbulence)
+        const c = blood(v, turb * b.jit); // jet turbulent : bouffées plus ou moins vives (tourbillons)
         col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
         siz[k] = (r * (0.7 + 0.7 * b.s) + 0.06) * b.sz; seed[k] = b.seed;
-        alp[k] = (f.laminar ? 0.2 : 0.34) * sm(0, 0.06, b.s) * (1 - sm(0.65, 1, b.s)) * (0.35 + 0.65 * sm(0.02, 0.15, Math.abs(x)));
+        alp[k] = (f.laminar ? 0.26 : 0.4) * sm(0, 0.06, b.s) * (1 - sm(0.65, 1, b.s)) * (0.4 + 0.6 * sm(0.05, 0.4, v));
         k++;
       }
       for (const b of Pz) {
         if (!b.alive) continue;
         tmp.copy(f.pisa.center).addScaledVector(b.u, b.r);
         pos[k * 3] = tmp.x; pos[k * 3 + 1] = tmp.y; pos[k * 3 + 2] = tmp.z;
-        const v = f.pisa.q / (2 * Math.PI * b.r * b.r), vt = -v * b.u.dot(tmp.sub(toP).negate().normalize()), x = vt / NYQUIST;
-        const c = bart(fold(x));
+        const c = blood(f.pisa.q / (2 * Math.PI * b.r * b.r));
         col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
         siz[k] = (0.12 + 0.22 * b.r / R0) * b.sz; seed[k] = b.seed;
         alp[k] = 0.3 * sm(R0, R0 * 0.8, b.r) * sm(0.08, 0.25, b.r);
@@ -260,7 +244,6 @@ export function createDoppler(heart) {
     update(dt, t, camera, height) {
       if (!group.visible) return;
       scale.value = height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-      probe.copy(heart.landmarks.apex);
       for (const f of live) {
         if (dt > 0) { f.step(Math.min(dt, 0.05), f.time(t)); f.warm = null; }
         else if (f.warm !== t) { // cœur arrêté : nuage établi à cet instant (1,5 s de flux simulées)
