@@ -56,53 +56,12 @@
 
   <main class="layout">
     <section id="scene" class="scene" aria-label="Modèle 3D du cœur">
-      <div class="tools">
-        <div class="toolbar" role="toolbar" aria-label="Affichage">
-          <span class="tool-group" aria-label="Modes">
-            <button class="tool mode" data-toggle="coupe" type="button" aria-pressed="false" title="Ouvrir le cœur pour voir les cavités"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="11.5" r="2"/><circle cx="4.5" cy="4.5" r="2"/><path d="M6 6l8 7M6 10l8-7"/></svg>Coupe</button>
-            <button class="tool mode" data-toggle="valves" type="button" aria-pressed="false" title="Voir chaque valve en gros plan, côté chirurgien ou côté ventricule : normale ou malade"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 8V2.2M8 8l5 2.9M8 8l-5 2.9"/></svg>Valves</button>
-            <button class="tool mode" data-toggle="fop" type="button" aria-pressed="false" title="Foramen ovale perméable : fosse ovale vue de l'oreillette droite, test aux bulles, fermeture percutanée"><svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="4.5" ry="5.5"/><path d="M5 4.5c2-2 4-2 6 0"/><circle cx="12.5" cy="12.5" r="1.1"/><circle cx="3.5" cy="12" r="0.9"/></svg>FOP</button>
-            <button class="tool mode" data-toggle="coro" type="button" aria-pressed="false" title="Artères coronaires : cœur normal, infarctus dans le territoire de l'IVA"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14C3 10.5 1.5 8 1.5 5.5 1.5 3.5 3 2 5 2c1.3 0 2.3.7 3 1.7C8.7 2.7 9.7 2 11 2c2 0 3.5 1.5 3.5 3.5C14.5 8 13 10.5 8 14z"/><path d="M8 3.7c-.3 3 1 5.5 0 9"/></svg>Coronaires</button>
-          </span>
-          <span class="tool-sep" aria-hidden="true"></span>
-          <span class="tool-group" aria-label="Options">
-            <button class="tool option beat-btn" data-toggle="battement" type="button" aria-pressed="true" title="Mettre le battement en pause ou le relancer"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ic-pause" d="M5.5 3.5v9M10.5 3.5v9"/><path class="ic-play" d="M5 3l8 5-8 5z"/></svg><span class="beat-txt">Pause</span></button>
-            <button class="tool option" data-action="recentrer" type="button" title="Revenir au cadrage de départ de la vue en cours"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v3.2M8 11.3v3.2M1.5 8h3.2M11.3 8h3.2"/></svg><span class="lbl">Recentrer</span></button>
-            <button class="tool option" data-toggle="reperes" type="button" aria-pressed="false" title="Afficher les repères d'orientation : côtés du patient, aorte, feuillets et cuspides"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 3.5l1.6 4.5L8 12.5 6.4 8z"/></svg><span class="lbl">Repères</span></button>
-            <button class="tool option" data-action="partager" type="button" title="Partager ou copier le lien de cette vue (valve, côté, variante, instant du cycle)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="3.8" r="1.8"/><circle cx="12" cy="12.2" r="1.8"/><path d="M5.6 7.1l4.8-2.4M5.6 8.9l4.8 2.4"/></svg><span class="lbl">Partager</span></button>
-          </span>
-        </div>
-        <div id="cut-tools" class="cut-tools hidden">
-          <div class="seg">
-            <button data-cut="cinq-cavites" class="active" type="button" title="Coupe 5 cavités passant par le centre des valves tricuspide, mitrale et aortique">5 cavités</button>
-            <button data-cut="frontale" type="button" title="Coupe frontale passant par le centre et l'axe de la valve aortique">Frontale</button>
-          </div>
-          <label id="cut-depth-wrap">Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label>
-        </div>
-        <div id="valve-tools" class="cut-tools valve-tools hidden">
-          <div class="seg" role="group" aria-label="Vue du FOP" data-group="fop">
-            <button data-valve="fosse" type="button" title="Septum interauriculaire vu de l'oreillette droite : fosse ovale, limbe">Fosse ovale normale</button>
-            <button data-valve="fop" type="button" title="Coupe bicave comme en ETO : le contraste passe de l'oreillette droite à la gauche par le FOP">FOP · test aux bulles</button>
-            <button data-valve="fermeture" type="button" title="Fermeture percutanée : mise en place d'une prothèse à double disque à travers le FOP">Fermeture du FOP</button>
-          </div>
-          <div class="seg" role="group" aria-label="Valve" data-group="valves">
-            <button data-valve="aortique" type="button">Aortique</button>
-            <button data-valve="mitrale" type="button">Mitrale</button>
-            <button data-valve="tricuspide" type="button">Tricuspide</button>
-            <button data-valve="pulmonaire" type="button">Pulmonaire</button>
-          </div>
-          <div class="seg" role="group" aria-label="Côté d'observation">
-            <button data-vside="C" class="active" type="button" title="Vue chirurgicale : depuis l'oreillette (ou l'aorte), comme le chirurgien">Chirurgien</button>
-            <button data-vside="V" type="button" title="Vue ventriculaire : depuis l'intérieur du ventricule, du côté opposé">Ventricule</button>
-          </div>
-          <div class="seg" id="valve-variants" role="group" aria-label="Variante"></div>
-          <div class="seg" role="group" aria-label="Position de la valve">
-            <button data-vphase="ferme" class="active" type="button">Fermée</button>
-            <button data-vphase="ouvert" type="button">Ouverte</button>
-          </div>
-          <button class="tool option" data-toggle="comparer" type="button" aria-pressed="false" title="Écran partagé : valve normale à gauche, valve malade à droite, dans le même cœur et au même instant du cycle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M8 3v10"/></svg><span class="lbl">Comparer</span></button>
-          <button class="tool option hidden" data-toggle="doppler" type="button" aria-pressed="false" title="Doppler couleur : le sang qui traverse la valve et les fuites, en fumée rouge, plus vive quand le sang va vite"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8c1.5-3 2.5-3 3.5 0s2 3 3.5 0 2-3 3.5 0 2 3 3.5 0"/></svg><span class="lbl">Doppler couleur</span></button>
-        </div>
+      <!-- actions de la vue, au-dessus du cycle cardiaque -->
+      <div class="actions" role="toolbar" aria-label="Affichage">
+        <button class="tool option beat-btn" data-toggle="battement" type="button" aria-pressed="true" title="Mettre le battement en pause ou le relancer"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ic-pause" d="M5.5 3.5v9M10.5 3.5v9"/><path class="ic-play" d="M5 3l8 5-8 5z"/></svg><span class="beat-txt">Pause</span></button>
+        <button class="tool option" data-action="recentrer" type="button" title="Revenir au cadrage de départ de la vue en cours"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v3.2M8 11.3v3.2M1.5 8h3.2M11.3 8h3.2"/></svg><span class="lbl">Recentrer</span></button>
+        <button class="tool option" data-toggle="reperes" type="button" aria-pressed="false" title="Afficher la légende : côtés du patient, noms des feuillets, des cuspides et des structures"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 3.5l1.6 4.5L8 12.5 6.4 8z"/></svg><span class="lbl">Légende</span></button>
+        <button class="tool option" data-action="partager" type="button" title="Partager ou copier le lien de cette vue (valve, côté, variante, instant du cycle)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="3.8" r="1.8"/><circle cx="12" cy="12.2" r="1.8"/><path d="M5.6 7.1l4.8-2.4M5.6 8.9l4.8 2.4"/></svg><span class="lbl">Partager</span></button>
       </div>
       <!-- cycle cardiaque : position dans le battement (glisser pour arrêter à un instant), vitesse -->
       <div id="cycle" class="cycle" role="group" aria-label="Cycle cardiaque">
@@ -123,6 +82,56 @@
         <span class="orient"><b>D</b> ← patient → <b>G</b></span>
       </div>
     </section>
+
+    <!-- menu à droite : les rubriques, puis, en cliquant, leurs sous-rubriques (flèche pour revenir en arrière) -->
+    <nav id="menu" class="menu" aria-label="Menu">
+      <div class="menu-top">
+        <button class="menu-back hidden" type="button" aria-label="Revenir en arrière"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg><span>Retour</span></button>
+        <h2 class="menu-title">Menu</h2>
+      </div>
+      <div class="menu-page" data-page="home">
+        <button class="mtile" data-go="coupe" type="button" style="--c: var(--c-coupe)"><b>Plan en coupe</b><small>Le cœur ouvert : 5 cavités, frontale</small></button>
+        <button class="mtile" data-go="valves" type="button" style="--c: var(--c-valves)"><b>Valves</b><small>Aortique, mitrale, tricuspide, pulmonaire</small></button>
+        <button class="mtile" data-go="fop" type="button" style="--c: var(--c-fop)"><b>FOP</b><small>Foramen ovale perméable, sa fermeture</small></button>
+        <button class="mtile" data-go="coro" type="button" style="--c: var(--c-coro)"><b>Coronaires</b><small>Les artères du cœur, l'infarctus</small></button>
+      </div>
+      <div class="menu-page" data-page="coupe" style="--c: var(--c-coupe)">
+        <button class="mitem" data-cut="cinq-cavites" data-close type="button" title="Coupe 5 cavités passant par le centre des valves tricuspide, mitrale et aortique">5 cavités</button>
+        <button class="mitem" data-cut="frontale" data-close type="button" title="Coupe frontale passant par le centre et l'axe de la valve aortique">Frontale</button>
+        <div id="cut-tools" class="mfield"><label id="cut-depth-wrap">Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label></div>
+      </div>
+      <div class="menu-page" data-page="valves" style="--c: var(--c-valves)">
+        <button class="mitem" data-valve="aortique" type="button">Aortique</button>
+        <button class="mitem" data-valve="mitrale" type="button">Mitrale</button>
+        <button class="mitem" data-valve="tricuspide" type="button">Tricuspide</button>
+        <button class="mitem" data-valve="pulmonaire" type="button">Pulmonaire</button>
+      </div>
+      <div class="menu-page" data-page="valve" style="--c: var(--c-valves)">
+        <h3 class="mlabel">La valve</h3>
+        <div class="mlist variants"></div>
+        <div class="proc-slot"></div>
+        <h3 class="mlabel">Vue</h3>
+        <div class="seg" role="group" aria-label="Côté d'observation">
+          <button data-vside="C" class="active" type="button" title="Vue chirurgicale : depuis l'oreillette (ou l'aorte), comme le chirurgien">Chirurgien</button>
+          <button data-vside="V" type="button" title="Vue ventriculaire : depuis l'intérieur du ventricule, du côté opposé">Ventricule</button>
+        </div>
+        <h3 class="mlabel">Position</h3>
+        <div class="seg" role="group" aria-label="Position de la valve">
+          <button data-vphase="ferme" class="active" type="button">Fermée</button>
+          <button data-vphase="ouvert" type="button">Ouverte</button>
+        </div>
+        <button class="mitem mtoggle" data-toggle="doppler" type="button" aria-pressed="false" title="Doppler couleur : le sang qui traverse la valve et les fuites, en fumée rouge, plus vive quand le sang va vite">Doppler couleur</button>
+      </div>
+      <div class="menu-page" data-page="fop" style="--c: var(--c-fop)">
+        <button class="mitem" data-valve="fosse" data-close type="button" title="Septum interauriculaire vu de l'oreillette droite : fosse ovale, limbe">Fosse ovale normale</button>
+        <button class="mitem" data-valve="fop" data-close type="button" title="Coupe bicave comme en ETO : le contraste passe de l'oreillette droite à la gauche par le FOP">FOP · test aux bulles</button>
+        <button class="mitem" data-valve="fermeture" data-close type="button" title="Fermeture percutanée : mise en place d'une prothèse à double disque à travers le FOP">Fermeture du FOP</button>
+        <div class="proc-slot"></div>
+      </div>
+      <div class="menu-page" data-page="coro" style="--c: var(--c-coro)">
+        <div class="mlist variants"></div>
+      </div>
+    </nav>
 
     <aside id="panel" class="panel">
       <button id="panel-handle" class="handle only-mobile" type="button" aria-label="Ouvrir ou fermer le panneau"><span></span></button>

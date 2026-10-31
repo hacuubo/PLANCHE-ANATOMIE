@@ -76,16 +76,23 @@ une liste numérotée des structures, et une fiche explicative par structure.
   oreillettes se remplissent et s'allongent pendant la systole ventriculaire, se vident puis se contractent en fin de
   diastole. Calculé dans le shader de sommets : tissus, surfaces de coupe, tranches et ombres suivent le même
   mouvement ; valves et cordages côté processeur, à l'identique.
-- **Modèle visuel** : plein écran, sans panneau, texte, légende ni nom de structure ; coronaires toujours affichées ;
-  battement automatique dès l'ouverture, bouton « Pause » (le cœur reste à l'instant où on l'arrête).
+- **Modèle visuel** : la scène, sans texte, légende ni nom de structure ; coronaires toujours affichées ; battement
+  automatique dès l'ouverture, bouton « Pause » (le cœur reste à l'instant où on l'arrête).
+- **Menu** (à droite ; tiroir sur téléphone, bouton « Menu » en haut) : les rubriques en rectangles de couleur — **Plan
+  en coupe**, **Valves**, **FOP**, **Coronaires** ; un clic sur l'une fait place à ses sous-rubriques (coupe 5 cavités,
+  frontale et profondeur ; la liste des valves, puis pour la valve choisie son état, la vue, la position, le Doppler ;
+  les trois vues du FOP ; normale ou infarctus), une flèche « Retour » ramène en arrière (de la valve à la liste des
+  valves sans quitter la vue, puis à l'accueil). En haut de l'écran, le titre dit où l'on est (« Valve mitrale ·
+  Prolapsus P2 · vue du chirurgien », « FOP · Fermeture du FOP »…). Sous la scène, au-dessus du cycle : **Pause**,
+  **Recentrer**, **Légende**, **Partager**. Thème : fond de studio bleu-gris, encre marine, rectangles.
 - **Cycle cardiaque** (barre du bas) : curseur sur un cycle de 940 ms, contraction des oreillettes, systole (de la
   fermeture mitrale à la fermeture aortique) et diastole marquées ; glisser arrête le cœur à cet instant, valves
   comprises ; ralenti ¼.
-- **Repères** (bouton, à la demande) : côtés du patient, et dans les vues des valves noms des feuillets, des cuspides et
+- **Légende** (bouton, à la demande) : côtés du patient, et dans les vues des valves noms des feuillets, des cuspides et
   de l'aorte. **Recentrer** : cadrage de départ de la vue en cours. **Partager** : lien de la vue en cours (valve, côté,
   variante, position ou instant du cycle, coupe, vitesse, repères, comparaison), tenu à jour dans la barre d'adresse et
   rouvert tel quel (par exemple `?valve=mitrale&cote=ventricule&variante=prolapsus&instant=300`).
-- **Valves** (vues de face tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : le bouton « Valves » ouvre
+- **Valves** (vues de face tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : la rubrique « Valves » ouvre
   le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la vue en cours : la
   caméra plonge vers la valve pendant que la coupe descend. Deux côtés, comme en échocardiographie 3D (ASE/EAE,
   Lang 2012) : **C** (chirurgical) depuis l'oreillette ou l'artère, cœur coupé juste au-dessus de l'anneau ou de la
@@ -95,8 +102,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
   l'aortique, cuspide antérieure à 12 h pour la pulmonaire. Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui. Choix de la
   variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend et remonte
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
-  doucement (éclairage frontal du chirurgien) : la valve se détache. **Comparer** : écran partagé, valve normale à
-  gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle.
+  doucement (éclairage frontal du chirurgien) : la valve se détache. **Valve pathologique : écran partagé d'emblée**,
+  valve normale à gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle
+  (sauf la TAVI, une animation ; de même pour l'infarctus des coronaires) ; « Normale » rend l'écran entier.
   **Repère** : en haut à droite (en bas à gauche sur téléphone), une petite coupe du cœur qui bat, sous un angle fixe,
   où la valve regardée est entourée (le cercle suit la valve) — coupe 4 cavités pour la mitrale et la tricuspide,
   5 cavités pour l'aortique, frontale passant par la voie d'éjection du VD pour la pulmonaire. Séquence de 32 images
@@ -229,8 +237,8 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 
 | Fichier | Rôle |
 | --- | --- |
-| `index.html` | Page, barre d'outils, panneau |
-| `css/style.css` | Styles (palette papier/encre, fond de studio de la scène, étiquettes, panneau mobile en tiroir) |
+| `index.html` | Page, menu à droite, actions de la vue, cycle cardiaque |
+| `css/style.css` | Styles (fond de studio bleu-gris, encre marine, rubriques en rectangles de couleur, menu en tiroir sur téléphone) |
 | `js/data.js`, `js/data.en.js` | Contenu pédagogique : structures, textes, ordre de la planche (FR, EN) |
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |

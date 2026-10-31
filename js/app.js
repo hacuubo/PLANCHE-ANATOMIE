@@ -250,7 +250,7 @@ function chooseCut(mode) {
   document.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === mode));
   setCutMode(mode);
   if (state.coupe) viewForCut(mode);
-  restPose();
+  restPose(); syncMenu();
 }
 const stencilGroup = new THREE.Group();
 stencilGroup.name = 'stencil';
@@ -467,11 +467,10 @@ function cutPlaneOffset() { return 0; }
 const OVERLAY_LAYER = 1;
 // vues des valves : valve centrée sous le panneau des réglages (projection décalée, la cible reste sur la valve)
 function valveShift() {
-  // entre le panneau des réglages (en haut) et la barre du cycle (en bas)
-  const sc = canvasWrap.getBoundingClientRect(), cyc = document.getElementById('cycle').getBoundingClientRect();
-  const top = Math.max(0, document.querySelector('.tools').getBoundingClientRect().bottom - sc.top);
-  const bottom = cyc.height ? Math.max(0, sc.bottom - cyc.top) : 0;
-  return { shift: -(top - bottom) / 2, top };
+  // au-dessus des actions et de la barre du cycle (en bas) ; les réglages sont dans le menu, à droite
+  const sc = canvasWrap.getBoundingClientRect(), act = document.querySelector('.actions').getBoundingClientRect();
+  const bottom = act.height ? Math.max(0, sc.bottom - act.top) : 0;
+  return { shift: bottom / 2, top: 0 };
 }
 function viewOffset() {
   const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
@@ -530,8 +529,6 @@ function setCompare(on) {
   const v = state.valve && VALVE_VIEWS[state.valve];
   on = !!(on && v);
   state.comparer = on;
-  const btn = document.querySelector('[data-toggle="comparer"]');
-  btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', String(on));
   if (on && v.variant === 'normale') v.setVariant(v.variantList[1][0]); // à droite : la première pathologie
   if (v?.valveFor) heart.setExtraValves(on ? [[v.heartValveId, v.valveFor('normale')]] : []);
   contact.split = on ? splitHooks : null;
@@ -583,7 +580,7 @@ sideStack.append(locator);
 canvasWrap.appendChild(sideStack);
 function syncLocator() {
   const L = state.valve && !tavi.playing && LOCATOR[state.valve]; // animation de la TAVI : vue propre, sans repère
-  if (state.valve) sideStack.style.setProperty('--stack-top', `${valveShift().top + 10}px`); // sous le panneau des réglages
+  if (state.valve) sideStack.style.setProperty('--stack-top', `${valveShift().top + (state.comparer ? 52 : 10)}px`); // sous les noms de l'écran partagé
   locator.classList.toggle('hidden', !L);
   locKey = L ? state.valve : null; locShown = -1;
   if (!L) return;
@@ -618,8 +615,7 @@ taviCap.className = 'tavi-caption hidden'; taviCap.setAttribute('aria-live', 'po
 taviCap.innerHTML = '<div class="tc-steps"></div><p></p>';
 canvasWrap.appendChild(taviCap);
 const taviBtn = document.createElement('button');
-taviBtn.type = 'button'; taviBtn.className = 'tool option hidden'; taviBtn.dataset.action = 'tavi';
-document.getElementById('valve-tools').appendChild(taviBtn);
+taviBtn.type = 'button'; taviBtn.className = 'mitem mproc hidden'; taviBtn.dataset.action = 'tavi'; // dans la page du menu de la vue
 // légende des étapes d'une animation (TAVI, fermeture du FOP) : barre de progression et texte de l'étape k
 const procCaption = (steps) => (k, text) => {
   taviCap.classList.toggle('hidden', k < 0);
@@ -767,7 +763,6 @@ function valveCut(v, off, side = valveSide) {
   state.coupe = true;
   if (state.modeCoupe !== mode) setCutMode(mode, depth); else setCutDepth(depth);
   if (!wasOn && wasCurved === curved) applyClipping(); // une seule mise à jour des matériaux
-  document.getElementById('cut-tools').classList.add('hidden');
 }
 // Passe à la valve « key » depuis la vue en cours (ou d'une valve à une autre) ; key = null : retour à la vue de départ.
 // after : appelé à la fin.
@@ -816,7 +811,6 @@ function goValve(key, after) {
           state.coupe = b.coupe;
           setCutMode(b.mode, b.depth);
           if (!b.coupe && wasCurved === curved) applyClipping();
-          document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe);
           if (!b.coupe) return;
         }
         if (b.coupe) setCutDepth(b.depth + FAR * (1 - smooth01(0.55, 0.95, e)));
@@ -827,7 +821,14 @@ function goValve(key, after) {
       },
     });
   }
-  runSteps(steps, () => { syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true; after?.(); });
+  runSteps(steps, () => { syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true; autoCompare(); after?.(); });
+}
+// Valve (ou coronaires) pathologique : écran partagé d'emblée, la normale à gauche ; sauf les animations (TAVI) et les
+// vues sans comparaison (FOP)
+function autoCompare() {
+  const v = state.valve && VALVE_VIEWS[state.valve];
+  const want = !!(v && v.compare !== false && v.variant !== 'normale' && v.variant !== 'tavi');
+  if (want !== state.comparer) setCompare(want);
 }
 // Change de côté (C ↔ V) : la coupe remonte, la caméra fait le tour de la valve par le côté, la coupe redescend
 function setValveSide(side) {
@@ -849,45 +850,81 @@ function syncPhaseButtons() {
 }
 // Interface : bouton « Valves », panneau (valve, côté, variante, position)
 function syncValveUI() {
-  const v = state.valve && VALVE_VIEWS[state.valve], group = groupOf(), open = !!group, isValve = group === 'valves';
-  document.getElementById('valve-tools').classList.toggle('hidden', !open);
-  document.querySelectorAll('[data-group]').forEach((el) => el.classList.toggle('hidden', el.dataset.group !== group));
-  document.getElementById('valve-variants').classList.toggle('hidden', !v || v.variantList.length < 2);
-  document.querySelector('[data-vphase]').parentElement.classList.toggle('hidden', !v || !isValve);
-  document.querySelector('[data-vside]').parentElement.classList.toggle('hidden', !v || !isValve);
+  const v = state.valve && VALVE_VIEWS[state.valve];
   document.querySelectorAll('[data-vside]').forEach((b) => { b.classList.toggle('active', b.dataset.vside === valveSide); b.setAttribute('aria-pressed', String(b.dataset.vside === valveSide)); });
-  for (const [name, g] of [['valves', 'valves'], ['fop', 'fop'], ['coro', 'coro']]) {
-    const btn = document.querySelector(`[data-toggle="${name}"]`); if (!btn) continue;
-    btn.classList.toggle('on', group === g); btn.setAttribute('aria-pressed', String(group === g));
-  }
   canvasWrap.classList.toggle('is-valve', !!v);
-  document.querySelector('[data-toggle="comparer"]').classList.toggle('hidden', !v || v.compare === false);
-  document.querySelector('[data-toggle="doppler"]').classList.toggle('hidden', !v || !isValve);
   if ((tavi.playing || tavi.held) && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
   if (closure.shown && state.valve !== 'fermeture') stopClosure();
   syncTaviBtn();
   syncCutOnly();
   syncDoppler(); syncLocator();
   document.querySelectorAll('[data-valve]').forEach((b) => b.classList.toggle('active', b.dataset.valve === state.valve));
-  if (v) {
-    const seg = document.getElementById('valve-variants');
-    seg.innerHTML = v.variantList.map(([k, l]) => `<button type="button" data-variant="${k}" class="${k === v.variant ? 'active' : ''}">${l}</button>`).join('');
-    seg.querySelectorAll('[data-variant]').forEach((b) => b.addEventListener('click', () => {
+  // états de la vue en cours (normale, pathologies ; coronaires : normale, infarctus), dans sa page du menu
+  document.querySelectorAll('.menu .variants').forEach((el) => { el.innerHTML = ''; });
+  const list = v && v.variantList.length > 1 && document.querySelector(`.menu-page[data-page="${v.group === 'valves' ? 'valve' : v.group}"] .variants`);
+  if (list) {
+    list.innerHTML = v.variantList.map(([k, l]) => `<button type="button" class="mitem${k === v.variant ? ' active' : ''}" data-variant="${k}">${l}</button>`).join('');
+    list.querySelectorAll('[data-variant]').forEach((b) => b.addEventListener('click', () => {
       v.setVariant(b.dataset.variant);
-      if (state.comparer && v.variant === 'normale') setCompare(false); // normale contre normale : comparaison close
       syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true;
+      autoCompare(); // pathologie : écran partagé avec la valve normale ; normale : écran entier
       if (b.dataset.variant === 'tavi' && state.valve === 'aortique') startTavi(); // TAVI : l'implantation, d'emblée
     }));
   }
-  // barres d'onglets qui défilent (téléphone) : onglet actif ramené au milieu
-  for (const b of document.querySelectorAll('#valve-tools .seg > button.active')) {
-    const s = b.parentElement;
-    if (s.scrollWidth <= s.clientWidth + 1) continue;
-    const br = b.getBoundingClientRect(), sr = s.getBoundingClientRect();
-    s.scrollLeft += br.left + br.width / 2 - (sr.left + sr.width / 2);
-  }
+  syncMenu();
   viewOffset();
 }
+
+/* ─────────── menu à droite ─────────── */
+// Rubriques (plan en coupe, valves, FOP, coronaires) ; un clic sur l'une fait place à ses sous-rubriques, une flèche
+// ramène en arrière. La page affichée découle de l'état de la vue. En haut de l'écran, le titre dit où l'on est.
+const menuEl = document.getElementById('menu'), menuBack = menuEl.querySelector('.menu-back'), menuTitle = menuEl.querySelector('.menu-title');
+const brandTitle = document.querySelector('.topbar .title'), brandSub = document.querySelector('.topbar .subtitle');
+const HOME = { title: brandTitle.textContent, sub: brandSub.textContent };
+const CUT_NAMES = { 'cinq-cavites': 'Coupe 5 cavités', frontale: 'Coupe frontale' };
+const SIDE_NAMES = { C: 'vue du chirurgien', V: 'vue du ventricule', L: 'implantation' };
+let valveList = false; // liste des valves affichée alors qu'une valve est à l'écran (retour depuis une valve)
+const variantName = (v) => v.variantList.find(([k]) => k === v.variant)?.[1] ?? '';
+function menuPage() {
+  const v = state.valve && VALVE_VIEWS[state.valve];
+  if (v) return v.group === 'valves' ? (valveList ? 'valves' : 'valve') : v.group;
+  if (valvePanel) return 'valves';
+  return state.coupe ? 'coupe' : 'home';
+}
+function syncMenu() {
+  const page = menuPage(), v = state.valve && VALVE_VIEWS[state.valve];
+  menuEl.querySelectorAll('.menu-page').forEach((el) => el.classList.toggle('on', el.dataset.page === page));
+  menuEl.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === state.modeCoupe));
+  menuBack.classList.toggle('hidden', page === 'home');
+  menuTitle.textContent = { home: 'Menu', coupe: 'Plan en coupe', valves: 'Valves', valve: v?.title ?? 'Valve', fop: 'FOP', coro: 'Coronaires' }[page];
+  const slot = menuEl.querySelector(`.menu-page[data-page="${page}"] .proc-slot`); // animation de la vue (TAVI, fermeture du FOP)
+  if (slot && taviBtn.parentElement !== slot) slot.appendChild(taviBtn);
+  let t = HOME.title, sub = HOME.sub;
+  if (page === 'coupe') { t = 'Plan en coupe'; sub = CUT_NAMES[state.modeCoupe] ?? ''; }
+  else if (v?.group === 'valves') { t = v.title; sub = `${variantName(v)} · ${SIDE_NAMES[valveSide] ?? ''}`; }
+  else if (page === 'valves') { t = 'Valves'; sub = 'Choisissez une valve'; }
+  else if (v?.group === 'fop') { t = 'FOP'; sub = v.title; }
+  else if (v?.group === 'coro') { t = 'Coronaires'; sub = variantName(v); }
+  if (brandTitle.textContent !== t) brandTitle.textContent = t;
+  if (brandSub.textContent !== sub) brandSub.textContent = sub;
+}
+const narrow = matchMedia('(max-width: 900px)');
+menuBack.addEventListener('click', () => {
+  if (trans) return;
+  const page = menuPage();
+  if (page === 'valve') { valveList = true; syncMenu(); } // la valve reste à l'écran
+  else if (page === 'valves') { valveList = false; if (state.valve) goValve(null); else { valvePanel = false; syncValveUI(); } }
+  else if (page === 'coupe') toggle('coupe', false);
+  else goValve(null);
+});
+menuEl.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
+  const g = b.dataset.go;
+  if (g === 'coupe') toggle('coupe', true);
+  else if (g === 'valves') { valvePanel = true; valveList = false; syncValveUI(); }
+  else goValve(g === 'fop' ? 'fosse' : 'coronaires');
+}));
+// téléphone : le menu se referme quand on choisit une vue (il recouvre la scène)
+menuEl.addEventListener('click', (e) => { if (narrow.matches && e.target.closest('[data-close], [data-variant]')) menuEl.classList.remove('open'); });
 
 /* ─────────── étiquettes ─────────── */
 const labels = {};
@@ -1085,7 +1122,7 @@ function toggle(name, value) {
   if (name === 'reperes') { canvasWrap.classList.toggle('show-marks', state.reperes); syncMarks(); }
   if (name === 'doppler') syncDoppler();
   if (name === 'coupe') restPose();
-  if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); document.getElementById('cut-tools').classList.toggle('hidden', !state.coupe); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); }
+  if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); syncMenu(); }
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires && (!m.userData.ostium || state.coupe); })); }
 }
 
@@ -1212,7 +1249,7 @@ function buildPanel() {
   });
   document.querySelector('[data-action="partager"]').addEventListener('click', shareView);
   document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
-  document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => goValve(b.dataset.valve, b.dataset.valve === 'fermeture' ? startClosure : undefined))); // fermeture du FOP : l'animation, d'emblée
+  document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => { valveList = false; goValve(b.dataset.valve, b.dataset.valve === 'fermeture' ? startClosure : undefined); })); // fermeture du FOP : l'animation, d'emblée
   document.querySelectorAll('[data-vside]').forEach((b) => b.addEventListener('click', () => setValveSide(b.dataset.vside)));
   document.querySelectorAll('[data-vphase]').forEach((b) => b.addEventListener('click', () => {
     valveOpen = b.dataset.vphase === 'ouvert';
@@ -1237,7 +1274,7 @@ function buildPanel() {
     document.querySelectorAll('[data-speed]').forEach((x) => { x.classList.toggle('active', x === b); x.setAttribute('aria-pressed', String(x === b)); });
     if (!state.battement) toggle('battement', true);
   }));
-  document.getElementById('panel-toggle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
+  { const b = document.getElementById('panel-toggle'); b.setAttribute('aria-label', 'Ouvrir ou fermer le menu'); b.addEventListener('click', () => menuEl.classList.toggle('open')); }
   document.getElementById('panel-handle').addEventListener('click', () => document.getElementById('panel').classList.toggle('open'));
   renderFiche(null);
   // états initiaux (le battement est désactivé par défaut : le patient voit d'abord une planche)
@@ -1246,6 +1283,7 @@ function buildPanel() {
 }
 buildPanel();
 setCutMode('cinq-cavites'); // coupe par défaut : 5 cavités, par le centre des valves tricuspide, mitrale et aortique
+syncMenu(); // menu : page d'accueil
 applyClipping();
 
 /* ─────────── PWA ─────────── */
@@ -1253,6 +1291,7 @@ let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault(); deferredPrompt = e;
   const b = document.getElementById('install'); b.classList.remove('hidden');
+  if (narrow.matches) b.textContent = 'Installer'; // en-tête étroit (téléphone)
   b.addEventListener('click', async () => { deferredPrompt.prompt(); await deferredPrompt.userChoice; b.classList.add('hidden'); deferredPrompt = null; });
 });
 // en local (développement) : pas de cache hors ligne, sans quoi les essais tourneraient sur l'ancienne version
