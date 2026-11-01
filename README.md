@@ -189,19 +189,21 @@ une liste numérotée des structures, et une fiche explicative par structure.
   (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015) ; **Fermeture du FOP** (js/pfo-closure.js) : même
   coupe, animation de la fermeture percutanée lancée à l'ouverture de l'onglet (bouton « Voir la fermeture » pour la
   revoir, « Arrêter ») — cœur arrêté en diastole ; d'abord le FOP en gros plan, avec ses noms ; guide (0,035 pouce) qui
-  remonte la veine cave inférieure, traverse l'OD et passe tout droit dans le tunnel jusque dans l'OG (bout en J), puis
-  gaine bleue (≈ 8 F) qui glisse sur lui, et guide retiré — matériel dans l'axe du tunnel, qu'il traverse en ligne
-  droite sans s'y couder (abord et sortie dans son prolongement ; un seul arc doux dans l'OD, depuis la veine cave) ;
+  remonte la veine cave inférieure, traverse l'OD (un seul arc doux, depuis la veine cave), passe tout droit dans le
+  tunnel, sans s'y couder, et se recourbe une fois dans l'OG — au débouché, l'axe du tunnel bute sur la paroi : arc
+  régulier jusqu'à viser le centre de l'oreillette, puis tout droit, bout en J —, toujours dans l'oreillette (≥ 1,5 mm
+  des parois, distance signée à l'endocarde) ; gaine bleue (≈ 8 F) qui glisse sur lui, droite dans le tunnel, et
+  s'arrête dans l'OG ; guide retiré par la gaine ;
   prothèse à double disque de type Amplatzer PFO Occluder 25 mm (disque gauche 18 mm, disque droit 25 mm, treillis
-  tressé en spirale sur tissu de polyester, col court, moyeux) : disque gauche poussé hors de la gaine et ouvert dans
-  l'OG, au point choisi pour que le disque ouvert reste à distance des parois (≥ 2 mm ; distance signée à l'endocarde
-  de l'OG), tiré contre la cloison ; gaine reculée dans l'OD, disque droit libéré de l'autre côté ; le rabat est pris
+  tressé en spirale sur tissu de polyester, col court, moyeux) : disque gauche poussé hors de la gaine et ouvert
+  entièrement dans l'OG, au point choisi pour que le disque ouvert reste à distance des parois (≥ 2 mm ; distance
+  signée à l'endocarde de l'OG), tiré contre la cloison ; gaine reculée dans l'OD, disque droit libéré de l'autre côté ; le rabat est pris
   contre le limbe et la fente s'écrase à mesure que le disque droit s'applique ; les deux disques centrés sur le milieu
   du tunnel, chacun contre une face de la cloison (lancer de rayons) et conformés à son relief comme un treillis souple
   (recul de leurs points le long de leur axe, plafonné à 3,5 mm : légère cuvette du disque droit sur le bombement
   antérieur de la cloison) ; largage (câble dévissé, retiré avec la gaine). Caméra : gros plan sur le tunnel, coupe
   bicave pour la montée de la gaine, puis inclinée côté OG (disque gauche de trois quarts), côté OD (disque droit),
-  retour à la coupe, rapprochée sur la prothèse ; légende de chaque étape (8). Fin : cœur qui bat, la prothèse suit la
+  retour à la coupe, rapprochée sur la prothèse ; légende de chaque étape (9). Fin : cœur qui bat, la prothèse suit la
   cloison, test aux bulles de contrôle négatif (les bulles restent à droite).
 - **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de
   l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),

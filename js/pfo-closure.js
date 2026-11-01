@@ -1,19 +1,22 @@
 // Animation de la fermeture percutanée du FOP (prothèse à double disque de type Amplatzer PFO Occluder, voie veineuse
 // fémorale), dans la coupe bicave de la rubrique FOP (oreillette gauche en haut, veine cave supérieure à droite) :
 //   1. le FOP : un tunnel entre le rabat du septum primum (côté OG) et le septum secundum (limbe, côté OD) ;
-//   2. un guide fin remonte la veine cave inférieure, traverse l'oreillette droite et passe tout droit dans le tunnel
-//      jusque dans l'oreillette gauche ;
-//   3. la gaine de largage glisse sur le guide jusque dans l'oreillette gauche, puis le guide est retiré ;
-//   4. le disque gauche est poussé hors de la gaine et s'ouvre dans l'oreillette gauche, à distance de ses parois ;
-//   5. il est tiré contre la cloison et plaque le rabat du côté gauche ;
-//   6. la gaine recule dans l'oreillette droite et libère le disque droit, qui se plaque de l'autre côté : le rabat est
+//   2. un guide fin remonte la veine cave inférieure, traverse l'oreillette droite, passe tout droit dans le tunnel et
+//      se recourbe dans l'oreillette gauche ;
+//   3. la gaine de largage glisse sur le guide : droite dans le tunnel, elle s'arrête dans l'oreillette gauche ;
+//   4. le guide est retiré par la gaine ;
+//   5. le disque gauche est poussé hors de la gaine et s'ouvre entièrement dans l'oreillette gauche, à distance de ses
+//      parois ;
+//   6. il est tiré contre la cloison et plaque le rabat du côté gauche ;
+//   7. la gaine recule dans l'oreillette droite et libère le disque droit, qui se plaque de l'autre côté : le rabat est
 //      pris contre le limbe, le tunnel s'écrase ; le col de la prothèse le traverse ;
-//   7. la prothèse est larguée : le câble est dévissé, puis retiré avec la gaine ;
-//   8. la cloison est prise entre les deux disques, le FOP est fermé ; le cœur bat, les bulles du test ne passent
+//   8. la prothèse est larguée : le câble est dévissé, puis retiré avec la gaine ;
+//   9. la cloison est prise entre les deux disques, le FOP est fermé ; le cœur bat, les bulles du test ne passent
 //      plus dans l'oreillette gauche.
-// Trajet du matériel : dans l'axe du tunnel. L'abord dans l'oreillette droite prolonge le tunnel vers l'arrière, la
-// sortie dans l'oreillette gauche le prolonge vers l'avant : guide et gaine le traversent en ligne droite, sans s'y
-// couder ; la seule courbe, douce, est dans l'oreillette droite, depuis la veine cave inférieure.
+// Trajet du matériel : dans l'axe du tunnel, qu'il traverse en ligne droite sans s'y couder (l'abord dans l'oreillette
+// droite le prolonge vers l'arrière ; seule courbe, un arc doux depuis la veine cave inférieure). Dans l'oreillette
+// gauche, le guide se recourbe une fois vers son centre, puis en J ; guide et gaine restent dans l'oreillette (à 3,5 mm
+// au moins de ses parois : distance signée à l'endocarde, au repos), et le disque gauche s'y ouvre entièrement.
 // Matériel : guide de 0,9 mm (0,035 pouce), gaine de ≈ 2,5 mm (8 F), câble de largage, prothèse 25 mm (disque droit 25 mm, disque gauche 18 mm,
 // treillis de nitinol garni de polyester, col court articulé). Le cœur est arrêté en diastole pendant la mise en place
 // (pose sans déformation) ; à la fin, la prothèse suit le battement de la cloison.
@@ -25,9 +28,10 @@ import * as THREE from 'three';
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 export const CLOSURE_STEPS = [
   { d: 5.0, text: 'Le FOP est un petit tunnel dans la cloison entre les oreillettes : un rabat fin (septum primum, côté gauche) recouvre le bord épais du septum secundum (côté droit) sans y être soudé.' },
-  { d: 4.0, text: 'Par la veine de l’aine, on monte d’abord un guide fin : il remonte la veine cave inférieure, traverse l’oreillette droite et passe tout droit dans le tunnel du FOP, jusque dans l’oreillette gauche.' },
-  { d: 4.5, text: 'La gaine de largage glisse sur le guide, dans l’axe du tunnel, sans s’y couder, jusque dans l’oreillette gauche ; puis le guide est retiré.' },
-  { d: 3.5, text: 'On commence par déployer le disque gauche : poussé hors de la gaine, il s’ouvre dans l’oreillette gauche.' },
+  { d: 4.0, text: 'Par la veine de l’aine, on monte d’abord un guide fin : il remonte la veine cave inférieure, traverse l’oreillette droite, passe tout droit dans le tunnel du FOP et se recourbe dans l’oreillette gauche.' },
+  { d: 4.0, text: 'La gaine de largage glisse sur le guide : droite dans le tunnel, elle s’arrête dans l’oreillette gauche.' },
+  { d: 2.5, text: 'On retire le guide par la gaine.' },
+  { d: 3.5, text: 'On commence par déployer le disque gauche : poussé hors de la gaine, il s’ouvre entièrement dans l’oreillette gauche.' },
   { d: 2.8, text: 'Ensuite, on le tire contre la cloison : il plaque le rabat du côté gauche.' },
   { d: 4.0, text: 'Puis la gaine recule et libère le disque droit, de l’autre côté : le rabat est pris contre la cloison, le tunnel s’écrase.' },
   { d: 3.0, text: 'La prothèse est larguée : le câble est dévissé, puis retiré avec la gaine.' },
@@ -71,29 +75,44 @@ export function createClosureAnimation(heart, view, hooks) {
       for (let k = 0; k < 12; k++) { const a = (k / 12) * 2 * Math.PI; m = Math.min(m, sd(side, c.clone().addScaledVector(u, r * Math.cos(a)).addScaledVector(v, r * Math.sin(a)))); }
       return m;
     };
-    // axe du tunnel, de l'entrée dans la fosse au débouché dans l'OG : le matériel le suit en ligne droite
+    // axe du tunnel, de l'entrée dans la fosse au débouché dans l'OG : le matériel le traverse en ligne droite
     const tA = T2.clone().sub(T0).normalize(), Q = (s) => T0.clone().addScaledVector(tA, s);
-    // OG : point d'ouverture du disque gauche, dans le prolongement du tunnel (le disque s'ouvre 3,7 mm devant le bout
-    // de la gaine, son axe dans l'axe de la gaine), le plus loin possible des parois, sans s'écarter de l'axe
-    const wT = new THREE.Vector3().crossVectors(n, tA).normalize();
-    let E = null, best = -Infinity;
-    for (let d = 0.8; d <= 2.21; d += 0.2) for (let a = -0.2; a <= 0.21; a += 0.2) for (let bb = -0.2; bb <= 0.21; bb += 0.2) {
-      const p = T2.clone().addScaledVector(tA, d).addScaledVector(n, a).addScaledVector(wT, bb), ax = p.clone().sub(T2).normalize();
-      const m = margin('oreillette-gauche', p.clone().addScaledVector(ax, 0.37), ax, RL) - 0.02 * d; // à marge égale, le plus près
-      if (m > best) { best = m; E = p; }
-    }
+    // OG : au débouché, l'axe du tunnel bute aussitôt sur la paroi de l'oreillette (le tunnel longe la cloison) ; la place
+    // est vers le centre de l'oreillette, à ≈ 125° de cet axe. Le guide se recourbe donc une fois, dès le débouché : un
+    // arc régulier, tangent à l'axe du tunnel, qui tourne jusqu'à viser le centre (rayon choisi pour que l'arc reste dans
+    // l'oreillette), puis tout droit vers le centre, et un bout souple en J ; à 1,5 mm au moins des parois (distance
+    // signée à l'endocarde, au repos ; points ramenés vers le centre au besoin)
+    const C = fo.la.clone(), dC = C.clone().sub(T2).normalize();
+    const nrm = dC.clone().addScaledVector(tA, -dC.dot(tA)); if (nrm.lengthSq() < 1e-4) nrm.copy(n); nrm.normalize();
+    const turn = Math.acos(Math.max(-1, Math.min(1, tA.dot(dC))));
+    const inLA = (p, m = 0.15) => { const d = C.clone().sub(p).normalize(); for (let i = 0; i < 60 && sd('oreillette-gauche', p) < m; i++) p.addScaledVector(d, 0.03); return p; };
+    const arcOf = (R) => { const out = []; for (let k = 1; k <= 6; k++) { const th = (turn * k) / 6; out.push(T2.clone().addScaledVector(tA, R * Math.sin(th)).addScaledVector(nrm, R * (1 - Math.cos(th)))); } return out; };
+    let arc = null, arcR = 0, arcMin = -Infinity;
+    for (const R of [0.7, 0.6, 0.5, 0.42, 0.35, 0.28]) { const pts = arcOf(R), m = Math.min(...pts.map((p) => sd('oreillette-gauche', p))); if (m > arcMin) { arcMin = m; arc = pts; arcR = R; } }
+    const aEnd = arc[arc.length - 1], run = Math.max(0.4, Math.min(1.6, aEnd.distanceTo(C) - 0.2)), perp = new THREE.Vector3().crossVectors(dC, n).normalize();
+    const P2 = aEnd.clone().addScaledVector(dC, run);
+    const inside = [...arc, aEnd.clone().addScaledVector(dC, run * 0.5), P2,
+      P2.clone().addScaledVector(dC, 0.3).addScaledVector(perp, 0.22), P2.clone().addScaledVector(dC, 0.2).addScaledVector(perp, 0.48), P2.clone().addScaledVector(dC, -0.05).addScaledVector(perp, 0.55)].map((p) => inLA(p));
     // OD : abord dans le prolongement du tunnel (en arrière de son entrée), depuis la veine cave inférieure
     const A0 = Q(-0.9);
-    // trajet : veine cave inférieure, oreillette droite (un seul arc doux, de la veine cave à l'abord, tangent à l'axe du
-    // tunnel), puis en ligne droite : abord, tunnel, OG
+    // trajet du guide : veine cave inférieure, oreillette droite (un seul arc doux, de la veine cave à l'abord, tangent à
+    // l'axe du tunnel), en ligne droite par l'abord et le tunnel, puis recourbé dans l'OG
     const cv = fo.svc.clone().sub(fo.ivc).normalize();
-    const route = [fo.ivc.clone().addScaledVector(cv, -3), fo.ivc.clone(), fo.ivc.clone().lerp(Q(-1.8), 0.5), Q(-1.8), Q(-1.1), Q(-0.5),
-      T0.clone(), T0.clone().lerp(T2, 0.5), T2.clone(), T2.clone().lerp(E, 0.5), E];
-    const curve = new THREE.CatmullRomCurve3(route, false, 'centripetal'), L = curve.getLength(), S = 700;
-    // guide : même trajet, prolongé dans l'OG (bout souple recourbé en J)
-    const eD = E.clone().sub(T2).normalize(), eW = new THREE.Vector3().crossVectors(eD, n).normalize();
-    const wireCurve = new THREE.CatmullRomCurve3([...route, E.clone().addScaledVector(eD, 0.7), E.clone().addScaledVector(eD, 1.15).addScaledVector(eW, 0.18), E.clone().addScaledVector(eD, 1.05).addScaledVector(eW, 0.42)], false, 'centripetal');
-    const LW = wireCurve.getLength();
+    const wireCurve = new THREE.CatmullRomCurve3([fo.ivc.clone().addScaledVector(cv, -3), fo.ivc.clone(), fo.ivc.clone().lerp(Q(-1.8), 0.5), Q(-1.8), Q(-1.1), Q(-0.5),
+      T0.clone(), T0.clone().lerp(T2, 0.5), T2.clone(), ...inside], false, 'centripetal');
+    const LW = wireCurve.getLength(), S = 700, wS = wireCurve.getSpacedPoints(S);
+    const uW = (p) => { let k = 0; wS.forEach((q, i) => { if (q.distanceTo(p) < wS[k].distanceTo(p)) k = i; }); return (k / S) * LW; };
+    // gaine : sur le guide, jusqu'au point de l'OG où le disque gauche (ouvert 3,7 mm devant son bout, dans son axe) tient
+    // entièrement dans l'oreillette, le plus loin possible de ses parois — après l'arc, vers le centre
+    let E = null, best = -Infinity, uE = 0;
+    for (let u = uW(aEnd) + 0.2; u <= uW(P2) + 0.05; u += 0.05) {
+      const f = u / LW, p = wireCurve.getPointAt(f), ax = wireCurve.getTangentAt(f);
+      const m = margin('oreillette-gauche', p.clone().addScaledVector(ax, 0.37), ax, RL) - 0.01 * u;
+      if (m > best) { best = m; E = p; uE = u; }
+    }
+    const sheathPts = wS.slice(0, Math.round((uE / LW) * S) + 1);
+    const curve = new THREE.CatmullRomCurve3(sheathPts, false, 'centripetal'), L = curve.getLength();
+    const wireMin = Math.min(...wS.slice(Math.round(((uW(T2) + 0.3) / LW) * S)).map((p) => sd('oreillette-gauche', p))); // essais : marge du guide dans l'OG
     const samples = curve.getSpacedPoints(S), uOf = (p) => { let b = 0; samples.forEach((q, i) => { if (q.distanceTo(p) < samples[b].distanceTo(p)) b = i; }); return (b / S) * L; };
     const group = new THREE.Group(); group.visible = false; heart.root.add(group);
     const tube = (r, rs, mat) => { const m = new THREE.Mesh(new THREE.TubeGeometry(curve, S, r, rs, false), mat); m.frustumCulled = false; m.userData.rs = rs; group.add(m); return m; };
@@ -186,7 +205,7 @@ export function createClosureAnimation(heart, view, hooks) {
       };
     };
     const bendL = conform(dL, CL, RL, 'oreillette-gauche', 1), bendR = conform(dR, CR, RR, 'oreillette-droite', -1);
-    return { group, sheath, tip, cable, wire, rangeW, LW, range, dL, dR, waist, CL, CR, n, L, uLA, uT2, uT0, uR, Y, P, Tg, at, T1, E, Efront, A0, margin, laMargin: best, bendL, bendR };
+    return { group, sheath, tip, cable, wire, rangeW, LW, wireMin, arcR, range, dL, dR, waist, CL, CR, n, L, uLA, uT2, uT0, uR, Y, P, Tg, at, T1, E, Efront, A0, margin, laMargin: best, bendL, bendR };
   };
   // pose d'un disque : centre, axe (de l'OD vers l'OG), ouverture o (0 : replié, allongé dans la gaine ; 1 : ouvert)
   const _q = new THREE.Quaternion();
@@ -203,40 +222,40 @@ export function createClosureAnimation(heart, view, hooks) {
     let acc = 0; for (const s of CLOSURE_STEPS) { starts.push(acc); acc += s.d; }
     const ph = (k) => (CLOSURE_STEPS[k].d ? Math.min(1, Math.max(0, (t - starts[k]) / CLOSURE_STEPS[k].d)) : t >= starts[k] ? 1 : 0);
     const k = Math.max(0, starts.findLastIndex((s0) => t >= s0));
-    // guide : monte jusque dans l'OG (2), puis retiré quand la gaine y est (fin de 3)
-    b.rangeW(ph(2) < 0.72 ? b.LW * ease(ph(1)) : b.LW * (1 - ease((ph(2) - 0.72) / 0.28)));
-    // bout de la gaine : avance sur le guide (3), recul au débouché du tunnel (5), dans l'oreillette droite (6), retrait (7)
-    let uTip = b.uLA * ease(ph(2) / 0.72);
-    if (ph(4) > 0) uTip = b.uLA + (b.uT2 - 0.15 - b.uLA) * ease(ph(4));
-    if (ph(5) > 0) uTip = b.uT2 - 0.15 + (b.uR - b.uT2 + 0.15) * ease(ph(5) / 0.55);
-    const out = ease((ph(6) - 0.3) / 0.7) * 9; // retrait de la gaine et du câble
-    if (ph(6) > 0) uTip = b.uR - out;
+    // guide : monte jusque dans l'OG (2), puis retiré par la gaine (4)
+    b.rangeW(ph(3) > 0 ? b.LW * (1 - ease(ph(3))) : b.LW * ease(ph(1)));
+    // bout de la gaine : avance sur le guide (3), recul au débouché du tunnel (6), dans l'oreillette droite (7), retrait (8)
+    let uTip = b.uLA * ease(ph(2));
+    if (ph(5) > 0) uTip = b.uLA + (b.uT2 - 0.15 - b.uLA) * ease(ph(5));
+    if (ph(6) > 0) uTip = b.uT2 - 0.15 + (b.uR - b.uT2 + 0.15) * ease(ph(6) / 0.55);
+    const out = ease((ph(7) - 0.3) / 0.7) * 9; // retrait de la gaine et du câble
+    if (ph(7) > 0) uTip = b.uR - out;
     b.range(b.sheath, 0, Math.max(0, uTip - 0.3)); b.range(b.tip, Math.max(0, uTip - 0.3), Math.max(0, uTip));
-    // disque gauche : sort du bout de la gaine dans l'OG (4), puis plaqué contre la cloison (5)
+    // disque gauche : sort du bout de la gaine et s'ouvre dans l'OG (5), puis plaqué contre la cloison (6)
     const tipP = b.at(uTip).clone(), tipT = b.Tg.clone();
-    const o1 = ease(ph(3)), pull = ease(ph(4));
+    const o1 = ease(ph(4)), pull = ease(ph(5));
     const front = tipP.clone().addScaledVector(tipT, 0.12 + 0.55 * (1 - o1) + 0.25 * o1);
     const axL = tipT.clone().lerp(b.n, pull).normalize();
-    setDisc(b.dL, front.lerp(b.CL, pull), axL, ph(3) > 0 ? Math.max(0.02, o1) : 0);
-    b.bendL(ease((ph(4) - 0.6) / 0.4));
-    // disque droit : s'ouvre dans l'OD quand la gaine est sortie de la fosse (6), puis se plaque sur la cloison
-    const o2 = ease((ph(5) - 0.3) / 0.55);
+    setDisc(b.dL, front.lerp(b.CL, pull), axL, ph(4) > 0 ? Math.max(0.02, o1) : 0);
+    b.bendL(ease((ph(5) - 0.6) / 0.4));
+    // disque droit : s'ouvre dans l'OD quand la gaine est sortie de la fosse (7), puis se plaque sur la cloison
+    const o2 = ease((ph(6) - 0.3) / 0.55);
     const rIn = b.at(Math.max(uTip, b.uR)).clone().addScaledVector(b.Tg, 0.3 * (1 - o2));
-    setDisc(b.dR, rIn.lerp(b.CR, ease((ph(5) - 0.45) / 0.55)), b.Tg.clone().lerp(b.n, Math.min(1, o2 * 1.5)).normalize(), ph(5) > 0.3 ? Math.max(0.02, o2) : 0);
-    b.bendR(ease((ph(5) - 0.7) / 0.3));
+    setDisc(b.dR, rIn.lerp(b.CR, ease((ph(6) - 0.45) / 0.55)), b.Tg.clone().lerp(b.n, Math.min(1, o2 * 1.5)).normalize(), ph(6) > 0.3 ? Math.max(0.02, o2) : 0);
+    b.bendR(ease((ph(6) - 0.7) / 0.3));
     // le rabat est pris contre le limbe à mesure que le disque droit vient s'appliquer : le tunnel s'écrase
-    heart.setPFOClosure(ease((ph(5) - 0.55) / 0.45));
+    heart.setPFOClosure(ease((ph(6) - 0.55) / 0.45));
     // col : visible dès que le disque droit sort
     b.waist.visible = b.dR.visible;
     if (b.waist.visible) {
       const a = b.dL.position, c = b.dR.position, len = a.distanceTo(c);
       b.waist.position.copy(a).add(c).multiplyScalar(0.5); b.waist.quaternion.setFromUnitVectors(b.Y, _p.copy(a).sub(c).normalize()); b.waist.scale.set(1, len, 1);
     }
-    // câble : jusqu'au moyeu du disque droit (sous le disque gauche avant), dévissé puis retiré (7)
-    const gap = ease(ph(6) / 0.3) * 0.5;
-    const uCab = (ph(5) > 0.3 ? b.uT0 - 0.3 : uTip + 0.3) - gap - out;
-    b.range(b.cable, 0, ph(2) >= 1 ? Math.max(0, uCab) : 0);
-    b.sheath.visible &&= ph(6) < 1; b.tip.visible &&= ph(6) < 1; b.cable.visible &&= ph(6) < 1;
+    // câble : jusqu'au moyeu du disque droit (sous le disque gauche avant), dévissé puis retiré (8)
+    const gap = ease(ph(7) / 0.3) * 0.5;
+    const uCab = (ph(6) > 0.3 ? b.uT0 - 0.3 : uTip + 0.3) - gap - out;
+    b.range(b.cable, 0, ph(3) >= 1 ? Math.max(0, uCab) : 0);
+    b.sheath.visible &&= ph(7) < 1; b.tip.visible &&= ph(7) < 1; b.cable.visible &&= ph(7) < 1;
     return k;
   };
   // en place (fin) : la prothèse suit le battement de la cloison (déplacement du point entre les deux disques)
@@ -256,7 +275,7 @@ export function createClosureAnimation(heart, view, hooks) {
     const B = mk(b.CL.clone().lerp(b.Efront, 0.5).addScaledVector(n, 0.1), d0.clone().multiplyScalar(Math.cos(k)).addScaledVector(n, Math.sin(k)), 9, sd.up.clone());
     const C = mk(b.CR.clone().addScaledVector(n, -0.2), d0.clone().multiplyScalar(Math.cos(k)).addScaledVector(n, -Math.sin(k)), 9, sd.up.clone());
     const D = mk(sd.center.clone(), d0.clone(), sd.dist, sd.up.clone());
-    return [[0, O], [3.8, O], [5.6, A], [12.5, A], [14.1, B], [19.1, B], [20.7, C], [24.8, C], [26.8, D]];
+    return [[0, O], [3.8, O], [5.6, A], [14.5, A], [16.1, B], [21.1, B], [22.7, C], [26.8, C], [28.8, D]];
   };
   const _qa = new THREE.Quaternion();
   const frameAt = () => {
