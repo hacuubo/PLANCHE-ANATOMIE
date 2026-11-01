@@ -667,20 +667,123 @@ const pacing = createPacingAnimation(heart, VALVE_VIEWS.stim, {
   caption: (k, text) => procCaption(pacing.steps)(k, text),
   finish() { syncTaviBtn(); syncMenu(); },
 });
-// Première partie de chaque animation (js/route-intro.js) : du point de ponction au cœur, sur la planche du corps entier ;
-// la deuxième (ci-dessus) démarre sous le fondu de la planche
+// Image du cœur pour la planche du corps entier (js/route-intro.js) : rendu de face sans perspective (repère de la
+// scène, en cm), cœur au repos, sans coupe ni fantôme ; aorte et branches de la crosse teintées en rouge, veines caves
+// en bleu (ombrage gardé), pour se fondre dans le réseau de la planche — et, comme sur les planches, artères pulmonaires
+// en bleu, veines pulmonaires en rouge ; extrémités de ces vaisseaux (raccords : point,
+// direction vers l'extérieur, rayon). Calculée une fois, au premier lancement d'une introduction.
+let plateCache = null;
+function heartPlate() {
+  if (plateCache) return plateCache;
+  const X0 = -6, X1 = 8.5, Y0 = -9, Y1 = 14.5, PPC = 56, W = Math.round((X1 - X0) * PPC), H = Math.round((Y1 - Y0) * PPC);
+  const cam = new THREE.OrthographicCamera(X0, X1, Y1, Y0, 1, 200); cam.position.set(0, 0, 60); cam.lookAt(0, 0, 0);
+  const ids = heart.structureIds, sidOf = (n) => ids.indexOf(n);
+  const cat = new Float32Array(256); // structure → 1 : sang oxygéné (rouge), 2 : sang pauvre en oxygène (bleu)
+  for (const n of ['aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche', 'veines-pulmonaires']) if (sidOf(n) >= 0) cat[sidOf(n)] = 1;
+  for (const n of ['veine-cave-superieure', 'veine-cave-inferieure', 'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche']) if (sidOf(n) >= 0) cat[sidOf(n)] = 2;
+  // seul le cœur : ni fond, ni brouillard, ni coupe, ni fantôme
+  const hidden = [], hide = (o) => { if (o.visible) { o.visible = false; hidden.push(o); } };
+  scene.children.forEach((o) => { if (o !== heart.root.parent && !o.isLight) hide(o); });
+  ghosts.forEach(hide);
+  const bg = scene.background, fog = scene.fog, clip = renderer.localClippingEnabled, cutOn = heart.cutUniforms.uCutOn.value;
+  const cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
+  scene.background = null; scene.fog = null; renderer.localClippingEnabled = false; heart.cutUniforms.uCutOn.value = 0;
+  renderer.setClearColor(0x000000, 0);
+  heart.setBeat(null);
+  const shot = (override = null) => {
+    const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
+    scene.overrideMaterial = override;
+    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, cam);
+    const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+    renderer.setRenderTarget(null); rt.dispose(); scene.overrideMaterial = null;
+    return px;
+  };
+  const col = shot();
+  // passe des vaisseaux : artères (rouge), veines (vert), d'après la structure de chaque sommet de l'enveloppe
+  const idMat = new THREE.ShaderMaterial({
+    uniforms: { uCat: { value: cat } },
+    vertexShader: 'attribute vec4 tis; varying float vSid; void main() { vSid = floor(tis.w * 255.0 + 0.5); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform float uCat[256]; varying float vSid; void main() { float c = uCat[int(clamp(vSid, 0.0, 255.0))]; gl_FragColor = vec4(c == 1.0 ? 1.0 : 0.0, c == 2.0 ? 1.0 : 0.0, 0.0, 1.0); }',
+  });
+  const idp = shot(idMat); idMat.dispose();
+  scene.background = bg; scene.fog = fog; renderer.localClippingEnabled = clip; heart.cutUniforms.uCutOn.value = cutOn;
+  renderer.setClearColor(cc, ca);
+  hidden.forEach((o) => { o.visible = true; });
+  restPose(); renderer.shadowMap.needsUpdate = true;
+  // image : lignes dans l'ordre de l'écran, alpha non prémultiplié, vaisseaux teintés
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c2 = cv.getContext('2d'), img = c2.createImageData(W, H), o = img.data, RED = [196, 58, 51], BLUE = [62, 81, 158];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const s = ((H - 1 - y) * W + x) * 4, d = (y * W + x) * 4, al = col[s + 3];
+    if (!al) continue;
+    let r = Math.min(255, (col[s] * 255) / al), g = Math.min(255, (col[s + 1] * 255) / al), b = Math.min(255, (col[s + 2] * 255) / al);
+    const wa = idp[s] / 255, wv = idp[s + 1] / 255, m = Math.min(1, wa + wv);
+    if (m > 0.01) {
+      const sh = 0.3 + (0.95 * (0.3 * r + 0.59 * g + 0.11 * b)) / 255, base = wa >= wv ? RED : BLUE;
+      r += (Math.min(255, base[0] * sh) - r) * m; g += (Math.min(255, base[1] * sh) - g) * m; b += (Math.min(255, base[2] * sh) - b) * m;
+    }
+    o[d] = r; o[d + 1] = g; o[d + 2] = b; o[d + 3] = al;
+  }
+  c2.putImageData(img, 0, 0);
+  // extrémités : sommets les plus avancés dans une direction (bande de 3,5 mm), direction d'après la bande 9 à 14 mm en
+  // retrait, rayon : demi-largeur de la bande
+  heart.root.updateMatrixWorld(true);
+  const pos = heart.envelope.geometry.attributes.position, tis = heart.envelope.geometry.attributes.tis, M = heart.envelope.matrixWorld, v = new THREE.Vector3(), bySid = new Map();
+  for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(M); const k = Math.round(tis.getW(i) * 255); if (!bySid.has(k)) bySid.set(k, []); bySid.get(k).push([v.x, v.y]); }
+  const mean = (A) => A.reduce((s, q) => [s[0] + q[0] / A.length, s[1] + q[1] / A.length], [0, 0]);
+  const end = (name, dx, dy) => {
+    const V = bySid.get(sidOf(name)) ?? [[0, 0]], m = Math.max(...V.map(([x, y]) => x * dx + y * dy));
+    const E = V.filter(([x, y]) => x * dx + y * dy > m - 0.35), Q = V.filter(([x, y]) => { const s = x * dx + y * dy; return s > m - 1.4 && s < m - 0.9; });
+    const P = mean(E), q = Q.length ? mean(Q) : [P[0] - dx, P[1] - dy], l = Math.hypot(P[0] - q[0], P[1] - q[1]) || 1;
+    const r = Math.max(0.2, ...E.map(([x, y]) => Math.abs(-(x - P[0]) * dy + (y - P[1]) * dx)));
+    return { p: P, d: [(P[0] - q[0]) / l, (P[1] - q[1]) / l], r };
+  };
+  plateCache = { url: cv.toDataURL('image/png'), rect: [X0, X1, Y0, Y1], ends: {
+    ao: end('aorte', 0, -1), ivc: end('veine-cave-inferieure', 0, -1), svc: end('veine-cave-superieure', 0, 1),
+    rcar: end('tronc-brachio-cephalique', 0, 1), rsub: end('tronc-brachio-cephalique', -1, 0), lcar: end('carotide-commune-gauche', 0, 1), lsub: end('subclaviere-gauche', 1, 0),
+  } };
+  return plateCache;
+}
+// Première partie de chaque animation (js/route-intro.js) : du point de ponction à l'abord du cœur, sur la planche du
+// corps entier ; au relais, la caméra 3D se pose sur le cadrage de la planche et la deuxième partie démarre dessous
 const intro = createRouteIntro(canvasWrap, {
+  plate: heartPlate,
   caption: (kind, text) => { const st = kind === 'tavi' ? TAVI_STEPS : kind === 'fop' ? closure.steps : pacing.steps; showCaption(st.length + 1, 0, text); },
 });
-let introProc = null; // animation qui suit l'introduction en cours
+let introProc = null, introLive = false; // animation qui suit l'introduction en cours ; avant le relais
+let handoff = null, directEnter = false; // relais en cours (caméra et coupe) ; TAVI : passage direct à la vue de la crosse
 function playIntro(kind, proc, start) {
-  introProc = proc;
-  intro.play(kind, () => { introProc = null; start(); });
+  introProc = proc; introLive = true;
+  intro.play(kind, (view) => { introLive = false; fromPlate(view, kind); start(); }); // la planche s'efface ensuite en fondu
   syncTaviBtn();
+}
+// Caméra 3D posée sur le cadrage de la planche : vue de face, même centre, même échelle (décalage des vues des valves
+// compris), coupe repoussée hors du cœur (il est entier, comme sur la planche) ; elle rejoint ensuite celle de
+// l'animation (procCam ; TAVI : setValveSide direct), la coupe entrant en même temps
+function fromPlate(view, kind) {
+  if (trans || !view) return;
+  const { K, OX, OY } = intro.frame, hw = view.h / K, H = view.H || canvasWrap.clientHeight || 1;
+  const d = hw / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2), shift = state.valve ? valveShift().shift : 0;
+  const x = (view.cx - OX) / K, y = (OY - view.cy) / K + (shift * hw) / H;
+  camAnim = null;
+  controls.target.set(x, y, 0); camera.position.set(x, y, d); setCameraUp(Y_UP);
+  const v = state.valve && VALVE_VIEWS[state.valve];
+  if (v) valveCut(v, FAR);
+  if (kind === 'tavi') directEnter = true;
+  else handoff = { from: camSt(), t: 0, dur: 1.7 };
+}
+// caméra de l'animation ; pendant le relais, depuis le cadrage de la planche, la coupe entrant depuis l'extérieur
+function procCam(target, dir, dist, up, dt) {
+  if (!handoff) { controls.target.copy(target); camera.position.copy(target).addScaledVector(dir, dist); setCameraUp(up); return; }
+  handoff.t = Math.min(1, handoff.t + Math.min(dt, 0.1) / handoff.dur);
+  applyCam(handoff.from, { target, dir: dir.clone().normalize(), dist, up }, easeIO(handoff.t));
+  const v = state.valve && VALVE_VIEWS[state.valve];
+  if (v) valveCut(v, FAR * (1 - smooth01(0.1, 0.9, handoff.t)));
+  if (handoff.t >= 1) handoff = null;
 }
 function stopIntro() {
   if (!intro.playing) return;
-  intro.stop(); introProc = null;
+  intro.stop(); introProc = null; introLive = false; handoff = null; directEnter = false;
   taviCap.classList.add('hidden'); syncTaviBtn();
 }
 // animation de la vue en cours (bouton « Voir… » / « Arrêter »)
@@ -752,14 +855,14 @@ function startTavi(skipIntro = false) {
   if (!skipIntro) { if (state.comparer) setCompare(false); playIntro('tavi', tavi, () => startTavi(true)); return; }
   if (trans) { pendingAction = () => startTavi(true); return; }
   if (state.comparer) setCompare(false);
-  tavi.play();
+  tavi.play({ skipValve: directEnter }); // depuis la planche : directement dans le plan de la crosse
   syncDoppler(); syncTaviBtn(); syncLocator();
 }
 function taviEnter() {
   if (state.valve !== 'aortique' || !tavi.playing) return;
   if (state.battement) toggle('battement', false);
   frozenPhase = null; valveOpen = true; // valve native ouverte (petit orifice), cœur sans déformation
-  setValveSide('L');
+  setValveSide('L', directEnter); directEnter = false;
   restPose();
 }
 function stopTavi() {
@@ -894,14 +997,19 @@ function autoCompare() {
   if (want !== state.comparer) setCompare(want);
 }
 // Change de côté (C ↔ V) : la coupe remonte, la caméra fait le tour de la valve par le côté, la coupe redescend
-function setValveSide(side) {
-  if (trans) { pendingAction = () => setValveSide(side); return; }
+function setValveSide(side, direct = false) {
+  if (trans) { pendingAction = () => setValveSide(side, direct); return; }
   if (side === valveSide) return;
   if (side !== 'L' && (tavi.playing || tavi.held)) { tavi.stop(); heart.useValve('valve-aortique', VALVE_VIEWS.aortique.valveFor(VALVE_VIEWS.aortique.variant)); syncTaviBtn(); }
   const v = state.valve && VALVE_VIEWS[state.valve], from = valveSide;
   valveSide = side;
   syncValveUI();
   if (!v) return;
+  // direct (relais de la planche) : de la vue de face à celle du côté, la coupe entrant depuis l'extérieur du cœur
+  if (direct) {
+    runSteps([{ dur: 0.85, to: () => closeCam(v), onUpdate: (e) => valveCut(v, FAR * (1 - smooth01(0.15, 0.95, e))), onEnd: () => viewOffset() }], () => { restPose(); renderer.shadowMap.needsUpdate = true; });
+    return;
+  }
   const a = sideOf(v, from), mid = () => ({ target: a.center.clone().lerp(sideOf(v, side).center, 0.5), dir: new THREE.Vector3().crossVectors(a.up, a.camDir).normalize(), dist: a.dist * 1.9 * portrait(), up: a.up.clone() });
   runSteps([
     { dur: 1.0, to: mid, onUpdate: (e) => valveCut(v, FAR * smooth01(0, 0.8, e), from) },
@@ -1321,7 +1429,7 @@ function buildPanel() {
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelector('[data-action="recentrer"]').addEventListener('click', recenter);
   taviBtn.addEventListener('click', () => {
-    if (intro.playing && introProc) { stopIntro(); return; } // avant la deuxième partie : rien d'autre à arrêter
+    if (intro.playing && introLive) { stopIntro(); return; } // avant la deuxième partie : rien d'autre à arrêter
     if (intro.playing) stopIntro(); // pendant le fondu, la deuxième partie a démarré : on l'arrête aussi
     if (procOf() === closure) closure.playing ? stopClosure() : startClosure();
     else if (procOf() === pacing) pacing.playing ? stopPacing() : startPacing();
@@ -1461,15 +1569,15 @@ function animate() {
   intro.update(Math.min(dt, 0.1));
   if (pacing.shown && !trans && state.valve === 'stim') { // caméra de l'animation : 4 cavités, septum, oreillette droite
     const f = pacing.frame(), sd = VALVE_VIEWS.stim.sides.C;
-    controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(sd.camDir, f.dist * portrait()); setCameraUp(sd.up);
+    procCam(f.center, sd.camDir, f.dist * portrait(), sd.up, dt);
   }
   if (!trans) controls.enabled = !VALVE_VIEWS[state.valve]?.fixed; // stimulation : coupe 4 cavités fixe
   if (closure.playing && !trans && state.valve === 'fermeture') { // caméra de l'animation (gaine, disque gauche, disque droit, coupe)
     const f = closure.frame();
-    controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(f.dir, f.dist * portrait()); setCameraUp(f.up);
+    procCam(f.center, f.dir, f.dist * portrait(), f.up, dt);
   }
   if (trans) stepTrans(dt); // zoom vers une valve
-  else if (state.valve && state.battement) valveCut(VALVE_VIEWS[state.valve], 0); // la coupe suit la valve qui bat
+  else if (state.valve && state.battement && !handoff) valveCut(VALVE_VIEWS[state.valve], 0); // la coupe suit la valve qui bat
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe et dans les vues des valves)
   if (state.coupe && heart.stepValves(dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   bubbles.update(Math.min(dt, 0.1) * beatSpeed, state.battement ? beatPhase : frozenPhase ?? 0, state.battement);

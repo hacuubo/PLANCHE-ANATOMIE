@@ -137,9 +137,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
     rayons (bord de l'espace sanguin, de la chambre de chasse au haut des sinus), ajusté à chaque hauteur en cercle
     décentré et ovalisé (forme d'une armature dilatée dans un anneau ovale), lissé le long de l'axe ; armature contre les
     cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
-    (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : d'abord la valve malade, 2 s, dans la vue en cours,
-    cœur qui bat ; puis vue dans le plan de la crosse aortique (coupe passant par le centre de la valve), cœur arrêté en
-    diastole ; l'aorte est fendue sur toute sa longueur, de la valve à l'aorte descendante, comme un tuyau coupé en long
+    (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : après le trajet depuis la ponction (voir plus bas),
+    vue dans le plan de la crosse aortique (coupe passant par le centre de la valve ; la légende présente d'abord la
+    valve malade), cœur arrêté en diastole ; l'aorte est fendue sur toute sa longueur, de la valve à l'aorte descendante, comme un tuyau coupé en long
     (surface d'ouverture passant par sa ligne centrale ; tranche de la paroi le long des deux bords) : seule reste sa
     moitié postérieure, en gouttière lisse d'une seule teinte (demi-tube qui épouse la lumière mesurée tous les 2,5 mm,
     à la place de l'intima de BodyParts3D, en deux pièces fendues à leur jonction) ; les branches de la crosse gardent
@@ -223,19 +223,24 @@ une liste numérotée des structures, et une fiche explicative par structure.
   électrode annulaire ≈ 1 cm en arrière. Caméra, toujours dans l'axe de la vue : les 4 cavités, rapprochée sur le
   septum pendant le vissage, sur l'oreillette droite pendant la pose de la sonde auriculaire, puis sur les deux sondes.
   Légende : les quatre cavités, le septum interventriculaire, la veine cave supérieure.
-- **Trajet depuis la ponction** (js/route-intro.js) : première partie de chaque animation de pose de dispositif, avant
-  celle du cœur. Planche vectorielle du corps entier, vue de face (côté droit du patient à gauche de l'écran), avec la
-  grande circulation seule — artères en rouge, veines en bleu, sans circulation pulmonaire — et un cœur immobile :
-  aorte et branches de la crosse, carotides, sous-clavières, axillaires, humérales, radiales, ulnaires et arcades
-  palmaires, rénales, iliaques, fémorales, poplitées, tibiales ; veines caves, troncs brachiocéphaliques (devant les
-  branches de la crosse), jugulaires, sous-clavières, basiliques, céphaliques, rénales (la gauche devant l'aorte),
-  iliaques, fémorales, grandes saphènes. L'aiguille ponctionne le vaisseau (anneau au point de ponction, étiquette),
-  puis le dispositif le remonte jusqu'au cœur ; la vue suit sa progression puis plonge sur le cœur, et la planche
-  s'efface sur la deuxième partie, qui démarre dessous. **TAVI** : artère fémorale droite, iliaque commune, aorte
-  abdominale puis thoracique, crosse, valve aortique (guide) ; **FOP** : veine fémorale droite, iliaque commune, veine
-  cave inférieure, oreillette droite (gaine) ; **pacemaker** : veine sous-clavière gauche, tronc veineux
-  brachiocéphalique gauche, veine cave supérieure, oreillette droite (sonde dans sa gaine). Première étape de la barre
-  de progression ; bouton « Passer » ; « Arrêter » l'interrompt.
+- **Trajet depuis la ponction** (js/route-intro.js) : première partie de chaque animation de pose de dispositif
+  (4 à 5 s), avant celle du cœur. Planche vectorielle du corps entier, vue de face (côté droit du patient à gauche de
+  l'écran), avec la grande circulation seule — artères en rouge, veines en bleu — et un cœur immobile, qui est l'image
+  du modèle 3D lui-même : rendu de face sans perspective, à l'échelle de la planche (5,45 unités par cm), cœur au repos,
+  aorte et branches de la crosse teintées en rouge, veines caves en bleu (et, comme sur les planches, artères
+  pulmonaires en bleu, veines pulmonaires en rouge). Les vaisseaux de la planche partent des extrémités des gros
+  vaisseaux du modèle (branches de la crosse, aorte descendante, veines caves) et s'y fondent : carotides,
+  sous-clavières, axillaires, humérales, radiales, ulnaires et arcades palmaires, aorte abdominale, rénales, iliaques,
+  fémorales, poplitées, tibiales ; troncs brachiocéphaliques (devant les branches de la crosse), jugulaires,
+  sous-clavières, basiliques, céphaliques, veine cave inférieure, rénales (la gauche devant l'aorte), iliaques,
+  fémorales, grandes saphènes. L'aiguille ponctionne le vaisseau (anneau, étiquette), le dispositif le remonte, la vue
+  suit sa progression ; à l'abord du cœur — **TAVI** (guide, artère fémorale droite) : aorte thoracique descendante ;
+  **FOP** (gaine, veine fémorale droite) : veine cave inférieure au niveau du foie ; **pacemaker** (sonde dans sa
+  gaine, veine sous-clavière gauche) : veine cave supérieure —, la caméra 3D se pose exactement sur le cadrage de la
+  planche (vue de face, même centre, même échelle), la deuxième partie démarre dessous et la planche s'efface en
+  fondu ; la caméra glisse ensuite vers la vue de l'animation, la coupe entrant depuis l'extérieur du cœur (TAVI :
+  directement dans le plan de la crosse). Première étape de la barre de progression ; bouton « Passer » ; « Arrêter »
+  l'interrompt.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
