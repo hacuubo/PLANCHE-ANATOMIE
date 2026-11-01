@@ -331,6 +331,7 @@ export function createPacingAnimation(heart, view, hooks) {
     get playing() { return playing; },
     get step() { return step; },
     get shown() { return shown; },
+    prepare() { built ??= build(); }, // construction d'avance (pendant le trajet depuis la ponction, js/app.js)
     play() {
       built ??= build();
       t = -0.8; step = -1; playing = true; shown = true; tail = -1;

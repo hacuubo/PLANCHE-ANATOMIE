@@ -54,29 +54,34 @@ const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS,
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Planche : les images (corps entier, puis le tronc, plus fin, par-dessus)
-function buildPlate(svg, plate) {
+// Planche : les images (corps entier, puis le tronc, plus fin, par-dessus) dans des calques HTML sous le SVG : chacune
+// garde sa taille d'origine et suit le cadrage par une transformation (translation, échelle) que la carte graphique
+// applique sans la redessiner ; sur téléphone, la variante plus légère du tronc
+function buildPlate(svg, layer, plate) {
   el('defs', {}, svg).innerHTML = '<filter id="ri-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>';
-  for (const im of plate.images) {
+  const mobile = matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700;
+  const imgs = plate.images.filter((im) => !im.media || im.media === (mobile ? 'mobile' : 'desktop')).map((im) => {
+    const img = new Image(); img.decoding = 'async'; img.alt = ''; img.src = im.url; layer.appendChild(img);
     const [x0, x1, y0, y1] = im.rect;
-    el('image', { href: im.url, x: f1(OX + K * x0), y: f1(OY - K * y1), width: f1((x1 - x0) * K), height: f1((y1 - y0) * K), preserveAspectRatio: 'none' }, svg);
-  }
+    return { img, x: OX + K * x0, y: OY - K * y1, w: (x1 - x0) * K, h: (y1 - y0) * K };
+  });
   const device = el('g', {}, svg);
   const fx = el('g', {}, svg); // aiguille, point de ponction, bout du dispositif, étiquette
-  return { device, fx, routes: plate.routes, heart: plate.heart, full: plate.full };
+  return { device, fx, imgs, routes: plate.routes, heart: plate.heart, full: plate.full };
 }
 
 export function createRouteIntro(host, hooks = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'route-intro hidden';
   wrap.innerHTML = '<div class="ri-legend"><span class="ri-a">Artères</span><span class="ri-v">Veines</span></div><button type="button" class="ri-skip">Passer ›</button>';
-  const svg = el('svg', { class: 'ri-svg', 'aria-hidden': 'true' });
-  wrap.prepend(svg);
+  const svg = el('svg', { class: 'ri-svg', 'aria-hidden': 'true' }), layer = document.createElement('div');
+  layer.className = 'ri-plate';
+  wrap.prepend(layer, svg);
   host.appendChild(wrap);
   let P = null; // planche, construite au premier lancement (l'image du cœur est rendue à ce moment)
   let halo, line, ring, needle, shaft, hub, tipGlow, tip, tag, lead, t1, t2;
   const build = () => {
-    P = buildPlate(svg, hooks.plate());
+    P = buildPlate(svg, layer, hooks.plate());
     const { device, fx } = P;
     // dispositif : halo clair puis corps ; bout lumineux ; aiguille ; anneau de ponction ; étiquette
     halo = el('path', { fill: 'none', stroke: '#fff', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke', opacity: 0.9 }, device);
@@ -92,7 +97,7 @@ export function createRouteIntro(host, hooks = {}) {
     t1 = el('text', { class: 'ri-t1' }, tag); t2 = el('text', { class: 'ri-t2' }, tag);
   };
 
-  let kind = null, R = null, S = null, cum = null, t = 0, playing = false, done = null, cam = null, handed = false;
+  let kind = null, R = null, S = null, cum = null, t = 0, playing = false, done = null, cam = null, handed = false, ready = true, held = false;
   const T_PUNCT = 0.9, T_FADE = 0.55;
   const prepare = (k) => {
     if (!P) build();
@@ -130,6 +135,12 @@ export function createRouteIntro(host, hooks = {}) {
     }
     const h = cam.h, w = h * asp;
     svg.setAttribute('viewBox', `${f1(cam.x - w / 2)} ${f1(cam.y - h / 2)} ${f1(w)} ${f1(h)}`);
+    const sc = H / h, vx = cam.x - w / 2, vy = cam.y - h / 2; // calques des images : même cadrage
+    for (const L of P.imgs) {
+      const nw = L.img.naturalWidth, nh = L.img.naturalHeight; if (!nw) continue;
+      if (!L.sized) { L.img.style.width = nw + 'px'; L.img.style.height = nh + 'px'; L.sized = true; }
+      L.img.style.transform = `translate(${((L.x - vx) * sc).toFixed(2)}px, ${((L.y - vy) * sc).toFixed(2)}px) scale(${((L.w * sc) / nw).toFixed(5)}, ${((L.h * sc) / nh).toFixed(5)})`;
+    }
     view = { cx: cam.x, cy: cam.y, h, H };
     const u = h / H; // unités par pixel
     // ponction : aiguille qui entre, anneau qui pulse
@@ -165,27 +176,32 @@ export function createRouteIntro(host, hooks = {}) {
     wrap.classList.add('hidden'); host.classList.remove('intro-on');
   }
   const handoff = () => { handed = true; const cb = done; done = null; cb?.(view); }; // la deuxième partie démarre sous la planche
-  wrap.querySelector('.ri-skip').addEventListener('click', () => { if (playing && !handed) { t = tHand(); render(-1); handoff(); } });
+  wrap.querySelector('.ri-skip').addEventListener('click', () => { if (playing && !handed) { t = tHand(); render(-1); if (ready) handoff(); } });
   return {
     get playing() { return playing; },
     get kind() { return kind; },
+    get covering() { return playing && !handed; }, // la planche couvre encore toute la scène (avant le fondu)
     // joue la première partie du trajet « k » ; onDone(view) au relais : cadrage de la planche à ce moment
     // ({ cx, cy, h } en unités, H en pixels) et repère du modèle (K, OX, OY), pour y poser la caméra 3D
-    play(k, onDone) {
+    // ready : promesse de la préparation de la deuxième partie ; le relais l'attend (le dispositif reste à l'abord du cœur)
+    play(k, onDone, readyP = null) {
       wrap.classList.remove('hidden'); host.classList.add('intro-on');
       prepare(k); t = 0; playing = true; done = onDone;
+      ready = !readyP; readyP?.then(() => { if (kind === k) ready = true; });
       wrap.style.opacity = '1';
       hooks.caption?.(kind, R.text);
       render(-1);
     },
     update(dt) {
-      if (!playing) return;
+      if (!playing || held) return; // tenue : la planche reste sur son image (préparation de la deuxième partie)
       t += dt;
+      if (!handed && !ready && t > tHand()) t = tHand(); // préparation pas finie : on attend à l'abord du cœur
       render(dt);
-      if (!handed && t >= tHand()) handoff();
+      if (!handed && ready && t >= tHand()) handoff();
       if (t >= tHand() + T_FADE) finish();
     },
-    stop() { if (!playing) return; done = null; finish(); },
+    stop() { if (!playing) return; done = null; held = false; finish(); },
+    hold(v) { held = v; },
     seek(s) { if (playing) { t = s; render(-1); } }, // débogage
     frame: { K, OX, OY },
   };

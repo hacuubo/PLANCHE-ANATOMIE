@@ -319,7 +319,9 @@ button { font: inherit; color: inherit; }
 @media (max-width: 640px) { .tavi-caption { bottom: 124px; padding: 8px 10px; } .tavi-caption p { font-size: 12.5px; } }
 /* introduction des animations : trajet du dispositif sur la planche du corps entier (js/route-intro.js) */
 .route-intro { position: absolute; inset: 0; z-index: 4; background: radial-gradient(ellipse at 50% 36%, #1f6283 0%, #10405d 42%, #08263a 78%, #051a29 100%); }
-.ri-svg { display: block; width: 100%; height: 100%; }
+.ri-svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.ri-plate { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ri-plate img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; will-change: transform; user-select: none; }
 .ri-t1 { fill: #9cd0ea; font-family: var(--sans); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; paint-order: stroke; stroke: rgba(4, 22, 34, .85); stroke-width: .25em; }
 .ri-t2 { fill: #ffffff; font-family: var(--serif); font-weight: 600; paint-order: stroke; stroke: rgba(4, 22, 34, .85); stroke-width: .25em; }
 .ri-legend { position: absolute; left: 14px; top: 14px; display: flex; gap: 12px; font-size: 13px; color: #d4ebf6; background: rgba(5, 26, 41, .55);

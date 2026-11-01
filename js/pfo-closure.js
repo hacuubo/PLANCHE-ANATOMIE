@@ -67,7 +67,24 @@ export function createClosureAnimation(heart, view, hooks) {
     heart.root.traverse((o) => { if (!cav && o.userData.id === 'cavites') cav = o; });
     const cp = cav.geometry.attributes.position, cn = cav.geometry.attributes.normal, cs = cav.userData.sid, wall = { 'oreillette-gauche': [[], []], 'oreillette-droite': [[], []] };
     for (let i = 0; i < cs.length; i += 2) { const w = wall[heart.structureIds[cs[i]]]; if (w) { w[0].push(new THREE.Vector3().fromBufferAttribute(cp, i)); w[1].push(new THREE.Vector3().fromBufferAttribute(cn, i)); } }
-    const sd = (side, p) => { const [W, N] = wall[side]; let m = Infinity, j = 0; for (let i = 0; i < W.length; i++) { const d = W[i].distanceToSquared(p); if (d < m) { m = d; j = i; } } return p.clone().sub(W[j]).dot(N[j]) > 0 ? -Math.sqrt(m) : Math.sqrt(m); };
+    // recherche du sommet le plus proche dans une grille de cases de 4 mm (anneaux de cases de plus en plus larges) :
+    // des milliers d'appels pendant la construction, chacun ne parcourt plus que les sommets voisins
+    const CELL = 0.4, key = (x, y, z) => x + ',' + y + ',' + z, grids = {};
+    for (const [side, [W]] of Object.entries(wall)) { const g = new Map(); W.forEach((q, i) => { const k = key(Math.floor(q.x / CELL), Math.floor(q.y / CELL), Math.floor(q.z / CELL)); if (!g.has(k)) g.set(k, []); g.get(k).push(i); }); grids[side] = g; }
+    const sd = (side, p) => {
+      const [W, N] = wall[side], g = grids[side], cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), cz = Math.floor(p.z / CELL);
+      let m = Infinity, j = -1;
+      for (let r = 0; r < 40; r++) {
+        for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++) for (let z = cz - r; z <= cz + r; z++) {
+          if (Math.max(Math.abs(x - cx), Math.abs(y - cy), Math.abs(z - cz)) !== r) continue; // anneau r seulement
+          const c = g.get(key(x, y, z)); if (!c) continue;
+          for (const i of c) { const d = W[i].distanceToSquared(p); if (d < m) { m = d; j = i; } }
+        }
+        if (j >= 0 && Math.sqrt(m) <= r * CELL) break; // aucun anneau plus large ne peut faire mieux
+      }
+      if (j < 0) return -Infinity;
+      return p.clone().sub(W[j]).dot(N[j]) > 0 ? -Math.sqrt(m) : Math.sqrt(m);
+    };
     // marge d'un disque ouvert (centre c, axe ax, rayon r) : plus petite distance signée de son bord et de son centre
     const margin = (side, c, ax, r) => {
       const u = new THREE.Vector3().crossVectors(ax, Math.abs(ax.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize(), v = new THREE.Vector3().crossVectors(ax, u);
@@ -290,6 +307,7 @@ export function createClosureAnimation(heart, view, hooks) {
     get playing() { return playing; },
     get step() { return step; },
     get shown() { return shown; },
+    prepare() { built ??= build(); }, // construction d'avance (pendant le trajet depuis la ponction, js/app.js)
     play() {
       built ??= build();
       t = -1.2; step = -1; playing = true; shown = true; tail = -1;

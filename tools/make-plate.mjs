@@ -9,7 +9,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { openBrowser } from './lib/edge.mjs';
 
 const APP = process.argv[2] || 'http://localhost:8765/';
-const NAMES = ['corps', 'tronc'];
+const NAMES = ['corps', 'tronc', 'tronc-m'];
 
 const nav = await openBrowser();
 try {
@@ -22,7 +22,7 @@ try {
     const src = `${NAMES[i]}.webp`, buf = Buffer.from(im.url.split(',')[1], 'base64');
     writeFileSync(`assets/planche/${src}`, buf);
     console.log(`assets/planche/${src}`, Math.round(buf.length / 1024), 'Ko');
-    return { src, rect: im.rect };
+    return { src, rect: im.rect, ...(im.media ? { media: im.media } : {}) };
   });
   const r2 = (v) => (Array.isArray(v) ? v.map(r2) : typeof v === 'number' ? Math.round(v * 1000) / 1000 : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, r2(x)])));
   writeFileSync('assets/planche/planche.json', JSON.stringify({ images, full: r2(plate.full), heart: r2(plate.heart), routes: r2(plate.routes) }) + '\n');

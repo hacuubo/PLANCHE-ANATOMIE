@@ -473,6 +473,8 @@ export function buildSLView(heart, kind = 'aortique') {
       cut: { normal: n.clone().negate(), def: n.dot(C) }, interior: 0.25,
       orient: 'Coupe dans le plan de la crosse aortique · <b>aorte ascendante en haut</b>' };
     let kit = null;
+    // champ de l'animation calculé en arrière-plan (js/heart.js, prepareTaviMask) : lancé après le chargement
+    view.prepareTavi = () => heart.prepareTaviMask(path.centerline, path.archNormal);
     view.taviKit = () => kit ??= (() => {
       heart.buildTaviMask(path.centerline, path.archNormal); // aorte fendue en long (gouttière postérieure), artère pulmonaire retirée
       const pre = valveOf('rao'), post = valveOf('tavi');

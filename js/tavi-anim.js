@@ -155,6 +155,7 @@ export function createTaviAnimation(heart, view, hooks) {
     get step() { return step; },
     // lance l'animation (la vue L et le cœur arrêté sont posés par hooks.enter) ; skipValve : sans l'arrêt sur la valve
     // malade (relais de la planche du corps entier, js/route-intro.js : le guide arrive par l'aorte descendante)
+    prepare() { built ??= build(); }, // construction d'avance (pendant le trajet depuis la ponction, js/app.js)
     play({ skipValve = false } = {}) {
       built ??= build();
       t = skipValve ? ON_VALVE : 0; step = -1; playing = true; shownValve = null; tail = -1; entered = false;

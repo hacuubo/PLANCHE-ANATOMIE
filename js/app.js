@@ -106,6 +106,11 @@ const heart = await buildHeart((f) => {
   if (f >= 1) loading.querySelector('.loading-txt').textContent = 'Préparation du cœur…';
 });
 loading.remove();
+// champ de l'animation de la TAVI : calculé en arrière-plan (worker) peu après le chargement, prêt avant le premier clic
+const whenIdle = (f) => ('requestIdleCallback' in window ? requestIdleCallback(f, { timeout: 4000 }) : setTimeout(f, 2500));
+let taviMaskP = null, taviMaskOk = false;
+const taviMask = () => (taviMaskP ??= VALVE_VIEWS.aortique.prepareTavi().then(() => { taviMaskOk = true; }));
+setTimeout(() => whenIdle(taviMask), 1500);
 canvasWrap.classList.add('ready');
 const pivot = new THREE.Group();
 pivot.position.copy(CENTER);
@@ -674,13 +679,14 @@ const pacing = createPacingAnimation(heart, VALVE_VIEWS.stim, {
 // pulmonaires), dont l'ombrage est traduit en dégradés de rouge (ombre bordeaux, rouge franc, reflet rosé) et de bleu
 // (ombre marine, bleu, reflet clair) ; 2. le squelette puis la peau, en verre bleuté translucide, plus dense et plus clair
 // sur les bords (effet de Fresnel), cachés là où un organe est devant eux. Halo léger autour des vaisseaux.
-// Deux images : le corps entier (10 px/cm) et le tronc, plus fine (36 px/cm), pour les plans rapprochés ; et la
+// Images : le corps entier (10 px/cm) et le tronc, plus fine pour les plans rapprochés (36 px/cm ; 22 px/cm sur
+// téléphone, plus légère à décoder et à afficher) ; et la
 // description de la planche (emprise des images, cadrage du corps entier, trajets des dispositifs, en unités de la
 // planche). Livrée toute faite (assets/planche/, tools/make-plate.mjs) et chargée au démarrage.
 let plateStatic = null;
 fetch('assets/planche/planche.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
   if (!j) return;
-  plateStatic = { ...j, images: j.images.map((im) => ({ url: 'assets/planche/' + im.src, rect: im.rect })) };
+  plateStatic = { ...j, images: j.images.map((im) => ({ ...im, url: 'assets/planche/' + im.src })) };
   plateStatic.images.forEach((im) => { new Image().src = im.url; }); // en cache avant la première introduction
 }).catch(() => {});
 async function renderPlate(fmt = 'image/webp') {
@@ -790,8 +796,9 @@ async function renderPlate(fmt = 'image/webp') {
   };
   // emprise : le corps entier, et le tronc
   const mx = meta.midline, [yb, yt] = meta.height;
-  const rects = [[[mx - 36, mx + 36, yb - 2, yt + 2], 10], [[mx - 20, mx + 20, -58, 22], 36]];
-  const images = rects.map(([rect, ppc]) => ({ url: render(rect, ppc), rect }));
+  // corps entier ; tronc fin (ordinateur) ou plus léger (téléphone)
+  const rects = [[[mx - 36, mx + 36, yb - 2, yt + 2], 10, null], [[mx - 20, mx + 20, -58, 22], 36, 'desktop'], [[mx - 20, mx + 20, -58, 22], 22, 'mobile']];
+  const images = rects.map(([rect, ppc, media]) => ({ url: render(rect, ppc), rect, ...(media ? { media } : {}) }));
   // remise en état
   idMat.dispose(); depthOnly.dispose(); envGeo.setIndex(envIdx);
   heart.root.remove(opaque, clear);
@@ -823,7 +830,17 @@ let handoff = null, directEnter = false; // relais en cours (caméra et coupe) ;
 function playIntro(kind, proc, start) {
   if (!plateStatic) { start(); return; } // planche pas encore chargée : directement la deuxième partie
   introProc = proc; introLive = true;
-  intro.play(kind, (view) => { introLive = false; fromPlate(view, kind); start(); }); // la planche s'efface ensuite en fondu
+  // la deuxième partie se prépare pendant le trajet (matériel ; pour la TAVI, après le champ calculé en arrière-plan) :
+  // le relais n'a plus rien à construire et attend, au besoin, la fin de cette préparation. Le calcul du matériel occupe
+  // le fil principal un instant : la planche reste sur sa première image (immobile) pendant ce temps, puis démarre
+  let res = null;
+  const ready = new Promise((r) => { res = r; }), build = () => { try { proc.prepare?.(); } catch (e) { console.warn(e); } res(); };
+  intro.play(kind, (view) => { introLive = false; fromPlate(view, kind); start(); }, ready); // la planche s'efface ensuite en fondu
+  intro.hold(true);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (kind !== 'tavi' || taviMaskOk) { build(); intro.hold(false); return; }
+    intro.hold(false); taviMask().then(build); // champ pas encore prêt : la planche démarre, le relais l'attendra
+  }));
   syncTaviBtn();
 }
 // Caméra 3D posée sur le cadrage de la planche : vue de face, même centre, même échelle (décalage des vues des valves
@@ -1614,6 +1631,17 @@ function updateOrientation() {
 const clock = new THREE.Clock();
 let beatIdle = true;
 let frame = 0;
+// Qualité adaptative pendant les animations : si les images sont trop lentes (plus de 22 ms en moyenne), la résolution
+// du rendu baisse par paliers (jusqu'à 1 pixel par point) ; elle revient à la pleine qualité dès la fin de l'animation
+const PR_FULL = renderer.getPixelRatio(), PR_STEPS = [...new Set([PR_FULL, Math.min(PR_FULL, 1.5), Math.min(PR_FULL, 1.25), 1])];
+let prStep = 0, frameAvg = 16, prWait = 1;
+const setPR = (pr) => { if (renderer.getPixelRatio() !== pr) { renderer.setPixelRatio(pr); resize(); } };
+function adaptQuality(dt, busy) {
+  if (!busy) { if (prStep) { prStep = 0; setPR(PR_STEPS[0]); } frameAvg = 16; prWait = 1; return; }
+  frameAvg += (Math.min(dt, 0.25) * 1000 - frameAvg) * 0.08;
+  if ((prWait -= dt) > 0) return; // après un changement (et au départ), on laisse la mesure se poser
+  if (frameAvg > 22 && prStep < PR_STEPS.length - 1) { prStep++; setPR(PR_STEPS[prStep]); prWait = 1.2; frameAvg = 16; }
+}
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
@@ -1624,7 +1652,7 @@ function animate() {
   if (state.battement) {
     beatPhase = (beatPhase + Math.min(dt, 0.1) * beatSpeed * BPM / 60) % 1;
     heart.setBeat(beatPhase); beatIdle = false;
-    if (frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
+    if (frame % (prStep ? 6 : 3) === 0) renderer.shadowMap.needsUpdate = true; // qualité réduite : ombres moins souvent
     if ((frame & 1) === 0) syncCycleUI();
   }
   else if (!beatIdle) { beatIdle = true; restPose(); }
@@ -1659,7 +1687,8 @@ function animate() {
   if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
   if (frame % 30 === 0) syncURL();
   if ((frame++ & 3) === 0) occludeLabels();
-  contact.render(); // scène + ombres de contact + calque d'interface
+  adaptQuality(dt, tavi.playing || closure.playing || pacing.playing || (intro.playing && !intro.covering));
+  if (!intro.covering) contact.render(); // scène + ombres de contact + calque d'interface ; rien sous la planche opaque
   labelRenderer.render(scene, camera);
 }
 animate();

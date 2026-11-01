@@ -12,6 +12,7 @@
 // Rendu « tissu vivant » : fibres musculaires, film humide, translucidité, occlusion ambiante cuite.
 import * as THREE from 'three';
 import { buildValves } from './valves.js';
+import { computeTaviMask } from './tavi-mask-core.js';
 
 // Couleurs des structures internes et du sang dans les coupes (sRGB) ; tranche du muscle : js/cut-surface.js
 export const COL = {
@@ -827,146 +828,42 @@ export async function buildHeart(onProgress) {
   const taviRibbon = new THREE.BufferGeometry(); // surface de l'ouverture, pour sa tranche (js/app.js)
   const taviLiner = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshPhysicalMaterial({ color: 0xdba4a0, roughness: 0.4, clearcoat: 0.5, clearcoatRoughness: 0.2, side: THREE.DoubleSide }));
   taviLiner.visible = false; taviLiner.receiveShadow = true; root.add(taviLiner);
-  const buildTaviMask = (cl0, nObs) => {
-    if (maskU.uTMTex.value) return;
-    const PA = new Set(['tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'ligament-arteriel'].map((n) => ids.indexOf(n)));
-    const ep = envelope.geometry.attributes.position, et = envelope.geometry.attributes.tis, EA = ep.array, isPA = (i) => PA.has(Math.round(et.getW(i) * 255));
-    // pièces de la lumière veineuse (sommets reliés par les triangles), et celles qui sont l'artère pulmonaire
-    const lg = geos['lumiere-veine'].geometry, lp = lg.attributes.position, li = lg.index.array, par = Int32Array.from({ length: lp.count }, (_, i) => i);
-    const find = (x) => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
-    for (let i = 0; i < li.length; i += 3) { const a = find(li[i]); par[find(li[i + 1])] = a; par[find(li[i + 2])] = a; }
-    const vote = new Map();
-    for (let i = 0; i < lp.count; i += 23) { // un point sur 23 suffit au vote
-      const x = lp.getX(i), y = lp.getY(i), z = lp.getZ(i);
-      let best = Infinity, j = 0;
-      for (let e = 0, o = 0; e < ep.count; e++, o += 3) { const d = (EA[o] - x) ** 2 + (EA[o + 1] - y) ** 2 + (EA[o + 2] - z) ** 2; if (d < best) { best = d; j = e; } }
-      const r = find(i), v = vote.get(r) ?? [0, 0]; v[isPA(j) ? 0 : 1]++; vote.set(r, v);
-    }
-    const paLum = (i) => { const v = vote.get(find(i)); return !!v && v[0] > v[1]; };
-    const ap = geos['lumiere-artere'].geometry.attributes.position, cp = geos.cavites.geometry.attributes.position;
-    const lo = new THREE.Vector3(Infinity, Infinity, Infinity), hi = lo.clone().negate(), p = new THREE.Vector3();
-    for (let i = 0; i < lp.count; i++) if (paLum(i)) { p.fromBufferAttribute(lp, i); lo.min(p); hi.max(p); }
-    for (let i = 0; i < ap.count; i++) { p.fromBufferAttribute(ap, i); lo.min(p); hi.max(p); }
-    lo.subScalar(1.8); hi.addScalar(1.8);
-    const VS = 0.15, nx = Math.ceil((hi.x - lo.x) / VS), ny = Math.ceil((hi.y - lo.y) / VS), nz = Math.ceil((hi.z - lo.z) / VS), N = nx * ny * nz;
-    const nb = []; // voisins déjà parcourus (passe avant) ; la passe arrière prend les opposés
-    for (let c = -1; c <= 0; c++) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) if (c < 0 || b < 0 || (b === 0 && a < 0)) nb.push([a + nx * (b + ny * c), a, b, c, VS * Math.hypot(a, b, c)]);
-    // distance aux sommets retenus (graines au centre de leur voxel, distance exacte), propagée par chanfrein
-    const field = (sets) => {
-      const dist = new Float32Array(N).fill(Infinity);
-      for (const [pos, keep] of sets) for (let i = 0; i < pos.count; i++) {
-        if (!keep(i)) continue;
-        p.fromBufferAttribute(pos, i);
-        const x = Math.floor((p.x - lo.x) / VS), y = Math.floor((p.y - lo.y) / VS), z = Math.floor((p.z - lo.z) / VS);
-        if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) continue;
-        const k = x + nx * (y + ny * z), d = Math.hypot(p.x - lo.x - (x + 0.5) * VS, p.y - lo.y - (y + 0.5) * VS, p.z - lo.z - (z + 0.5) * VS);
-        if (d < dist[k]) dist[k] = d;
-      }
-      for (let pass = 0; pass < 2; pass++) for (const s of [1, -1]) {
-        for (let z0 = 1; z0 < nz - 1; z0++) for (let y0 = 1; y0 < ny - 1; y0++) for (let x0 = 1; x0 < nx - 1; x0++) {
-          const k = s > 0 ? x0 + nx * (y0 + ny * z0) : (nx - 1 - x0) + nx * ((ny - 1 - y0) + ny * (nz - 1 - z0));
-          let m = dist[k];
-          for (const [o, , , , w] of nb) { const v = dist[k + s * o] + w; if (v < m) m = v; }
-          dist[k] = m;
-        }
-      }
-      return dist;
+  // Calcul du champ (js/tavi-mask-core.js) : un million de voxels, plusieurs secondes — dans un worker, lancé tôt
+  // (prepareTaviMask, après le chargement), pour que l'image ne se fige pas ; à défaut, sur place (buildTaviMask).
+  // Entrées : tableaux simples, copiés (le worker les reçoit par transfert).
+  const maskInput = (cl, nObs) => {
+    const et = envelope.geometry.attributes.tis, envSid = new Uint8Array(et.count);
+    for (let i = 0; i < et.count; i++) envSid[i] = Math.round(et.getW(i) * 255);
+    const posOf = (g) => Float32Array.from(g.attributes.position.array);
+    return {
+      envPos: posOf(envelope.geometry), envSid, paSids: ['tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche', 'ligament-arteriel'].map((n) => ids.indexOf(n)),
+      veinPos: posOf(geos['lumiere-veine'].geometry), veinIdx: Uint32Array.from(geos['lumiere-veine'].geometry.index.array), artPos: posOf(geos['lumiere-artere'].geometry), cavPos: posOf(geos.cavites.geometry),
+      cl: cl.map((v) => [v.x, v.y, v.z]), nObs: [nObs.x, nObs.y, nObs.z],
     };
-    const all = () => true;
-    const dPA = field([[lp, paLum]]), dA = field([[ap, all]]), dC = field([[lp, (i) => !paLum(i)], [cp, all]]);
-    // ligne centrale prolongée de 6 cm au-delà de son dernier point (l'aorte descendante continue) ; abscisses
-    const cl = cl0.map((v) => v.clone()), nE = cl.length;
-    cl.push(cl[nE - 1].clone().addScaledVector(cl[nE - 1].clone().sub(cl[nE - 2]).normalize(), 6));
-    const arc = [0]; for (let i = 1; i < cl.length; i++) arc.push(arc[i - 1] + cl[i].distanceTo(cl[i - 1]));
-    // surface de l'ouverture : n·(p − c) = 0 (c : point le plus proche de la ligne centrale)
-    const seg = cl.slice(1).map((c, k) => c.clone().sub(cl[k])), c = new THREE.Vector3();
-    const nearest = (q) => {
-      let bd = Infinity, bs = 0;
-      for (let k = 0; k < seg.length; k++) {
-        const v = seg[k], s = Math.min(1, Math.max(0, (q.x - cl[k].x) * v.x + (q.y - cl[k].y) * v.y + (q.z - cl[k].z) * v.z) / v.lengthSq());
-        const dx = q.x - cl[k].x - s * v.x, dy = q.y - cl[k].y - s * v.y, dz = q.z - cl[k].z - s * v.z, d = dx * dx + dy * dy + dz * dz;
-        if (d < bd) { bd = d; bs = k + s; }
-      }
-      const k = Math.min(seg.length - 1, Math.floor(bs));
-      c.copy(cl[k]).addScaledVector(seg[k], bs - k);
-      return arc[k] + (bs - k) * seg[k].length();
-    };
-    // lumière le long de la ligne centrale, par tranches de 2,5 mm (sommets de la lumière artérielle à moins de 2,2 cm de
-    // la ligne : ni branches lointaines, ni coronaires) : demi-largeurs de part et d'autre dans le plan de l'ouverture
-    // (sommets à moins de 3,5 mm de ce plan) et profondeur vers l'arrière (à moins de 3,5 mm du plan médian) ; 40e
-    // centile (une branche qui part n'élargit pas la gouttière), trous comblés, lissage ; étendue : tranches renseignées
-    const BIN = 0.25, nBin = Math.ceil(arc[arc.length - 1] / BIN) + 1, ptAt = (s, o) => { let k = 0; while (k < seg.length - 1 && arc[k + 1] < s) k++; return o.copy(cl[k]).addScaledVector(seg[k], Math.min(1, Math.max(0, (s - arc[k]) / seg[k].length()))); };
-    const latB = Array.from({ length: nBin }, (_, i) => { const a = ptAt(Math.max(0, i * BIN - 0.3), new THREE.Vector3()), b = ptAt(i * BIN + 0.3, new THREE.Vector3()); return b.sub(a).normalize().cross(nObs).normalize(); });
-    const sides = [0, 1, 2].map(() => Array.from({ length: nBin }, () => [])), w = new THREE.Vector3();
-    for (let i = 0; i < ap.count; i++) {
-      p.fromBufferAttribute(ap, i); const s = nearest(p); w.subVectors(p, c); if (w.length() > 2.2) continue;
-      const bi = Math.min(nBin - 1, Math.round(s / BIN)), lat = w.dot(latB[bi]), fr = w.dot(nObs);
-      if (Math.abs(fr) < 0.35) sides[lat > 0 ? 0 : 1][bi].push(Math.abs(lat));
-      if (fr < 0 && Math.abs(lat) < 0.35) sides[2][bi].push(-fr);
-    }
-    const prof = sides.map((S) => S.map((b) => (b.length >= 3 ? b.sort((x, y) => x - y)[Math.floor(b.length * 0.4)] : NaN)));
-    const okB = prof[0].map((v, i) => Number.isFinite(v) && Number.isFinite(prof[1][i])), b0 = okB.indexOf(true), b1 = okB.lastIndexOf(true);
-    const rads = prof.map((r0) => {
-      let r = r0.slice();
-      const ok = r.map(Number.isFinite), first = ok.indexOf(true);
-      for (let i = 0; i < nBin; i++) if (!ok[i]) { let j = i - 1; while (j >= 0 && !ok[j]) j--; r[i] = j >= 0 ? r[j] : r[first]; }
-      for (let pass = 0; pass < 6; pass++) r = r.map((v, i) => (r[Math.max(0, i - 1)] + 2 * v + r[Math.min(nBin - 1, i + 1)]) / 4);
-      return r;
-    });
-    const radAt = (s, m) => { const f = Math.min(nBin - 1, Math.max(0, s / BIN)), i = Math.min(nBin - 2, Math.floor(f)), r = rads[m]; return r[i] + (r[i + 1] - r[i]) * (f - i); };
-    const sLo = b0 * BIN, sHi = b1 * BIN;
-    const data = new Uint8Array(4 * N), byte = (f) => Math.max(0, Math.min(255, Math.round(128 + f * 254)));
-    for (let z = 0, k = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++, k++) {
-      p.set(lo.x + (x + 0.5) * VS, lo.y + (y + 0.5) * VS, lo.z + (z + 0.5) * VS);
-      const fA = Math.min(Math.min(dPA[k], dC[k]) - dA[k], 1.7 - dA[k]);
-      const fP = Math.min(Math.min(dA[k], dC[k]) - dPA[k], 1.7 - dPA[k]);
-      data[4 * k] = byte(fP);
-      data[4 * k + 1] = byte(fA);
-      if (fA < -0.5 && dA[k] > 0.8) continue;
-      const s = nearest(p), rc = p.distanceTo(c);
-      const fB = nObs.dot(c.subVectors(p, c));
-      data[4 * k + 2] = byte(fB);
-      data[4 * k + 3] = byte(Math.min(Math.max(radAt(s, 0), radAt(s, 1), radAt(s, 2)) + 0.6 - rc, s - sLo + 0.6, sHi + 0.6 - s));
-      if (dA[k] < 0.8) data[4 * k] = byte(Math.min(fP, Math.max(dA[k] - 0.5, fB)));
-    }
-    const tex = new THREE.Data3DTexture(data, nx, ny, nz);
-    tex.format = THREE.RGBAFormat; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
-    maskU.uTMTex.value = tex; maskU.uTMMin.value.copy(lo); maskU.uTMSize.value.set(nx * VS, ny * VS, nz * VS);
-    // ruban posé sur la surface de l'ouverture : de part et d'autre de la ligne centrale, perpendiculaire à elle et à n
-    // (± 3,6 cm, au-delà du territoire de l'aorte) ; la tranche n'est dessinée que là où le ruban est sur la surface
-    const L = arc[arc.length - 1], NS = Math.ceil(L / 0.2), NW = 24, pos = [], idx = [], t = new THREE.Vector3(), bv = new THREE.Vector3(), q = new THREE.Vector3();
-    const at = (s, o) => { let k = 0; while (k < seg.length - 1 && arc[k + 1] < s) k++; return o.copy(cl[k]).addScaledVector(seg[k], Math.min(1, Math.max(0, (s - arc[k]) / seg[k].length()))); };
-    for (let i = 0; i <= NS; i++) {
-      const s = (L * i) / NS;
-      at(s, c); t.subVectors(at(Math.min(L, s + 0.3), q), at(Math.max(0, s - 0.3), bv)).normalize();
-      bv.crossVectors(t, nObs).normalize();
-      for (let j = 0; j <= NW; j++) {
-        q.copy(c).addScaledVector(bv, 3.6 * (2 * j / NW - 1));
-        pos.push(q.x, q.y, q.z);
-        if (i < NS && j < NW) { const a = i * (NW + 1) + j, b = a + NW + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
-      }
-    }
-    taviRibbon.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    taviRibbon.setIndex(idx); taviRibbon.computeVertexNormals(); taviRibbon.computeBoundingSphere();
-    // gouttière : demi-tube postérieur (de +b à −b par l'arrière, −n), aux demi-largeurs et à la profondeur de la lumière
-    // (+ 3 % : ses bords passent sous la tranche de la paroi), normales vers la ligne centrale
-    const NL = Math.ceil((sHi - sLo) / 0.12), NT = 32, lp2 = [], ln2 = [], li2 = [], dir = new THREE.Vector3();
-    for (let i = 0; i <= NL; i++) {
-      const s = sLo + ((sHi - sLo) * i) / NL, rP = radAt(s, 0) * 1.03, rM = radAt(s, 1) * 1.03, rB = radAt(s, 2) * 1.03;
-      at(s, c); t.subVectors(at(Math.min(L, s + 0.3), q), at(Math.max(0, s - 0.3), bv)).normalize();
-      bv.crossVectors(t, nObs).normalize();
-      for (let j = 0; j <= NT; j++) {
-        const th = (Math.PI * j) / NT;
-        const x = Math.cos(th) * (Math.cos(th) > 0 ? rP : rM), y = Math.sin(th) * rB;
-        dir.copy(bv).multiplyScalar(x).addScaledVector(nObs, -y);
-        lp2.push(c.x + dir.x, c.y + dir.y, c.z + dir.z); dir.normalize(); ln2.push(-dir.x, -dir.y, -dir.z);
-        if (i < NL && j < NT) { const a = i * (NT + 1) + j, b = a + NT + 1; li2.push(a, b, a + 1, a + 1, b, b + 1); }
-      }
-    }
-    const lg2 = taviLiner.geometry;
-    lg2.setAttribute('position', new THREE.Float32BufferAttribute(lp2, 3)); lg2.setAttribute('normal', new THREE.Float32BufferAttribute(ln2, 3));
-    lg2.setIndex(li2); lg2.computeBoundingSphere();
   };
+  // résultat : texture du champ, ruban de l'ouverture, gouttière
+  const applyTaviMask = (r) => {
+    const tex = new THREE.Data3DTexture(r.data, r.nx, r.ny, r.nz);
+    tex.format = THREE.RGBAFormat; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    maskU.uTMTex.value = tex; maskU.uTMMin.value.fromArray(r.lo); maskU.uTMSize.value.set(r.nx * r.VS, r.ny * r.VS, r.nz * r.VS);
+    taviRibbon.setAttribute('position', new THREE.BufferAttribute(r.ribbon.pos, 3));
+    taviRibbon.setIndex(new THREE.BufferAttribute(r.ribbon.idx, 1)); taviRibbon.computeVertexNormals(); taviRibbon.computeBoundingSphere();
+    const lg2 = taviLiner.geometry;
+    lg2.setAttribute('position', new THREE.BufferAttribute(r.liner.pos, 3)); lg2.setAttribute('normal', new THREE.BufferAttribute(r.liner.nrm, 3));
+    lg2.setIndex(new THREE.BufferAttribute(r.liner.idx, 1)); lg2.computeBoundingSphere();
+  };
+  let maskJob = null;
+  const prepareTaviMask = (cl, nObs) => maskJob ??= new Promise((resolve) => {
+    if (maskU.uTMTex.value) { resolve(); return; }
+    const onSite = () => { if (!maskU.uTMTex.value) applyTaviMask(computeTaviMask(maskInput(cl, nObs))); resolve(); };
+    let w;
+    try { w = new Worker(new URL('./tavi-mask-worker.js', import.meta.url), { type: 'module' }); } catch { onSite(); return; }
+    w.onmessage = (e) => { w.terminate(); if (!maskU.uTMTex.value) applyTaviMask(e.data); resolve(); };
+    w.onerror = () => { w.terminate(); onSite(); };
+    const inp = maskInput(cl, nObs);
+    w.postMessage(inp, [inp.envPos.buffer, inp.envSid.buffer, inp.veinPos.buffer, inp.veinIdx.buffer, inp.artPos.buffer, inp.cavPos.buffer]);
+  });
+  const buildTaviMask = (cl, nObs) => { if (!maskU.uTMTex.value) applyTaviMask(computeTaviMask(maskInput(cl, nObs))); };
   // b et a décodés en cm (tmB, tmP)
   const TRUNK = '(tm.g > 0.5 && tmP > 0.0)'; // tronc de l'aorte (territoire, près de la ligne centrale)
   const TM_TEST = {
@@ -1633,7 +1530,7 @@ export async function buildHeart(onProgress) {
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve, ostia,
     infarct, setInfarct, fossa, setPFO, setPFOClosure,
-    addTaviMask, buildTaviMask, taviRibbon, // animation de la TAVI : aorte fendue en long, artère pulmonaire retirée
+    addTaviMask, buildTaviMask, prepareTaviMask, taviRibbon, // animation de la TAVI : aorte fendue en long, artère pulmonaire retirée
     setTaviMask: (on) => { const v = !!(on && maskU.uTMTex.value); maskU.uTaviMask.value = v ? 1 : 0; taviBack.visible = taviLiner.visible = v; root.updateMatrixWorld(); maskU.uTMInv.value.copy(root.matrixWorld).invert(); },
     structureIds: ids, // indice de structure (attribut sid des cavités) → nom
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)

@@ -238,7 +238,8 @@ une liste numérotée des structures, et une fiche explicative par structure.
   artère ; grandes saphènes et jugulaires externes sous la peau ; veines rénales, la gauche devant l'aorte) ; au
   centre, le cœur du modèle. Vaisseaux et cœur teintés comme dans les atlas : ombrage traduit en dégradés de rouge
   (sang oxygéné : aorte et branches, veines pulmonaires) et de bleu (veines, artères pulmonaires), halo léger. Images
-  livrées toutes faites (assets/planche/ : corps entier à 10 px/cm, tronc à 36 px/cm, WebP) et description de la
+  livrées toutes faites (assets/planche/ : corps entier à 10 px/cm, tronc à 36 px/cm et 22 px/cm pour les téléphones,
+  WebP) et description de la
   planche (cadrage, trajets des dispositifs sur les lignes centrales des vaisseaux) : tools/build-body-bp3d.mjs extrait
   le corps de BodyParts3D (tools/cache/, non versionné), tools/make-plate.mjs fait le rendu par l'appli — à relancer
   après toute modification du modèle, du corps ou du rendu. L'aiguille ponctionne le vaisseau (anneau, étiquette), le
@@ -257,6 +258,17 @@ une liste numérotée des structures, et une fiche explicative par structure.
 - **Hors ligne** : service worker mettant en cache l'application, le modèle et three.js (pas en local, pour que les
   essais tournent toujours sur la dernière version).
 - **Chargement** : modèle au format compact HRT3 (≈ 2,2 Mo transférés), barre de progression.
+- **Fluidité des animations** :
+  - le champ de l'animation de la TAVI (≈ 1 million de voxels) se calcule dans un worker (js/tavi-mask-worker.js,
+    js/tavi-mask-core.js), lancé peu après le chargement : plus de gel au lancement ;
+  - chaque animation construit son matériel pendant le trajet depuis la ponction (la planche reste un instant sur sa
+    première image), et le relais attend au besoin la fin de cette préparation : le passage en 3D n'a plus rien à
+    construire ; distances aux parois des oreillettes (fermeture du FOP) cherchées dans une grille de cases de 4 mm ;
+  - qualité adaptative : si les images dépassent 22 ms en moyenne pendant une animation, la résolution du rendu
+    baisse par paliers (jusqu'à 1 pixel par point) et les ombres se recalculent deux fois moins souvent ; pleine
+    qualité dès la fin de l'animation ;
+  - planche du corps entier en calques HTML zoomés par la carte graphique (sans être redessinés), image du tronc plus
+    légère sur téléphone (22 px/cm) ; la scène 3D n'est pas dessinée tant que la planche la recouvre.
 
 ## Lancer en local
 
@@ -302,6 +314,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
 | `js/route-intro.js` | Première partie des animations de pose : planche du corps entier (image livrée), trajet du dispositif de la ponction à l'abord du cœur, relais vers la 3D |
+| `js/tavi-mask-core.js`, `js/tavi-mask-worker.js` | Champ de l'animation de la TAVI (aorte fendue, artère pulmonaire retirée), calculé dans un worker |
 | `js/tavi-anim.js` | Animation de l'implantation d'une TAVI (guide, cathéter, valve sertie, ballonnet, déploiement, retraits) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
