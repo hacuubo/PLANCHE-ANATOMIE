@@ -260,15 +260,15 @@ function chooseCut(mode) {
 const stencilGroup = new THREE.Group();
 stencilGroup.name = 'stencil';
 heart.root.add(stencilGroup);
-const capGroups = new Map(); // clé de capuchon → [tranche plane, tranche courbe]
+const capGroups = new Map(); // clé de capuchon → [tranche plane, tranche courbe, tranche de l'ouverture de l'aorte (TAVI)]
 const stencilMats = [];
 
 function makeStencilMeshes(solid, order) {
   const base = new THREE.MeshBasicMaterial({ depthWrite: false, depthTest: false, colorWrite: false, stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc });
   const inc = THREE.IncrementWrapStencilOp, dec = THREE.DecrementWrapStencilOp;
-  const back = base.clone(); back.side = THREE.BackSide; back.clippingPlanes = [cutPlane];
+  const back = heart.addTaviMask(base.clone(), 'clip'); back.side = THREE.BackSide; back.clippingPlanes = [cutPlane]; // TAVI : le compte suit l'ouverture de l'aorte
   back.stencilFail = back.stencilZFail = back.stencilZPass = solid.hole ? dec : inc;
-  const front = base.clone(); front.side = THREE.FrontSide; front.clippingPlanes = [cutPlane];
+  const front = heart.addTaviMask(base.clone(), 'clip'); front.side = THREE.FrontSide; front.clippingPlanes = [cutPlane];
   front.stencilFail = front.stencilZFail = front.stencilZPass = solid.hole ? inc : dec;
   const g = new THREE.Group();
   heart.addDeform(back, solid.k ?? 0.07); heart.addDeform(front, solid.k ?? 0.07); // le stencil suit le battement
@@ -372,6 +372,11 @@ heart.solids.forEach((s) => {
       scene.add(cap);
     }
     caps[1].frustumCulled = false;
+    // TAVI : tranche de la paroi le long de l'ouverture de l'aorte (surface courbe, repère du cœur), posée avant la tranche
+    // plane (qui efface le stencil après elle)
+    const rib = new THREE.Mesh(heart.taviRibbon, heart.addTaviMask(mat(), 'ribbon'));
+    rib.renderOrder = order + 0.5; rib.visible = false; rib.frustumCulled = false; rib.userData.capKey = capKey;
+    heart.root.add(rib); caps.push(rib);
     capGroups.set(capKey, caps);
   }
 });
@@ -379,11 +384,12 @@ heart.solids.forEach((s) => {
 function updateCapPlanes() {
   syncInterior();
   const n = cutPlane.normal;
-  capGroups.forEach(([flat, curve]) => {
+  capGroups.forEach(([flat, curve, rib]) => {
     cutPlane.coplanarPoint(flat.position);
     flat.lookAt(flat.position.clone().sub(n)); // face avant tournée vers la partie retirée (donc vers l'observateur)
     setSectionPlane(flat.material, n.clone().negate());
     setSectionFrame(curve.material, CURVE.X, CURVE.Y);
+    setSectionPlane(rib.material, n.clone().negate());
   });
 }
 
@@ -417,7 +423,7 @@ function applyClipping() {
   ghostMats.forEach((m) => { m.clippingPlanes = flat ? [ghostPlane] : []; m.needsUpdate = true; });
   ghosts.forEach((g) => { g.visible = cut && !NO_GHOST.has(state.modeCoupe); }); // vue de dessus : rien entre l'œil et les valves
   heart.solids.forEach((s) => { s.stencil.visible = cut; });
-  capGroups.forEach(([f, c]) => { f.visible = flat; c.visible = cut && curved; });
+  capGroups.forEach(([f, c, r]) => { f.visible = r.visible = flat; c.visible = cut && curved; });
   syncCutOnly();
   heart.showValves(cut);
   canvasWrap.classList.toggle('is-cut', state.coupe);

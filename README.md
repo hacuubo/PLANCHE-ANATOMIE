@@ -139,12 +139,14 @@ une liste numérotée des structures, et une fiche explicative par structure.
     cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
     (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : d'abord la valve malade, 2 s, dans la vue en cours,
     cœur qui bat ; puis vue dans le plan de la crosse aortique (coupe passant par le centre de la valve), cœur arrêté en
-    diastole, coupe inchangée ; l'artère pulmonaire (elle passe sous la crosse et cachait l'aorte) et la paroi
-    antérieure de l'aorte thoracique au-delà de l'aorte ascendante sont en transparence (voile clair), pour suivre le
-    guide dès l'aorte descendante — champ en volume de 1,5 mm calculé au premier lancement (voxels plus proches de ces
-    lumières que de toute autre lumière ou cavité ; pour l'aorte, devant sa ligne centrale), à limites lisses ; seule la
-    tranche de l'artère pulmonaire est écartée, les autres tranches sont celles de la coupe ; guide qui remonte
-    l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche (« queue de cochon ») ;
+    diastole ; l'aorte est fendue sur toute sa longueur comme un tuyau coupé en long (surface d'ouverture passant par
+    sa ligne centrale, qui rejoint le plan de coupe près de la valve ; tranche de la paroi le long des deux bords), sa
+    moitié antérieure restant en voile clair d'un seul tenant, sans les tranches du plan de coupe qui gênaient la vue ;
+    l'artère pulmonaire (elle passe sous la crosse et cachait l'aorte) est en transparence elle aussi — champ en volume
+    de 1,5 mm calculé au premier lancement (territoire de chaque lumière, distance signée à l'ouverture et au plan),
+    à limites lisses ; ailleurs, la coupe ne change pas ; guide et cathéter dessinés nets par-dessus le voile ;
+    guide qui remonte l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche
+    (« queue de cochon ») ;
     cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
     ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement
     (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;

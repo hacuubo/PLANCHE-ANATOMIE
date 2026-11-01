@@ -37,6 +37,7 @@ export function createTaviAnimation(heart, view, hooks) {
   const build = () => {
     const kit = view.taviKit(), curve = kit.path.curve, L = kit.path.length, S = 900;
     const group = new THREE.Group(); group.visible = false; heart.root.add(group);
+    group.renderOrder = 1; // après le cœur et le voile de l'aorte (js/heart.js) : guide et cathéter nets à travers le voile
     const tube = (r, rs, mat) => { const m = new THREE.Mesh(new THREE.TubeGeometry(curve, S, r, rs, false), mat); m.frustumCulled = false; m.userData.rs = rs; group.add(m); return m; };
     const wire = tube(0.045, 8, new THREE.MeshStandardMaterial({ color: 0x4f565f, metalness: 0.7, roughness: 0.3 }));
     const cath = tube(0.27, 20, new THREE.MeshPhysicalMaterial({ color: 0x2c62d3, roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.2 }));
