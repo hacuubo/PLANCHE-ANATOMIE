@@ -1,9 +1,10 @@
 // Génère assets/planche/ : la planche du corps entier de l'introduction des animations de pose (js/route-intro.js) —
-// réseau de la grande circulation et cœur du modèle rendus ensemble en 3D (js/app.js, heartPlate) — en deux images
-// WebP (corps entier, tronc plus fin) et leur description (planche.json : emprise de chaque image en cm, extrémités des
-// gros vaisseaux du modèle). L'appli les charge au démarrage au lieu de faire ce rendu au premier lancement.
-// À relancer après toute modification du modèle, du réseau (vesselNetwork) ou du rendu de la planche.
-// Usage : servir le dépôt (npx --yes http-server . -p 8765 -c-1) puis node tools/make-plate.mjs [adresse locale]
+// corps de BodyParts3D (tools/cache/, produit par tools/build-body-bp3d.mjs) et cœur du modèle rendus ensemble en 3D
+// (js/app.js, renderPlate) — en deux images WebP (corps entier, tronc plus fin) et leur description (planche.json :
+// emprise de chaque image en cm, cadrage du corps entier, trajets des dispositifs en unités de la planche).
+// À relancer après toute modification du modèle, du corps ou du rendu de la planche.
+// Usage : node tools/build-body-bp3d.mjs <dossier BodyParts3D>, servir le dépôt (npx --yes http-server . -p 8765 -c-1),
+// puis node tools/make-plate.mjs [adresse locale]
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { openBrowser } from './lib/edge.mjs';
 
@@ -24,6 +25,6 @@ try {
     return { src, rect: im.rect };
   });
   const r2 = (v) => (Array.isArray(v) ? v.map(r2) : typeof v === 'number' ? Math.round(v * 1000) / 1000 : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, r2(x)])));
-  writeFileSync('assets/planche/planche.json', JSON.stringify({ images, ends: r2(plate.ends) }, null, 1) + '\n');
+  writeFileSync('assets/planche/planche.json', JSON.stringify({ images, full: r2(plate.full), heart: r2(plate.heart), routes: r2(plate.routes) }) + '\n');
   console.log('assets/planche/planche.json');
 } finally { await nav.close(); }

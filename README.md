@@ -224,24 +224,20 @@ une liste numérotée des structures, et une fiche explicative par structure.
   septum pendant le vissage, sur l'oreillette droite pendant la pose de la sonde auriculaire, puis sur les deux sondes.
   Légende : les quatre cavités, le septum interventriculaire, la veine cave supérieure.
 - **Trajet depuis la ponction** (js/route-intro.js) : première partie de chaque animation de pose de dispositif
-  (4 à 5 s), avant celle du cœur. Planche du corps entier, vue de face (côté droit du patient à gauche de l'écran) :
-  silhouette dessinée et, par-dessus, la grande circulation et le cœur rendus ensemble en 3D, comme dans un atlas —
-  le cœur est le modèle lui-même (au repos, moignons inférieurs coupés net), chaque vaisseau du corps un tube le long
-  de sa ligne centrale, à son calibre, les vaisseaux du tronc partant des extrémités des gros vaisseaux du modèle ;
-  même lumière, mêmes matières ; ombrage traduit en dégradés de rouge (sang oxygéné : aorte et branches, veines
-  pulmonaires) et de bleu (veines, artères pulmonaires) ; reins en 3D ; ombre portée sur la peau. Réseau calé sur des
-  repères recoupés (niveaux vertébraux du tronc cœliaque, des mésentériques, des rénales, de la bifurcation aortique et
-  du confluent iliaque ; bifurcation carotidienne ; division de l'humérale et de la poplitée ; jonction de la grande
-  saphène) et des calibres mesurés (docs/relectures/2026-11-01-relecture-reseau-vasculaire-3d.md) : aorte et ses
-  branches viscérales, iliaques internes et externes, fémorales et fémorale profonde, circonflexes, géniculées,
-  poplitées, tibiales, fibulaires, pédieuses ; carotides, vertébrales, branches de la carotide externe ; sous-clavières,
-  axillaires, thoraciques latérales, humérales et humérale profonde, radiales, ulnaires, arcades palmaires ; veines
-  caves, troncs brachiocéphaliques (devant les branches de la crosse), jugulaires, sous-clavières (devant les artères),
-  humérales, basiliques, céphaliques, médianes, rénales (la gauche entre l'aorte et la mésentérique supérieure),
-  gonadiques, iliaques (la gauche derrière l'iliaque commune droite), fémorales, grandes saphènes et leurs affluents,
-  tibiales, arcades veineuses. Images livrées toutes faites (assets/planche/ : corps entier à 10 px/cm, tronc à
-  36 px/cm, WebP), produites par tools/make-plate.mjs — à relancer après toute modification du modèle, du réseau ou
-  du rendu ; à défaut, rendues au premier lancement. L'aiguille ponctionne le vaisseau (anneau, étiquette), le
+  (4 à 5 s), avant celle du cœur. Planche du corps entier, vue de face (côté droit du patient à gauche de l'écran), sur
+  fond bleu nuit, comme une planche d'anatomie en 3D : le corps de BodyParts3D, dans le même repère que le cœur — peau
+  et squelette en verre bleuté translucide (plus dense et plus clair sur les bords), reins, et les vaisseaux de la
+  grande circulation à leur place anatomique (toutes les artères de BodyParts3D hors intracrâniennes, pulmonaires et
+  coronaires ; veines caves, iliaques, troncs brachiocéphaliques, jugulaire interne et sous-clavière droites,
+  céphaliques, basiliques) ; les veines absentes de BodyParts3D sont reconstruites sur l'anatomie du modèle (jugulaire
+  interne, sous-clavière et humérale gauches par symétrie ; veines fémorales, poplitées et tibiales le long de leur
+  artère ; grandes saphènes et jugulaires externes sous la peau ; veines rénales, la gauche devant l'aorte) ; au
+  centre, le cœur du modèle. Vaisseaux et cœur teintés comme dans les atlas : ombrage traduit en dégradés de rouge
+  (sang oxygéné : aorte et branches, veines pulmonaires) et de bleu (veines, artères pulmonaires), halo léger. Images
+  livrées toutes faites (assets/planche/ : corps entier à 10 px/cm, tronc à 36 px/cm, WebP) et description de la
+  planche (cadrage, trajets des dispositifs sur les lignes centrales des vaisseaux) : tools/build-body-bp3d.mjs extrait
+  le corps de BodyParts3D (tools/cache/, non versionné), tools/make-plate.mjs fait le rendu par l'appli — à relancer
+  après toute modification du modèle, du corps ou du rendu. L'aiguille ponctionne le vaisseau (anneau, étiquette), le
   dispositif le remonte, la vue suit sa progression ; à l'abord du cœur — **TAVI** (guide, artère fémorale droite) :
   aorte thoracique descendante ; **FOP** (gaine, veine fémorale droite) : veine cave inférieure au niveau du foie ;
   **pacemaker** (sonde dans sa gaine, veine sous-clavière gauche) : veine cave supérieure —, la caméra 3D se pose
@@ -301,19 +297,20 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
-| `js/route-intro.js` | Première partie des animations de pose : planche du corps entier, réseau de la grande circulation (lignes centrales, calibres), trajet du dispositif de la ponction à l'abord du cœur |
+| `js/route-intro.js` | Première partie des animations de pose : planche du corps entier (image livrée), trajet du dispositif de la ponction à l'abord du cœur, relais vers la 3D |
 | `js/tavi-anim.js` | Animation de l'implantation d'une TAVI (guide, cathéter, valve sertie, ballonnet, déploiement, retraits) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
-| `assets/planche/` | Planche du corps entier de l'introduction des animations (réseau vasculaire et cœur rendus en 3D, WebP) et sa description (`planche.json`) — générée par `tools/make-plate.mjs`, ne pas modifier à la main |
+| `assets/planche/` | Planche du corps entier de l'introduction des animations (corps de BodyParts3D en verre, vaisseaux, cœur du modèle, WebP) et sa description (`planche.json`) — générée par `tools/make-plate.mjs`, ne pas modifier à la main |
 | `assets/reperes/` | Coupes de repérage des vues des valves (4 cavités, 5 cavités, frontale), rendues depuis l'application |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
 | `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves, format compact du modèle, pilotage d'Edge pour les captures |
 | `tools/pack-heart.mjs` | Convertit `assets/heart.bin` au format compact HRT3 |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |
-| `tools/make-plate.mjs` | Régénère `assets/planche/` depuis l'appli (dépôt servi en local, puis `node tools/make-plate.mjs`) |
+| `tools/build-body-bp3d.mjs` | Extrait de BodyParts3D le corps de la planche (peau, squelette, reins, vaisseaux, veines reconstruites, trajets) dans `tools/cache/` (non versionné) |
+| `tools/make-plate.mjs` | Régénère `assets/planche/` depuis l'appli (après `tools/build-body-bp3d.mjs`, dépôt servi en local) |
 
 ## Repère et unités
 
@@ -329,7 +326,8 @@ International** ([licence](https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic
 Les fichiers OBJ de 2011 portent encore l'ancienne mention CC BY-SA 2.1 Japon ; la page de licence
 actuelle de la base indique CC BY 4.0. Le modèle de ce dépôt est une œuvre dérivée (pièces lissées
 et ré-extraites, coronaires remises au calibre des atlas, myocarde ventriculaire, tronc brachio-céphalique et ligament artériel
-reconstruits) ; l'attribution figure aussi dans l'application, au pied du panneau.
+reconstruits) ; la planche du corps entier de l'introduction des animations en est une autre (peau, squelette, reins et
+vaisseaux de BodyParts3D, veines manquantes reconstruites). L'attribution figure aussi dans l'application, au pied du panneau.
 
 ## Processus de relecture
 
