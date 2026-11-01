@@ -39,9 +39,9 @@ export const ROUTES = {
     text: 'Ponction de l’artère fémorale droite, au pli de l’aine : le guide remonte l’artère iliaque et l’aorte abdominale jusqu’à l’aorte thoracique.',
   },
   fop: {
-    dur: 2.9, color: '#2c62d3', width: 3.6, side: -1, needle: [-12, 34], zoom: [620, 165],
+    dur: 2.9, color: '#3a414b', width: 2.4, side: -1, needle: [-12, 34], zoom: [620, 165],
     label: ['Ponction', 'veine fémorale droite'],
-    text: 'Ponction de la veine fémorale droite, au pli de l’aine : la gaine remonte la veine iliaque et la veine cave inférieure jusqu’au foie.',
+    text: 'Ponction de la veine fémorale droite, au pli de l’aine : le guide remonte la veine iliaque et la veine cave inférieure jusqu’au foie.',
   },
   pm: {
     dur: 2.8, color: '#2c3a6b', width: 3.6, side: 1, needle: [16, 28], zoom: [380, 150],

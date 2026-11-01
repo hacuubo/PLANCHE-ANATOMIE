@@ -188,8 +188,10 @@ une liste numérotée des structures, et une fiche explicative par structure.
   par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
   (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015) ; **Fermeture du FOP** (js/pfo-closure.js) : même
   coupe, animation de la fermeture percutanée lancée à l'ouverture de l'onglet (bouton « Voir la fermeture » pour la
-  revoir, « Arrêter ») — cœur arrêté en diastole ; d'abord le FOP en gros plan, avec ses noms ; gaine bleue (≈ 8 F) qui
-  remonte la veine cave inférieure, traverse l'OD, aborde la fosse par en dessous, suit le tunnel et débouche dans l'OG ;
+  revoir, « Arrêter ») — cœur arrêté en diastole ; d'abord le FOP en gros plan, avec ses noms ; guide (0,035 pouce) qui
+  remonte la veine cave inférieure, traverse l'OD et passe tout droit dans le tunnel jusque dans l'OG (bout en J), puis
+  gaine bleue (≈ 8 F) qui glisse sur lui, et guide retiré — matériel dans l'axe du tunnel, qu'il traverse en ligne
+  droite sans s'y couder (abord et sortie dans son prolongement ; un seul arc doux dans l'OD, depuis la veine cave) ;
   prothèse à double disque de type Amplatzer PFO Occluder 25 mm (disque gauche 18 mm, disque droit 25 mm, treillis
   tressé en spirale sur tissu de polyester, col court, moyeux) : disque gauche poussé hors de la gaine et ouvert dans
   l'OG, au point choisi pour que le disque ouvert reste à distance des parois (≥ 2 mm ; distance signée à l'endocarde
@@ -199,7 +201,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
   (recul de leurs points le long de leur axe, plafonné à 3,5 mm : légère cuvette du disque droit sur le bombement
   antérieur de la cloison) ; largage (câble dévissé, retiré avec la gaine). Caméra : gros plan sur le tunnel, coupe
   bicave pour la montée de la gaine, puis inclinée côté OG (disque gauche de trois quarts), côté OD (disque droit),
-  retour à la coupe, rapprochée sur la prothèse ; légende de chaque étape (7). Fin : cœur qui bat, la prothèse suit la
+  retour à la coupe, rapprochée sur la prothèse ; légende de chaque étape (8). Fin : cœur qui bat, la prothèse suit la
   cloison, test aux bulles de contrôle négatif (les bulles restent à droite).
 - **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de
   l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),
@@ -239,7 +241,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
   le corps de BodyParts3D (tools/cache/, non versionné), tools/make-plate.mjs fait le rendu par l'appli — à relancer
   après toute modification du modèle, du corps ou du rendu. L'aiguille ponctionne le vaisseau (anneau, étiquette), le
   dispositif le remonte, la vue suit sa progression ; à l'abord du cœur — **TAVI** (guide, artère fémorale droite) :
-  aorte thoracique descendante ; **FOP** (gaine, veine fémorale droite) : veine cave inférieure au niveau du foie ;
+  aorte thoracique descendante ; **FOP** (guide, veine fémorale droite) : veine cave inférieure au niveau du foie ;
   **pacemaker** (sonde dans sa gaine, veine sous-clavière gauche) : veine cave supérieure —, la caméra 3D se pose
   exactement sur le cadrage de la planche (vue de face, même centre, même échelle), la deuxième partie démarre dessous
   et la planche s'efface en fondu ; la caméra glisse ensuite vers la vue de l'animation, la coupe entrant depuis
@@ -292,7 +294,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/heart.js` | Chargement du modèle, matériau « tissu » (shader), déformation du cycle cardiaque, conduction, clic et surbrillance |
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles, fermeture) et Coronaires (infarctus de l'IVA) |
-| `js/pfo-closure.js` | Animation de la fermeture percutanée du FOP (gaine, prothèse à double disque, largage) |
+| `js/pfo-closure.js` | Animation de la fermeture percutanée du FOP (guide, gaine, prothèse à double disque, largage) |
 | `js/pacing-anim.js` | Rubrique Stimulation : vue 4 cavités fixe, animation de l'implantation d'un stimulateur (sonde de branche gauche, sonde auriculaire) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
