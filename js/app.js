@@ -315,7 +315,7 @@ function withRootHoles(mat, rootSel = -1) {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vHoleW;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvHoleW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vHoleW;\n${GLSL_ROOTS}`)
-      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (inRootW(vHoleW, 0.0) || (uOpenAo > 0.5 && uRootSel < 0.5)) discard;'); // racine à sa place du moment ; aorte ouverte (TAVI)
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (inRootW(vHoleW, 0.0) || (uOpenAo > 0.5 && uRootSel < 0.5) || (uOpenVein > 0.5 && uRootSel > 0.5)) discard;'); // racine à sa place du moment ; aorte ouverte (TAVI) ; veines creuses (FOP)
   };
   const key = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : () => '';
   mat.customProgramCacheKey = () => key() + '|racines';

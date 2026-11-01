@@ -178,26 +178,33 @@ une liste numérotée des structures, et une fiche explicative par structure.
   placée sur la zone la plus mince du septum (19 × 16 mm, plancher mince du septum primum, limbe en fer à cheval ouvert
   vers le bas, Naqvi 2018), déformée avec le septum pendant tout le cycle (plancher, paroi et limbe d'un seul tenant) ; **FOP · test aux bulles** : coupe bicave comme en ETO (OG en haut, veine cave supérieure à
   droite), postérieure : elle passe par la fosse ovale (plancher et limbe en coupe) et par le FOP dans toute sa longueur.
-  FOP (Goel 2009 ; Hara 2005) : le septum primum (plancher de la fosse) se prolonge côté OG en un rabat mince (≈ 0,8 mm,
-  pâle) qui chevauche le septum secundum (limbe) au-delà du bord supérieur de la fosse, vers la veine cave supérieure,
-  sans y être soudé ; entre les deux, une fente plate (le tunnel : ≈ 12 mm de long, ≈ 9 mm de large, ≈ 2,4 mm de haut),
-  ouverte dans l'OD par la fosse et dans l'OG au bord libre du rabat (trou dans l'endocarde de l'OG) ; fente et rabat
-  creusent la tranche du septum, qui montre en coupe, de l'OD à l'OG, le limbe, la fente, le rabat. Niveaux mesurés sur
-  l'endocarde de l'OG. Noms (Repères) : septum primum (rabat), septum secundum (limbe), tunnel du FOP. 1 280 bulles du
+  FOP (Goel 2009 ; Hara 2005), comme sur les coupes anatomiques : une fente plate et oblique (≈ 7 mm de long, ≈ 8 mm de
+  large, ≈ 2 mm de haut), du fond de la fosse, juste sous le plancher, à l'OG ; du côté de l'OG, le prolongement mince
+  du plancher (septum primum), qui finit en bord libre au débouché ; du côté de l'OD, le septum secundum (limbe), épais.
+  Son axe est la ligne qui vient de la veine cave inférieure (le flux de la VCI est dirigé vers la fosse), à moins de
+  30° de l'axe de la veine cave. La fente creuse la tranche du septum et ouvre la paroi de la fosse et l'endocarde de
+  l'OG à son passage (même lentille, dans le shader) ; elle s'élargit quand le matériel la traverse et s'écrase à la
+  fermeture. Cloison pleine en coupe : dans le modèle, les parois des deux oreillettes sont séparées par le sillon
+  interauriculaire, qui laissait en coupe un creux grossier autour de la fosse ; il est comblé (solide de coupe relevé
+  entre les deux faces du sillon, dans un disque de 2,4 cm), avec une tranche de muscle d'oreillette plein et un
+  endocarde plus fin. Veines caves creuses dans les trois vues : pas de tranche de sang dans les veines, et l'endocarde de
+  l'OD est ouvert au droit de chaque abouchement (dôme qui fermait la veine) : on voit l'intérieur de la veine, un tuyau
+  vide. Noms (Repères) : septum primum (rabat), septum secundum (limbe), tunnel du FOP. 1 280 bulles du
   sérum salé agité arrivent
   par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
   (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015) ; **Fermeture du FOP** (js/pfo-closure.js) : même
   coupe, animation de la fermeture percutanée lancée à l'ouverture de l'onglet (bouton « Voir la fermeture » pour la
   revoir, « Arrêter ») — cœur arrêté en diastole ; d'abord le FOP en gros plan, avec ses noms ; guide (0,035 pouce) qui
-  remonte la veine cave inférieure, traverse l'OD (un seul arc doux, depuis la veine cave), passe tout droit dans le
-  tunnel, sans s'y couder, et se recourbe une fois dans l'OG — au débouché, l'axe du tunnel bute sur la paroi : arc
-  régulier jusqu'à viser le centre de l'oreillette, puis tout droit, bout en J —, toujours dans l'oreillette (≥ 1,5 mm
-  des parois, distance signée à l'endocarde) ; gaine bleue (≈ 8 F) qui glisse sur lui, droite dans le tunnel, et
-  s'arrête dans l'OG ; guide retiré par la gaine ;
+  remonte la veine cave inférieure, s'incline une seule fois à sa sortie (24°, arc de 2 cm de rayon), puis va tout droit
+  à travers l'OD, la fosse et le tunnel jusque dans l'OG, où il se recourbe une fois vers le centre de l'oreillette,
+  bout en J, toujours dans l'oreillette (≥ 1,5 mm des parois, distance signée à l'endocarde) ; gaine bleue (≈ 8 F) qui
+  glisse sur lui sur la même ligne — aucun virage de plus de 30° de la veine cave à son arrêt dans l'OG — et s'arrête
+  dans l'OG ; guide retiré par la gaine ;
   prothèse à double disque de type Amplatzer PFO Occluder 25 mm (disque gauche 18 mm, disque droit 25 mm, treillis
-  tressé en spirale sur tissu de polyester, col court, moyeux) : disque gauche poussé hors de la gaine et ouvert
-  entièrement dans l'OG, au point choisi pour que le disque ouvert reste à distance des parois (≥ 2 mm ; distance
-  signée à l'endocarde de l'OG), tiré contre la cloison ; gaine reculée dans l'OD, disque droit libéré de l'autre côté ; le rabat est pris
+  tressé en spirale sur tissu de polyester, col court, moyeux) : disque gauche poussé hors de la gaine, qui s'oriente en
+  s'ouvrant (presque parallèle à la cloison) et s'ouvre entièrement dans l'OG ; arrêt de la gaine et axe du disque
+  choisis pour que le disque ouvert tienne dans l'oreillette (distance signée à l'endocarde de l'OG, ≥ 1 mm), puis
+  tiré contre la cloison ; gaine reculée dans l'OD, disque droit libéré de l'autre côté ; le rabat est pris
   contre le limbe et la fente s'écrase à mesure que le disque droit s'applique ; les deux disques centrés sur le milieu
   du tunnel, chacun contre une face de la cloison (lancer de rayons) et conformés à son relief comme un treillis souple
   (recul de leurs points le long de leur axe, plafonné à 3,5 mm : légère cuvette du disque droit sur le bombement

@@ -30,7 +30,8 @@ export function buildFOPViews(heart) {
       variantList: [['normale', title]], variant: 'normale', setVariant() {},
       sides: { C: side },
       active: false,
-      activate(on) { view.active = on; heart.setPFO(on && pfo); view.onActivate?.(on, pfo); },
+      // veines caves creuses (tuyau vide, pas d'aplat de sang) dans les vues de l'oreillette droite
+      activate(on) { view.active = on; heart.setPFO(on && pfo); heart.setOpenVeins(on); view.onActivate?.(on, pfo); },
     };
     return view;
   };

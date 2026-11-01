@@ -214,6 +214,7 @@ export const GLSL_ROOTS = /* glsl */`
 uniform vec4 uHoleC[2]; uniform vec4 uHoleA[2]; uniform vec3 uHoleCw[2]; // uHoleCw : centres suivant le battement
 uniform float uRootSel; // racine concernée : 0 aortique, 1 pulmonaire, −1 les deux
 uniform float uOpenAo; // animation de la TAVI : aorte ouverte sur toute sa longueur (intima entière, pas de tranche de sang)
+uniform float uOpenVein; // vues de l'oreillette droite (FOP) : veines creuses (intima entière, pas de tranche de sang)
 uniform vec4 uOst[2]; uniform vec3 uOstN[2]; // ostia coronaires : centre et rayon, axe (vers le sang) ; rayon < 0 : absent
 bool inOstium(vec3 p) {
   for (int i = 0; i < 2; i++) {
@@ -314,8 +315,8 @@ function patchShader(sh) {
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB; uniform vec4 uPfoX;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#ifndef RACINES\nuniform float uOpenAo;\n#endif\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
-    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if ((!inRoot(vObj, 0.4) && !(uOpenAo > 0.5 && uRootSel < 0.5)) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef OSTENV\n  for (int i = 0; i < 2; i++) { if (uOst[i].w <= 0.0) continue; vec3 q = vObj - uOst[i].xyz; float a = dot(q, uOstN[i]);\n    if (a > -0.45 && a < 0.25 && length(q - uOstN[i] * a) < uOst[i].w * 1.45) discard; }\n  #endif\n  #ifdef AOROOT\n  { vec3 q = vObj - uAoR.xyz; float al = dot(q, uAoA.xyz); if ((uOpenAo > 0.5 || dot(cameraPosition - uAoR.xyz, uAoA.xyz) > uAoA.w) && al > 0.15 * uAoA.w && al < 1.05 * uAoA.w && length(q - uAoA.xyz * al) < uAoR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; }\n    if (uPfoX.w > 0.0 && length(vObj - uPfoX.xyz) < uPfoX.w) discard; }\n  #endif')
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB; uniform vec3 uPfoO; uniform vec3 uPfoD; uniform vec3 uPfoW; uniform vec4 uPfoL;\n#ifdef CAVEOST\nuniform vec4 uCavO[2]; uniform vec3 uCavA[2];\n#endif\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#ifndef RACINES\nuniform float uOpenAo;\n#endif\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if ((!inRoot(vObj, 0.4) && !(uOpenAo > 0.5 && uRootSel < 0.5) && !(uOpenVein > 0.5 && uRootSel > 0.5)) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef OSTENV\n  for (int i = 0; i < 2; i++) { if (uOst[i].w <= 0.0) continue; vec3 q = vObj - uOst[i].xyz; float a = dot(q, uOstN[i]);\n    if (a > -0.45 && a < 0.25 && length(q - uOstN[i] * a) < uOst[i].w * 1.45) discard; }\n  #endif\n  #ifdef AOROOT\n  { vec3 q = vObj - uAoR.xyz; float al = dot(q, uAoA.xyz); if ((uOpenAo > 0.5 || dot(cameraPosition - uAoR.xyz, uAoA.xyz) > uAoA.w) && al > 0.15 * uAoA.w && al < 1.05 * uAoA.w && length(q - uAoA.xyz * al) < uAoR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; }\n    if (uPfoL.w > 0.0) { vec3 p = vObj - uPfoO; float t = (dot(p, uPfoD) - uPfoL.x) / (uPfoL.y - uPfoL.x);\n    if (t > 0.0 && t < 1.0) { float tp = sqrt(sin(3.14159265 * clamp(t * 0.92 + 0.04, 0.0, 1.0))); float x = dot(p, uPfoW) / (uPfoL.z * (0.55 + 0.45 * tp)), m = dot(p, cross(uPfoD, uPfoW)) / (uPfoL.w * tp + 0.004); if (x * x + m * m < 1.0) discard; } }\n    #ifdef CAVEOST\n    { vec3 nW = inverseTransformDirection(normalize(vNormal), viewMatrix);\n    for (int i = 0; i < 2; i++) { if (uCavO[i].w <= 0.0) continue; vec3 c = vObj - uCavO[i].xyz; float al = dot(c, uCavA[i]);\n      if (al > -0.9 && al < 0.25 && length(c - uCavA[i] * al) < uCavO[i].w && abs(dot(nW, uCavA[i])) > 0.45) discard; } }\n    #endif\n  }\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -669,7 +670,7 @@ export async function buildHeart(onProgress) {
       uVolHalf: { value: wall ? new THREE.Vector3(0.5 / wall.n.x, 0.5 / wall.n.y, 0.5 / wall.n.z) : new THREE.Vector3() },
       // infarctus de l'IVA (vue Coronaires) : territoire akinétique, teinte, artère occluse ; fosse ovale
       uInf: { value: 0 }, uInfAnt: { value: new THREE.Vector3(1, 0, 0) }, uInfSep: { value: new THREE.Vector3(0, 1, 0) }, uInfTint: { value: 0 }, uOccl: { value: 0 },
-      uFosC: { value: new THREE.Vector3() }, uFosN: { value: new THREE.Vector3(0, 0, 1) }, uFosU: { value: new THREE.Vector3(0, 1, 0) }, uFosAB: { value: new THREE.Vector3(1, 1, -1) }, uPfoX: { value: new THREE.Vector4(0, 0, 0, -1) },
+      uFosC: { value: new THREE.Vector3() }, uFosN: { value: new THREE.Vector3(0, 0, 1) }, uFosU: { value: new THREE.Vector3(0, 1, 0) }, uFosAB: { value: new THREE.Vector3(1, 1, -1) }, uPfoO: { value: new THREE.Vector3() }, uPfoD: { value: new THREE.Vector3(0, 1, 0) }, uPfoW: { value: new THREE.Vector3(1, 0, 0) }, uPfoL: { value: new THREE.Vector4(0, 1, 1, -1) }, uCavO: { value: [new THREE.Vector4(0, 0, 0, -1), new THREE.Vector4(0, 0, 0, -1)] }, uCavA: { value: [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0)] },
     };
   })();
   const focusUniform = { value: 0 };
@@ -692,6 +693,7 @@ export async function buildHeart(onProgress) {
       uAoR: { value: (() => { const d = header.valves['valve-aortique']; return new THREE.Vector4(d.center[0], d.center[1], d.center[2], d.radius * 0.95); })() },
       uAoA: { value: (() => { const d = header.valves['valve-aortique'], a = v3(d.axis).normalize(); return new THREE.Vector4(a.x, a.y, a.z, d.height); })() },
       uOpenAo: { value: 0 },
+      uOpenVein: { value: 0 },
       uOst: { value: [new THREE.Vector4(0, 0, 0, -1), new THREE.Vector4(0, 0, 0, -1)] }, uOstN: { value: [new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 1)] } };
   })();
   const depthCache = new Map();
@@ -700,7 +702,7 @@ export async function buildHeart(onProgress) {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, fossa = false, pulroot = false, aoroot = false, ostia = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, fossa = false, pulroot = false, aoroot = false, caveOst = false, ostia = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -711,6 +713,7 @@ export async function buildHeart(onProgress) {
     if (coro) m.defines = { ...m.defines, CORONAIRE: '' };
     if (occl) m.defines = { ...m.defines, OCCL: '' };
     if (fossa) m.defines = { ...m.defines, FOSSE: '' };
+    if (caveOst) m.defines = { ...m.defines, CAVEOST: '' };
     if (pulroot) m.defines = { ...m.defines, PULROOT: '' };
     if (aoroot) m.defines = { ...m.defines, AOROOT: '' };
     if (ostia) m.defines = { ...m.defines, OSTENV: '' };
@@ -722,7 +725,7 @@ export async function buildHeart(onProgress) {
       ...cutU, uCutExtra: { value: 0 }, ...rootU, uRootSel: { value: rootSel },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
-    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', fossa && 'fosse', pulroot && 'racpulm', aoroot && 'racao', ostia && 'ostia', roots && 'racine'].filter(Boolean).join('-');
+    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', fossa && 'fosse', caveOst && 'caveost', pulroot && 'racpulm', aoroot && 'racao', ostia && 'ostia', roots && 'racine'].filter(Boolean).join('-');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
     materials.push(m); tissueMats.push(m);
@@ -931,7 +934,7 @@ export async function buildHeart(onProgress) {
     }
     if (!fromFile) { g.setAttribute('col', new THREE.BufferAttribute(col, 4, true)); g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true)); }
     // endocarde : film humide brillant sur le relief des trabécules
-    const cavMat = tissue(0xffffff, { envelope: true, fossa: true, aoroot: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
+    const cavMat = tissue(0xffffff, { envelope: true, fossa: true, aoroot: true, caveOst: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
     const cav = new THREE.Mesh(g, cavMat);
     cav.userData.id = 'cavites';
     cav.userData.sid = sid; // clic : cavité touchée (oreillette ou ventricule)
@@ -1194,44 +1197,176 @@ export async function buildHeart(onProgress) {
     const floorG = new THREE.CircleGeometry(1, 64).scale(b, a, 1);
     const floorM = add(place(new THREE.Mesh(floorG, tissue(0xecc6bf, { deformK: K_ENDO, roughness: 0.4, clearcoat: 0.5, sss: 0.8, rim: 0.15, bump: 0.15, emissive: 0x5a2a28, emissiveIntensity: 0.35 })), floorP));
     floorM.receiveShadow = false;
-    // paroi de la dépression, de l'endocarde de l'OD au plancher
-    const wallG = new THREE.CylinderGeometry(1, 1, depth, 64, 1, true).rotateX(Math.PI / 2).translate(0, 0, depth / 2).scale(b, a, 1);
-    add(place(new THREE.Mesh(wallG, tissue(COL.endoOreillette, { deformK: K_ENDO, roughness: 0.38, clearcoat: 0.55, sss: 0.5, rim: 0.08, bump: 0.2 })), F)).receiveShadow = false;
-    // limbe en fer à cheval, ouvert vers le bas (arc de 270°), plus épais en haut (septum secundum)
-    const limbG = new THREE.TorusGeometry(1, 0.15, 14, 96, 1.5 * Math.PI).rotateZ(-Math.PI / 2 + Math.PI / 4).scale(b * 1.08, a * 1.08, 1.2);
-    add(place(new THREE.Mesh(limbG, tissue(0xc97880, { deformK: K_ENDO, roughness: 0.36, clearcoat: 0.55, sss: 0.5, rim: 0.1, bump: 0.3 })), F.clone().addScaledVector(n, -0.04)));
-    // creux de la fosse dans la tranche du septum (coupes) : solide « creux » de l'endocarde de l'OD au plancher
-    const holeG = new THREE.CylinderGeometry(1, 1, depth + 0.1, 48, 1, false).rotateX(Math.PI / 2).translate(0, 0, depth / 2 - 0.05).scale(b, a, 1);
+    // volume fermé : faces tournées vers l'extérieur (volume signé positif), comme les autres volumes des coupes
+    const outward = (geo) => {
+      const P = geo.attributes.position.array, I = geo.index.array; let vol = 0;
+      for (let k = 0; k < I.length; k += 3) { const i0 = I[k] * 3, i1 = I[k + 1] * 3, i2 = I[k + 2] * 3; vol += P[i0] * (P[i1 + 1] * P[i2 + 2] - P[i1 + 2] * P[i2 + 1]) - P[i0 + 1] * (P[i1] * P[i2 + 2] - P[i1 + 2] * P[i2]) + P[i0 + 2] * (P[i1] * P[i2 + 1] - P[i1 + 1] * P[i2]); }
+      if (vol < 0) { for (let k = 0; k < I.length; k += 3) { const t = I[k + 1]; I[k + 1] = I[k + 2]; I[k + 2] = t; } geo.index.needsUpdate = true; }
+      geo.computeVertexNormals(); return geo;
+    };
+    // paroi de la dépression, de l'endocarde de l'OD au plancher : une pente arrondie (bord adouci, puis légère cuvette),
+    // non un cylindre ; wallR : rayon (en unités de l'ellipse de la fosse) à la profondeur f (0 : endocarde, 1 : plancher)
+    const wallR = (f) => 1 + 0.1 * (1 - f) ** 3 - 0.14 * f * f;
+    const wallG = (() => {
+      const NZ = 20, NT = 180, pos = [], idx = [];
+      for (let i = 0; i <= NZ; i++) {
+        const f = i / NZ, z = depth * f, r = wallR(f);
+        for (let j = 0; j <= NT; j++) { const th = (j / NT) * 2 * Math.PI; pos.push(b * r * Math.cos(th), a * r * Math.sin(th), z); }
+      }
+      for (let i = 0; i < NZ; i++) for (let j = 0; j < NT; j++) { const p = i * (NT + 1) + j, q = p + NT + 1; idx.push(p, p + 1, q, p + 1, q + 1, q); }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      return geo;
+    })();
+    const wallMat = tissue(COL.endoOreillette, { deformK: K_ENDO, side: THREE.DoubleSide, roughness: 0.38, clearcoat: 0.55, sss: 0.5, rim: 0.08, bump: 0.2 });
+    const wallM = add(place(new THREE.Mesh(wallG, wallMat), F));
+    wallM.receiveShadow = false;
+    // limbe (septum secundum) en fer à cheval, ouvert vers le bas : un bourrelet discret, plus marqué en haut, de la
+    // teinte de l'endocarde
+    const limbG = new THREE.TorusGeometry(1, 0.1, 14, 120, 1.5 * Math.PI).rotateZ(-Math.PI / 2 + Math.PI / 4).scale(b * 1.06, a * 1.06, 0.7);
+    { const lp = limbG.attributes.position; for (let i = 0; i < lp.count; i++) { const x = lp.getX(i), y = lp.getY(i), top = Math.max(0, y / (a * 1.06)); lp.setXYZ(i, x, y, lp.getZ(i) * (0.6 + 0.6 * top)); } limbG.computeVertexNormals(); }
+    add(place(new THREE.Mesh(limbG, tissue(0xc98486, { deformK: K_ENDO, roughness: 0.38, clearcoat: 0.55, sss: 0.5, rim: 0.08, bump: 0.25 })), F.clone().addScaledVector(n, -0.03)));
+    // creux de la fosse dans la tranche du septum (coupes) : solide « creux » de l'endocarde de l'OD au plancher, au
+    // profil de la paroi
+    const holeG = (() => {
+      const pts = [new THREE.Vector2(0, -0.05)];
+      for (let i = 0; i <= 24; i++) { const z = -0.05 + ((depth + 0.1) * i) / 24; pts.push(new THREE.Vector2(wallR(Math.min(1, Math.max(0, z / depth))), z)); }
+      pts.push(new THREE.Vector2(0, depth + 0.05));
+      return outward(new THREE.LatheGeometry(pts, 96).rotateX(Math.PI / 2).scale(b, a, 1));
+    })();
     const hole = place(new THREE.Mesh(holeG, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })), F);
     hole.renderOrder = -2; root.add(hole);
     solids.push({ mesh: hole, hole: true, cap: 'myo', k: K_ENDO });
+    // cloison pleine autour de la fosse : dans le modèle, les parois des deux oreillettes sont séparées par le sillon
+    // interauriculaire (la surface externe s'enfonce entre elles) ; une coupe y montrait un creux grossier autour de la
+    // fosse et du tunnel du FOP. On le comble (solide de coupe, muscle) entre les deux faces du sillon, relevées le long
+    // de la normale au septum sur une grille de 0,8 mm, dans un disque de 2,4 cm autour de la fosse
+    {
+      const R = 2.4, h = 0.08, N = Math.round((2 * R) / h) + 1, hits = Array.from({ length: N * N }, () => []);
+      const eg = geos.enveloppe.geometry, ep = eg.attributes.position, ei = eg.index, V = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+      for (let k = 0; k < ei.count; k += 3) {
+        const T = V.map((v, s) => { v.fromBufferAttribute(ep, ei.getX(k + s)).sub(Mid); return [v.dot(ant), v.dot(up), v.dot(n)]; });
+        if (T.some((q) => Math.abs(q[2]) > 0.8 || Math.abs(q[0]) > R + 0.2 || Math.abs(q[1]) > R + 0.2)) continue;
+        const [[ax, ay, am], [bx, by, bm], [cx, cy, cz]] = T, det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+        if (Math.abs(det) < 1e-9) continue;
+        const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) + R) / h)), i1 = Math.min(N - 1, Math.floor((Math.max(ax, bx, cx) + R) / h));
+        const j0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) + R) / h)), j1 = Math.min(N - 1, Math.floor((Math.max(ay, by, cy) + R) / h));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const x = -R + i * h, y = -R + j * h, l1 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / det, l2 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / det, l3 = 1 - l1 - l2;
+          if (l1 >= 0 && l2 >= 0 && l3 >= 0) hits[j * N + i].push(l1 * am + l2 * bm + l3 * cz);
+        }
+      }
+      // sillon : exactement deux faces de la surface externe entre les deux endocardes (cases du bord : épaisseur nulle)
+      const lo = new Float32Array(N * N), hi = new Float32Array(N * N), ok = new Uint8Array(N * N);
+      for (let c = 0; c < N * N; c++) {
+        const x = -R + (c % N) * h, y = -R + Math.floor(c / N) * h;
+        const m = hits[c].filter((z) => z > -0.45 && z < 0.6).sort((p, q) => p - q).filter((z, i, s) => i === 0 || z - s[i - 1] > 1e-3);
+        if (x * x + y * y < (R - 0.2) ** 2 && m.length === 2 && m[1] - m[0] > 0.02 && m[1] - m[0] < 0.6) { lo[c] = m[0] - 0.004; hi[c] = m[1] + 0.004; ok[c] = 1; }
+      }
+      // cases isolées sans mesure, entourées de cases mesurées : moyenne des voisines ; ailleurs, épaisseur nulle au
+      // milieu des voisines
+      const nb = (c) => [c - 1, c + 1, c - N, c + N].filter((q) => q >= 0 && q < N * N && Math.abs((q % N) - (c % N)) <= 1);
+      for (let c = 0; c < N * N; c++) if (!ok[c]) { const v = nb(c).filter((q) => ok[q]); if (v.length >= 3) { lo[c] = v.reduce((s, q) => s + lo[q], 0) / v.length; hi[c] = v.reduce((s, q) => s + hi[q], 0) / v.length; ok[c] = 2; } }
+      const mid = new Float32Array(N * N), known = Uint8Array.from(ok, (v) => (v ? 1 : 0));
+      for (let c = 0; c < N * N; c++) if (known[c]) mid[c] = (lo[c] + hi[c]) / 2;
+      for (let pass = 0; pass < 12; pass++) for (let c = 0; c < N * N; c++) if (!known[c]) { const v = nb(c).filter((q) => known[q]); if (v.length) { mid[c] = v.reduce((s, q) => s + mid[q], 0) / v.length; known[c] = 1; } }
+      for (let c = 0; c < N * N; c++) if (!ok[c]) lo[c] = hi[c] = mid[c];
+      const pos = new Float32Array(N * N * 6), idx = [], v = new THREE.Vector3();
+      for (let c = 0; c < N * N; c++) {
+        const x = -R + (c % N) * h, y = -R + Math.floor(c / N) * h;
+        v.copy(Mid).addScaledVector(ant, x).addScaledVector(up, y).addScaledVector(n, hi[c]).toArray(pos, c * 3);
+        v.copy(Mid).addScaledVector(ant, x).addScaledVector(up, y).addScaledVector(n, lo[c]).toArray(pos, (N * N + c) * 3);
+      }
+      for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
+        const p = j * N + i, q = p + N, B = N * N;
+        idx.push(p, p + 1, q, p + 1, q + 1, q); // face du côté de l'OG
+        idx.push(B + p, B + q, B + p + 1, B + p + 1, B + q, B + q + 1); // face du côté de l'OD
+      }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setIndex(idx);
+      const fill = new THREE.Mesh(outward(geo), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+      fill.renderOrder = -2; root.add(fill);
+      solids.push({ mesh: fill, hole: false, cap: 'myo', k: K_EPI });
+    }
     // atriums : abouchement des veines caves, centres, valves auriculo-ventriculaires (trajet des bulles)
     const yTop = Math.max(...RA.map((p) => p.y)), yBot = Math.min(...RA.map((p) => p.y));
     const svc = mean(RA.filter((p) => p.y > yTop - 0.6)).setY(yTop - 1.6), ivc = mean(RA.filter((p) => p.y < yBot + 0.6)).setY(yBot + 0.9);
-    // FOP, au bord supérieur de la fosse, vers la veine cave supérieure : dans le plan de la coupe bicave (axe des veines
-    // caves et normale au septum), qui le montre dans toute sa longueur comme en ETO. Repère : s le long du tunnel (depuis
-    // le centre de la fosse), x en travers, niveaux le long de n (de l'OD vers l'OG), mesurés sur l'endocarde de l'OG.
+    // abouchement de chaque veine cave dans l'OD : extrémité de la veine du côté de l'oreillette (maillage simplifié,
+    // repéré par structure), axe (vers la veine), rayon de sa lumière (vues de l'oreillette droite : setOpenVeins)
+    const raC = mean(RA.slice());
+    const cavOstia = ['veine-cave-superieure', 'veine-cave-inferieure'].map((name) => {
+      const pg = geos.proxy?.geometry, ps = geos.proxy?.sid; if (!pg || !ps) return null;
+      const pp = pg.attributes.position, P = [];
+      for (let i = 0; i < ps.length; i++) if (ids[ps[i]] === name) P.push(new THREE.Vector3().fromBufferAttribute(pp, i));
+      if (P.length < 12) return null;
+      const c = mean(P.map((p) => p.clone())), ax = new THREE.Vector3(0, 1, 0), t = new THREE.Vector3();
+      for (let it = 0; it < 30; it++) { t.set(0, 0, 0); for (const p of P) { const q = p.clone().sub(c); t.addScaledVector(q, q.dot(ax)); } ax.copy(t).normalize(); } // direction principale
+      if (c.clone().sub(raC).dot(ax) < 0) ax.negate();
+      const s0 = Math.min(...P.map((p) => p.clone().sub(c).dot(ax))), lv = geos['lumiere-veine'].geometry.attributes.position, R = [], q = new THREE.Vector3();
+      for (let i = 0; i < lv.count; i++) { q.fromBufferAttribute(lv, i).sub(c); const al = q.dot(ax); if (al > s0 + 0.2 && al < s0 + 1.2) { const d = q.addScaledVector(ax, -al).length(); if (d < 2) R.push(d); } }
+      if (R.length < 12) return null;
+      R.sort((x, y) => x - y);
+      return { o: c.clone().addScaledVector(ax, s0), ax, r: R[Math.floor(R.length / 2)] };
+    });
+    // distance signée à l'endocarde de chaque oreillette (positive dans la cavité), cherchée dans une grille de 4 mm
+    const cn = g.attributes.normal, wallOf = (name) => { const W = [], N = []; for (let i = 0; i < cs.length; i++) if (ids[cs[i]] === name) { W.push(new THREE.Vector3().fromBufferAttribute(cp, i)); N.push(new THREE.Vector3().fromBufferAttribute(cn, i)); } return [W, N]; };
+    const CELL = 0.4, gkey = (x, y, z) => x + ',' + y + ',' + z;
+    const sdOf = ([W, N]) => {
+      const grid = new Map(); W.forEach((q, i) => { const k = gkey(Math.floor(q.x / CELL), Math.floor(q.y / CELL), Math.floor(q.z / CELL)); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(i); });
+      return (p) => {
+        const cx = Math.floor(p.x / CELL), cy = Math.floor(p.y / CELL), cz = Math.floor(p.z / CELL); let m = Infinity, j = -1;
+        for (let r = 0; r < 40; r++) {
+          for (let x = cx - r; x <= cx + r; x++) for (let y = cy - r; y <= cy + r; y++) for (let z = cz - r; z <= cz + r; z++) {
+            if (Math.max(Math.abs(x - cx), Math.abs(y - cy), Math.abs(z - cz)) !== r) continue;
+            const c = grid.get(gkey(x, y, z)); if (c) for (const i of c) { const d = W[i].distanceToSquared(p); if (d < m) { m = d; j = i; } }
+          }
+          if (j >= 0 && Math.sqrt(m) <= r * CELL) break;
+        }
+        return j < 0 ? -Infinity : p.clone().sub(W[j]).dot(N[j]) > 0 ? -Math.sqrt(m) : Math.sqrt(m);
+      };
+    };
+    const sdRA = sdOf(wallOf('oreillette-droite')), sdLA = sdOf(wallOf('oreillette-gauche'));
+    // FOP, au bord supérieur de la fosse, sous le limbe (septum secundum) : une fente plate et oblique, du fond de la
+    // fosse (juste sous le plancher) jusqu'à l'OG, comme sur les coupes anatomiques : du côté de l'OG, le prolongement
+    // du plancher (septum primum), mince, qui finit en bord libre au débouché ; du côté de l'OD, le septum secundum,
+    // épais. Son axe est la ligne qui vient de la veine cave inférieure (le flux de la VCI est dirigé vers la fosse) :
+    // le matériel qui monte de la VCI la suit tout droit. Ligne choisie parmi celles qui passent au bord supérieur de
+    // la fosse, juste sous le plancher : à moins de 30° de l'axe de la VCI, dans l'OD jusqu'à la fosse, et, au-delà du
+    // débouché, le plus de place dans l'OG pour la gaine et le disque gauche de la prothèse.
+    const GAP = 0.1; // demi-hauteur de la fente ouverte ≈ 1 mm (≈ 2 mm de haut) ; ≈ 8 mm de large
     const dAS = svc.clone().sub(ivc).projectOnPlane(n).normalize(), wAS = new THREE.Vector3().crossVectors(n, dAS).normalize();
     const rAS = 1 / Math.sqrt((dAS.dot(ant) / b) ** 2 + (dAS.dot(up) / a) ** 2); // bord de l'ellipse dans cette direction
-    // niveau (le long de n) de l'endocarde de l'OG au droit d'un point : sommet le plus proche du côté de l'OG
-    const laLevel = (s) => {
-      const p = Mid.clone().addScaledVector(dAS, s), np = p.dot(n), d = new THREE.Vector3(); let best = Infinity;
-      for (const v of LAs) { d.copy(v).sub(p); const al = d.dot(n); if (al < -0.3 || al > 1.2) continue; d.addScaledVector(n, -al); if (d.lengthSq() < 0.05) best = Math.min(best, np + al); }
-      return Number.isFinite(best) ? best : Q.dot(n);
-    };
-    const s0 = rAS * 0.55, s2 = rAS + 1.25, sFree = s2 - 0.35; // entrée dans la fosse, débouché dans l'OG, bord libre du rabat
-    const FLAP = 0.08, GAP = 0.12, NS = 40; // épaisseur du rabat (≈ 0,8 mm), demi-hauteur de la fente ouverte (≈ 2,4 mm)
-    const lv = Array.from({ length: NS + 1 }, (_, i) => laLevel(s0 + ((s2 - s0) * i) / NS));
-    for (let p = 0; p < 3; p++) for (let i = 1; i < NS; i++) lv[i] = (lv[i - 1] + 2 * lv[i] + lv[i + 1]) / 4; // lissage
-    const sm01 = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-    const levelAt = (s) => { const f = Math.min(NS, Math.max(0, ((s - s0) / (s2 - s0)) * NS)), i = Math.min(NS - 1, Math.floor(f)); return lv[i] + (lv[i + 1] - lv[i]) * (f - i); };
-    // fente : toit = dessous du rabat (fixe) ; plancher (limbe) qui remonte quand le FOP se ferme (c : 0 → 1) ; au
-    // débouché, la fente monte dans l'OG
-    const roof = (s) => levelAt(s) - FLAP + sm01(sFree - 0.05, s2, s) * (FLAP + 0.3);
-    const floorAt = (s, c) => roof(s) - 2 * GAP * (1 - c) - 0.01;
-    const halfW = (s) => 0.45 * (0.6 + 0.4 * sm01(s0, s0 + 0.4, s));
-    const at = (s, x, level, out) => out.copy(Mid).addScaledVector(dAS, s).addScaledVector(wAS, x).addScaledVector(n, level - Mid.dot(n));
+    const cv = svc.clone().sub(ivc).normalize();
+    const mF = F.clone().sub(Mid).dot(n), mC = floorP.clone().sub(Mid).dot(n) - GAP - 0.05; // profondeurs le long de n
+    const inPit = (p) => { const q = p.clone().sub(Mid), z = q.dot(n); if (z < mF - 0.05 || z > mF + depth) return false; return Math.hypot(q.dot(ant) / b, q.dot(up) / a) < wallR(Math.min(1, Math.max(0, (z - mF) / depth))); };
+    const discMargin = (c, ax, r) => { const u = new THREE.Vector3().crossVectors(ax, Math.abs(ax.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)).normalize(), v = new THREE.Vector3().crossVectors(ax, u); let m = sdLA(c); for (let k = 0; k < 12; k++) { const t = (k / 12) * 2 * Math.PI; m = Math.min(m, sdLA(c.clone().addScaledVector(u, r * Math.cos(t)).addScaledVector(v, r * Math.sin(t)))); } return m; };
+    let pick = null;
+    for (let s = 0.82 * rAS; s <= 1.0 * rAS + 1e-6; s += 0.06 * rAS) for (let w = -0.3; w <= 0.31; w += 0.1) {
+      const X = Mid.clone().addScaledVector(dAS, s).addScaledVector(wAS, w).addScaledVector(n, mC), d = X.clone().sub(ivc).normalize();
+      const bend = Math.acos(Math.min(1, d.dot(cv))) * 180 / Math.PI;
+      const L0 = X.distanceTo(ivc), at = (t) => X.clone().addScaledVector(d, t);
+      // entrée : sortie de la fosse dans l'épaisseur de la cloison ; débouché : entrée dans l'OG
+      let t0 = null, t1 = null, viaPit = false;
+      for (let t = -1.2; t <= 1.6; t += 0.02) {
+        const p = at(t);
+        if (t0 === null) { if (inPit(p)) viaPit = true; else if (sdRA(p) < 0) t0 = t; continue; }
+        if (sdLA(p) > 0.03) { t1 = t; break; }
+      }
+      if (t0 === null || t1 === null) continue;
+      let ra = Infinity; for (let t = -L0 + 0.6; t < t0 - 0.5; t += 0.25) ra = Math.min(ra, sdRA(at(t)));
+      // place dans l'OG : longueur de ligne à plus de 2 mm des parois, puis meilleur disque de 18 mm devant elle
+      let run = 0; for (let t = t1 + 0.3; t <= t1 + 2; t += 0.1) { if (sdLA(at(t)) < 0.15) break; run = t - t1; }
+      let disc = -Infinity; for (let t = t1 + 0.3; t <= t1 + run + 0.4; t += 0.15) for (const k of [0.4, 0.8]) disc = Math.max(disc, discMargin(at(t), d.clone().lerp(n, k).normalize(), 0.9));
+      const len = t1 - t0, ok = viaPit && bend <= 30 && len >= 0.25 && len <= 1.2 && ra > 0.1;
+      const score = (ok ? 10 : 0) + Math.min(run, 1.2) + Math.min(disc, 0.3) + 0.2 * Math.min(ra, 0.5) - Math.max(0, bend - 30) * 0.05;
+      if (!pick || score > pick.score) pick = { score, X, d, t0, t1, bend, disc, run, viaPit };
+    }
+    const dT = pick.d, E0 = pick.X.clone().addScaledVector(dT, pick.t0), E1 = pick.X.clone().addScaledVector(dT, pick.t1);
+    // repère du tunnel : le long de son axe, en travers (dans le plan de la cloison), et vers l'OG (perpendiculaire à l'axe)
+    const tW = new THREE.Vector3().crossVectors(n, dT).normalize(), tM = new THREE.Vector3().crossVectors(dT, tW).normalize(); // tM du côté de l'OG
+    if (tM.dot(n) < 0) tM.negate();
+    const tLen = E1.distanceTo(E0), uA = -0.16, uB = tLen + 0.08, HW = 0.42; // fente : depuis la fosse jusqu'à l'OG
+    const at = (u, x, m, out) => out.copy(E0).addScaledVector(dT, u).addScaledVector(tW, x).addScaledVector(tM, m);
     // tube fermé à section quelconque : sec(t, φ, c, out) ; positions ouvertes (c = 0) et fermées (c = 1) en cache
+    // (c < 0 : fente élargie par le matériel qui la traverse)
     const sweep = (nt, nr, sec) => {
       const W = nr + 1, nv = (nt + 1) * W + 2, idx = [], P0 = new Float32Array(nv * 3), P1 = new Float32Array(nv * 3), v = new THREE.Vector3();
       for (const [arr, c] of [[P0, 0], [P1, 1]]) {
@@ -1240,53 +1375,67 @@ export async function buildHeart(onProgress) {
       }
       for (let i = 0; i < nt; i++) for (let j = 0; j < nr; j++) { const p = i * W + j, q = p + W; idx.push(p, q, p + 1, q, q + 1, p + 1); }
       for (let j = 0; j < nr; j++) { idx.push(nv - 2, j + 1, j); const e = nt * W + j; idx.push(nv - 1, e, e + 1); }
-      // faces tournées vers l'extérieur (volume signé positif), comme les autres volumes creux des coupes
-      let vol = 0;
-      for (let k = 0; k < idx.length; k += 3) { const [i0, i1, i2] = [idx[k] * 3, idx[k + 1] * 3, idx[k + 2] * 3]; vol += P0[i0] * (P0[i1 + 1] * P0[i2 + 2] - P0[i1 + 2] * P0[i2 + 1]) - P0[i0 + 1] * (P0[i1] * P0[i2 + 2] - P0[i1 + 2] * P0[i2]) + P0[i0 + 2] * (P0[i1] * P0[i2 + 1] - P0[i1 + 1] * P0[i2]); }
-      if (vol < 0) for (let k = 0; k < idx.length; k += 3) [idx[k + 1], idx[k + 2]] = [idx[k + 2], idx[k + 1]];
-      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P0.slice(), 3)); geo.setIndex(idx); geo.computeVertexNormals();
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P0.slice(), 3)); geo.setIndex(idx);
+      outward(geo);
       return { geo, set(c) { const pa = geo.attributes.position.array; for (let k = 0; k < pa.length; k++) pa[k] = P0[k] + (P1[k] - P0[k]) * c; geo.attributes.position.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingSphere(); } };
     };
-    const lens = (ph, e) => [Math.sign(Math.cos(ph)) * Math.abs(Math.cos(ph)) ** e, Math.sign(Math.sin(ph)) * Math.abs(Math.sin(ph)) ** e];
-    const slit = sweep(48, 24, (t, ph, c, out) => {
-      const s = s0 + (s2 - s0) * t, top = roof(s), bot = floorAt(s, c), mid = (top + bot) / 2, hh = (top - bot) / 2;
-      if (ph < 0) return at(s, 0, mid, out);
-      const [x, y] = lens(ph, 0.55); return at(s, x * halfW(s), mid + y * hh, out);
-    });
-    // rabat du septum primum, sur la fente, du plancher de la fosse à son bord libre : mince, pâle comme le plancher
-    const sF0 = rAS * 0.6;
-    const flap = sweep(36, 20, (t, ph, c, out) => {
-      const s = sF0 + (sFree - sF0) * t, top = levelAt(s) + 0.01, mid = top - FLAP / 2;
-      if (ph < 0) return at(s, 0, mid, out);
-      const [x, y] = lens(ph, 0.3); return at(s, x * (halfW(s) + 0.15), mid + y * FLAP / 2, out);
+    // fente : section en lentille, fine, effilée aux deux bouts (même forme que l'ouverture des surfaces, GLSL : FOSSE) ;
+    // elle s'écrase quand le FOP se ferme (c → 1)
+    const taperOf = (t) => Math.sin(Math.PI * Math.min(1, Math.max(0, t * 0.92 + 0.04))) ** 0.5;
+    const slit = sweep(48, 28, (t, ph, c, out) => {
+      const u = uA + (uB - uA) * t, tp = taperOf(t), hh = Math.max(0.004, GAP * tp * (1 - c)), hw = HW * (0.55 + 0.45 * tp);
+      if (ph < 0) return at(u, 0, 0, out);
+      return at(u, Math.cos(ph) * hw, Math.sin(ph) * hh, out);
     });
     const slitM = add(new THREE.Mesh(slit.geo, tissue(0x6e2a30, { deformK: K_ENDO, side: THREE.BackSide, roughness: 0.4, clearcoat: 0.5, sss: 0.5, rim: 0.05, bump: 0.15 })));
-    const flapM = add(new THREE.Mesh(flap.geo, tissue(0xecc6bf, { deformK: K_ENDO, side: THREE.DoubleSide, roughness: 0.4, clearcoat: 0.5, sss: 0.8, rim: 0.15, bump: 0.12, emissive: 0x5a2a28, emissiveIntensity: 0.35 })));
-    // fente et rabat creusent la tranche du septum (pas de muscle) : on y voit la fente ouverte et le rabat en coupe
-    const holes = [slit.geo, flap.geo].map((geo) => { const h = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })); h.renderOrder = -2; h.visible = false; root.add(h); solids.push({ mesh: h, hole: true, cap: 'myo', k: K_ENDO }); return h; });
-    for (const m of [slitM, flapM]) { m.userData.pfo = true; m.userData.hidden = true; m.visible = false; } // affichés avec le FOP seulement (setPFO)
-    // trajet par le tunnel (bulles, gaine de la fermeture) : entrée dans la fosse, milieu, débouché dans l'OG
-    const T0 = at(s0 + 0.15, 0, (roof(s0 + 0.15) + floorAt(s0 + 0.15, 0)) / 2, new THREE.Vector3());
-    const sMid = (rAS + sFree) / 2, T1 = at(sMid, 0, roof(sMid) - GAP, new THREE.Vector3());
-    const T2 = at(s2 + 0.05, 0, levelAt(s2) + 0.2, new THREE.Vector3());
-    const exitP = at(s2 - 0.12, 0, levelAt(s2), new THREE.Vector3()); // trou dans l'endocarde de l'OG au bord libre du rabat
-    const pfoParts = { slitM, flapM, holes, slit, exitP };
+    // la fente creuse la tranche de la cloison : en coupe, le rabat mince au-dessus, le septum secundum épais au-dessous
+    const slitHole = new THREE.Mesh(slit.geo, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    slitHole.renderOrder = -2; slitHole.visible = false; root.add(slitHole);
+    solids.push({ mesh: slitHole, hole: true, cap: 'myo', k: K_ENDO });
+    // paroi de la fosse ouverte à l'entrée du tunnel (FOP affiché) : sans les triangles qui tombent dans la fente
+    const wallPFO = (() => {
+      const geo = wallG.clone(), P = geo.attributes.position, I = geo.index.array, keep = [], c = new THREE.Vector3(), q = new THREE.Vector3();
+      for (let k = 0; k < I.length; k += 3) {
+        c.set(0, 0, 0); for (let s = 0; s < 3; s++) c.add(q.fromBufferAttribute(P, I[k + s])); c.multiplyScalar(1 / 3).sub(E0);
+        const u = c.dot(dT), t = (u - uA) / (uB - uA), tp = taperOf(t);
+        const inside = t > 0 && t < 1 && (c.dot(tW) / (HW * (0.55 + 0.45 * tp))) ** 2 + (c.dot(tM) / (GAP * tp + 0.02)) ** 2 < 1;
+        if (!inside) keep.push(I[k], I[k + 1], I[k + 2]);
+      }
+      geo.setIndex(keep);
+      const m = new THREE.Mesh(geo, wallMat); m.receiveShadow = false; m.userData.pfo = true;
+      return add(m);
+    })();
+    for (const m of [slitM, wallPFO]) { m.userData.pfo = true; m.userData.hidden = true; m.visible = false; } // affichés avec le FOP seulement (setPFO)
+    // ouverture des surfaces (endocardes, faces du sillon) là où passe la fente : même lentille (GLSL : FOSSE)
+    deformU.uPfoO.value.copy(E0); deformU.uPfoD.value.copy(dT); deformU.uPfoW.value.copy(tW);
+    const pfoLens = new THREE.Vector4(uA, uB, HW, GAP);
+    // trajet par le tunnel (bulles, gaine de la fermeture) : entrée, milieu, débouché dans l'OG, sur l'axe du tunnel
+    const T0 = E0.clone().addScaledVector(dT, -0.1), T1 = E0.clone().lerp(E1, 0.5), T2 = E1.clone().addScaledVector(dT, 0.12);
+    const pfoParts = { slitM, slitHole, wallM, wallPFO, slit, pfoLens };
     return {
-      F, Q, center: Mid, floor: floorP, n, up, ant, a, b, tunnel: [T0, T1, T2], tunnelDir: dAS, pfo: pfoParts,
-      ra: mean(RA), la: mean(LA), svc, ivc,
+      F, Q, center: Mid, floor: floorP, n, up, ant, a, b, tunnel: [T0, T1, T2], tunnelDir: dT, pfo: pfoParts, sdLA, sdRA, pfoPick: pick,
+      ra: mean(RA), la: mean(LA), svc, ivc, cavOstia,
     };
   })();
-  // FOP affiché (fente, rabat, ouverture dans l'OG) ; fermeture (c : 0 → 1) : la fente s'écrase, le rabat plaqué sur le
-  // limbe, l'ouverture dans l'OG se referme
+  // FOP affiché (fente, entrée dans la paroi de la fosse, ouverture dans l'OG) ; fermeture (c : 0 → 1) : la fente
+  // s'écrase, le rabat plaqué sur le limbe ; c < 0 : fente élargie par le matériel qui la traverse
   let pfoOn = false, pfoClose = 0;
   const syncPFO = () => {
     if (!fossa) return;
     const P = fossa.pfo, open = pfoOn && pfoClose < 0.999;
-    for (const m of [P.slitM, P.holes[0]]) { m.visible = open; m.userData.hidden = !open; }
-    for (const m of [P.flapM, P.holes[1]]) { m.visible = pfoOn; m.userData.hidden = !pfoOn; }
-    deformU.uPfoX.value.set(P.exitP.x, P.exitP.y, P.exitP.z, pfoOn && pfoClose < 0.6 ? 0.4 * (1 - pfoClose / 0.6) : -1);
+    for (const m of [P.slitM, P.slitHole, P.wallPFO]) { m.visible = open; m.userData.hidden = !open; }
+    P.wallM.visible = !open; P.wallM.userData.hidden = open; // paroi de la fosse : ouverte à l'entrée du tunnel
+    deformU.uPfoL.value.copy(P.pfoLens); deformU.uPfoL.value.w = open ? P.pfoLens.w * (1 - pfoClose) : -1;
   };
   const setPFO = (on) => { pfoOn = on; syncPFO(); };
+  // veines caves creuses (vues de l'oreillette droite) : pas de tranche de sang dans les veines (GLSL_ROOTS), et
+  // abouchements ouverts — l'endocarde de l'OD sans le « dôme » qui ferme chaque veine cave (dans le cylindre de sa
+  // lumière, faces tournées dans l'axe de la veine ; GLSL : CAVEOST) : on voit l'intérieur de la veine, un tuyau creux.
+  // Les coupes (solide de la cavité) ne changent pas.
+  const setOpenVeins = (on) => {
+    rootU.uOpenVein.value = on ? 1 : 0;
+    (fossa?.cavOstia || []).forEach((o, i) => { if (o) { deformU.uCavO.value[i].set(o.o.x, o.o.y, o.o.z, on ? o.r * 0.97 : -1); deformU.uCavA.value[i].copy(o.ax); } });
+  };
   const setPFOClosure = (c) => { if (!fossa || Math.abs(c - pfoClose) < 1e-4) return; pfoClose = c; fossa.pfo.slit.set(Math.min(1, c)); syncPFO(); };
 
   const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -1529,7 +1678,7 @@ export async function buildHeart(onProgress) {
 
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve, ostia,
-    infarct, setInfarct, fossa, setPFO, setPFOClosure,
+    infarct, setInfarct, fossa, setPFO, setPFOClosure, setOpenVeins,
     addTaviMask, buildTaviMask, prepareTaviMask, taviRibbon, // animation de la TAVI : aorte fendue en long, artère pulmonaire retirée
     setTaviMask: (on) => { const v = !!(on && maskU.uTMTex.value); maskU.uTaviMask.value = v ? 1 : 0; taviBack.visible = taviLiner.visible = v; root.updateMatrixWorld(); maskU.uTMInv.value.copy(root.matrixWorld).invert(); },
     structureIds: ids, // indice de structure (attribut sid des cavités) → nom

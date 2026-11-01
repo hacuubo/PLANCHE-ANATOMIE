@@ -57,7 +57,7 @@ export function sectionMaterial(heart, { stencil, rank, papillary = false }) {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${SECTION_GLSL}\nfloat gSecH;`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${SECTION_GLSL}\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU;\nfloat gSecH;`)
       .replace('#include <color_fragment>', /* glsl */`#include <color_fragment>
   {
     // point d'origine du tissu (avant déformation) : déformation inverse (raideur lue dans la carte)
@@ -74,6 +74,12 @@ export function sectionMaterial(heart, { stencil, rank, papillary = false }) {
     float frac = vol.b; // 0 endocarde du VG → 1 épicarde ou face droite de la cloison
     // muscle papillaire : la carte le place dans la cavité ; muscle plein, sans endocarde ni épicarde ni oreillette
     if (uPap > 0.5) { dEpi = 1.0; dEndo = 1.0; wVes = 0.0; wAtr = 0.0; frac = 0.5; }
+    // cloison interauriculaire autour de la fosse ovale (sillon comblé, js/heart.js) : muscle d'oreillette plein, sans
+    // pellicule d'épicarde au fond du sillon ; endocarde plus fin (vue rapprochée du FOP : la paroi mince de l'OG ne
+    // doit pas paraître pâle sur toute son épaisseur)
+    { vec3 q = p0 - uFosC; float d = dot(q, uFosN); vec2 xy = vec2(dot(q, uFosU), dot(q, cross(uFosN, uFosU)));
+      float sept = (1.0 - smoothstep(0.4, 0.65, abs(d))) * (1.0 - smoothstep(2.0, 2.3, length(xy))) * (1.0 - wVes);
+      dEpi = mix(dEpi, max(dEpi, 0.15), sept); wAtr = mix(wAtr, 1.0 - wVes, sept); dEndo *= 1.0 + 2.0 * sept; }
     // direction des fibres : hélice autour du grand axe, angle de +60° (endocarde) à −60° (épicarde)
     vec3 q = p0 - uDB; vec3 rr = q - uDA * dot(q, uDA);
     vec3 eT = normalize(cross(uDA, rr) + vec3(1e-4));
