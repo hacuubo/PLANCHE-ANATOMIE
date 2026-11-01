@@ -224,23 +224,31 @@ une liste numérotée des structures, et une fiche explicative par structure.
   septum pendant le vissage, sur l'oreillette droite pendant la pose de la sonde auriculaire, puis sur les deux sondes.
   Légende : les quatre cavités, le septum interventriculaire, la veine cave supérieure.
 - **Trajet depuis la ponction** (js/route-intro.js) : première partie de chaque animation de pose de dispositif
-  (4 à 5 s), avant celle du cœur. Planche vectorielle du corps entier, vue de face (côté droit du patient à gauche de
-  l'écran), avec la grande circulation seule — artères en rouge, veines en bleu — et un cœur immobile, qui est l'image
-  du modèle 3D lui-même : rendu de face sans perspective, à l'échelle de la planche (5,45 unités par cm), cœur au repos,
-  aorte et branches de la crosse teintées en rouge, veines caves en bleu (et, comme sur les planches, artères
-  pulmonaires en bleu, veines pulmonaires en rouge). Les vaisseaux de la planche partent des extrémités des gros
-  vaisseaux du modèle (branches de la crosse, aorte descendante, veines caves) et s'y fondent : carotides,
-  sous-clavières, axillaires, humérales, radiales, ulnaires et arcades palmaires, aorte abdominale, rénales, iliaques,
-  fémorales, poplitées, tibiales ; troncs brachiocéphaliques (devant les branches de la crosse), jugulaires,
-  sous-clavières, basiliques, céphaliques, veine cave inférieure, rénales (la gauche devant l'aorte), iliaques,
-  fémorales, grandes saphènes. L'aiguille ponctionne le vaisseau (anneau, étiquette), le dispositif le remonte, la vue
-  suit sa progression ; à l'abord du cœur — **TAVI** (guide, artère fémorale droite) : aorte thoracique descendante ;
-  **FOP** (gaine, veine fémorale droite) : veine cave inférieure au niveau du foie ; **pacemaker** (sonde dans sa
-  gaine, veine sous-clavière gauche) : veine cave supérieure —, la caméra 3D se pose exactement sur le cadrage de la
-  planche (vue de face, même centre, même échelle), la deuxième partie démarre dessous et la planche s'efface en
-  fondu ; la caméra glisse ensuite vers la vue de l'animation, la coupe entrant depuis l'extérieur du cœur (TAVI :
-  directement dans le plan de la crosse). Première étape de la barre de progression ; bouton « Passer » ; « Arrêter »
-  l'interrompt.
+  (4 à 5 s), avant celle du cœur. Planche du corps entier, vue de face (côté droit du patient à gauche de l'écran) :
+  silhouette dessinée et, par-dessus, la grande circulation et le cœur rendus ensemble en 3D, comme dans un atlas —
+  le cœur est le modèle lui-même (au repos, moignons inférieurs coupés net), chaque vaisseau du corps un tube le long
+  de sa ligne centrale, à son calibre, les vaisseaux du tronc partant des extrémités des gros vaisseaux du modèle ;
+  même lumière, mêmes matières ; ombrage traduit en dégradés de rouge (sang oxygéné : aorte et branches, veines
+  pulmonaires) et de bleu (veines, artères pulmonaires) ; reins en 3D ; ombre portée sur la peau. Réseau calé sur des
+  repères recoupés (niveaux vertébraux du tronc cœliaque, des mésentériques, des rénales, de la bifurcation aortique et
+  du confluent iliaque ; bifurcation carotidienne ; division de l'humérale et de la poplitée ; jonction de la grande
+  saphène) et des calibres mesurés (docs/relectures/2026-11-01-relecture-reseau-vasculaire-3d.md) : aorte et ses
+  branches viscérales, iliaques internes et externes, fémorales et fémorale profonde, circonflexes, géniculées,
+  poplitées, tibiales, fibulaires, pédieuses ; carotides, vertébrales, branches de la carotide externe ; sous-clavières,
+  axillaires, thoraciques latérales, humérales et humérale profonde, radiales, ulnaires, arcades palmaires ; veines
+  caves, troncs brachiocéphaliques (devant les branches de la crosse), jugulaires, sous-clavières (devant les artères),
+  humérales, basiliques, céphaliques, médianes, rénales (la gauche entre l'aorte et la mésentérique supérieure),
+  gonadiques, iliaques (la gauche derrière l'iliaque commune droite), fémorales, grandes saphènes et leurs affluents,
+  tibiales, arcades veineuses. Images livrées toutes faites (assets/planche/ : corps entier à 10 px/cm, tronc à
+  36 px/cm, WebP), produites par tools/make-plate.mjs — à relancer après toute modification du modèle, du réseau ou
+  du rendu ; à défaut, rendues au premier lancement. L'aiguille ponctionne le vaisseau (anneau, étiquette), le
+  dispositif le remonte, la vue suit sa progression ; à l'abord du cœur — **TAVI** (guide, artère fémorale droite) :
+  aorte thoracique descendante ; **FOP** (gaine, veine fémorale droite) : veine cave inférieure au niveau du foie ;
+  **pacemaker** (sonde dans sa gaine, veine sous-clavière gauche) : veine cave supérieure —, la caméra 3D se pose
+  exactement sur le cadrage de la planche (vue de face, même centre, même échelle), la deuxième partie démarre dessous
+  et la planche s'efface en fondu ; la caméra glisse ensuite vers la vue de l'animation, la coupe entrant depuis
+  l'extérieur du cœur (TAVI : directement dans le plan de la crosse). Première étape de la barre de progression ;
+  bouton « Passer » ; « Arrêter » l'interrompt.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
@@ -293,17 +301,19 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
-| `js/route-intro.js` | Première partie des animations de pose : planche du corps entier (grande circulation), trajet du dispositif de la ponction au cœur |
+| `js/route-intro.js` | Première partie des animations de pose : planche du corps entier, réseau de la grande circulation (lignes centrales, calibres), trajet du dispositif de la ponction à l'abord du cœur |
 | `js/tavi-anim.js` | Animation de l'implantation d'une TAVI (guide, cathéter, valve sertie, ballonnet, déploiement, retraits) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
 | `assets/heart.bin` | Modèle généré (ne pas modifier à la main) |
+| `assets/planche/` | Planche du corps entier de l'introduction des animations (réseau vasculaire et cœur rendus en 3D, WebP) et sa description (`planche.json`) — générée par `tools/make-plate.mjs`, ne pas modifier à la main |
 | `assets/reperes/` | Coupes de repérage des vues des valves (4 cavités, 5 cavités, frontale), rendues depuis l'application |
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
 | `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves, format compact du modèle, pilotage d'Edge pour les captures |
 | `tools/pack-heart.mjs` | Convertit `assets/heart.bin` au format compact HRT3 |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |
+| `tools/make-plate.mjs` | Régénère `assets/planche/` depuis l'appli (dépôt servi en local, puis `node tools/make-plate.mjs`) |
 
 ## Repère et unités
 

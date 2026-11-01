@@ -5,13 +5,13 @@
 // niveau du foie, veine cave supérieure), la deuxième partie (animation 3D) prend le relais : la caméra 3D se pose
 // exactement sur le cadrage de la planche, qui s'efface en fondu.
 //
-// Planche vectorielle (SVG) : vue de face, côté droit du patient à gauche de l'écran. Repère : 1000 unités de haut,
-// K = 5,45 unités par cm, axe du corps en x = 200. Le cœur est l'image du modèle 3D lui-même (rendu de face, sans
-// perspective, hooks.plate, js/app.js), à la même échelle : un point du modèle (x, y en cm, repère de la scène) est en
-// (OX + K·x, OY − K·y). Les vaisseaux de la planche partent des extrémités des gros vaisseaux du modèle (branches de
-// la crosse, aorte descendante, veines caves) et s'y fondent. Chaque vaisseau est une ligne centrale lissée
-// (Catmull-Rom) dont la largeur varie le long du trajet ; les membres et les vaisseaux symétriques sont décrits à
-// droite et reportés à gauche. Le trajet du dispositif suit les lignes centrales de ces vaisseaux.
+// Planche : vue de face, côté droit du patient à gauche de l'écran. Repère : 1000 unités de haut, K = 5,45 unités par
+// cm, axe du corps en x = 200 ; un point de la scène (x, y en cm) est en (OX + K·x, OY − K·y). La silhouette du corps est
+// dessinée ici (SVG) ; par-dessus, l'image du réseau vasculaire et du cœur, rendus ensemble en 3D par js/app.js
+// (heartPlate, livrée toute faite dans assets/planche/) : chaque vaisseau du réseau (vesselNetwork) est un tube le long
+// d'une ligne centrale décrite ici, au calibre du vaisseau, et ceux du tronc partent des extrémités des gros vaisseaux
+// du modèle. Les membres et les vaisseaux symétriques sont décrits à droite et reportés à gauche. Le trajet du
+// dispositif suit les lignes centrales de ces vaisseaux.
 //   TAVI      artère fémorale droite → iliaque commune → aorte abdominale → aorte thoracique descendante ;
 //   FOP       veine fémorale droite → iliaque commune → veine cave inférieure, au niveau du foie ;
 //   pacemaker veine sous-clavière gauche → tronc veineux brachiocéphalique gauche → veine cave supérieure.
@@ -71,90 +71,144 @@ const HINTS_R = [
   [[137, 470], [150, 486], [168, 502], [190, 517]],
 ];
 
-/* ── Artères périphériques ── (x, y, largeur) ; le tronc et les branches de la crosse partent du modèle (centralVessels) */
+/* ── Réseau vasculaire de la grande circulation ── Rendu en 3D avec le cœur du modèle, même lumière, même matière, même
+   teinte (js/app.js, heartPlate) : chaque vaisseau est un tube le long de sa ligne centrale. Sur la planche : x, y en
+   unités, largeur = calibre en unités ; z : profondeur en cm dans le repère de la scène (vers l'observateur > 0), aux
+   deux bouts du vaisseau ou point par point. Les vaisseaux du tronc partent des extrémités des gros vaisseaux du modèle.
+   Repères et calibres (docs/relectures/2026-11-01-relecture-reseau-vasculaire-3d.md) : niveaux vertébraux sur la planche
+   T12 ≈ 340, L1 ≈ 352, L2 ≈ 366, L3 ≈ 396, L4 ≈ 414, L5 ≈ 430 — tronc cœliaque T12, mésentérique supérieure L1, rénales
+   L1-L2, mésentérique inférieure L3, bifurcation aortique L4, confluent des veines iliaques L5 ; bifurcation carotidienne
+   au bord supérieur du cartilage thyroïde (C4) ; division de l'humérale au col du radius ; jonction de la grande saphène
+   ≈ 3,7 cm en dehors du tubercule pubien ; division de la poplitée au bord inférieur du poplité. Calibres (cm) : aorte
+   sous-diaphragmatique ≈ 2 puis 1,7, iliaque commune ≈ 0,9, fémorale ≈ 0,8, poplitée ≈ 0,5, jambières ≈ 0,3-0,4,
+   carotide ≈ 0,65, sous-clavière ≈ 0,85, humérale ≈ 0,45, radiale et ulnaire ≈ 0,25 ; veine cave inférieure ≈ 2,1,
+   iliaque commune ≈ 1,2, fémorale ≈ 1, jugulaire interne ≈ 1,1, grande saphène ≈ 0,4. */
+const A = (z, p) => ({ k: 'a', z, p }), V = (z, p) => ({ k: 'v', z, p });
+const mirrorV = (v) => ({ ...v, p: mirror(v.p) });
+// artères, de chaque côté (côté droit du patient)
+const ART_R = [
+  // cou et face
+  A([-2.4, -2.6], [[178, 187, 2], [184, 174, 1.9], [187, 155, 1.8], [189, 130, 1.6], [190, 112, 1.4]]), // vertébrale (derrière la carotide)
+  A([-1.2, -1.6], [[184, 160, 3.4], [185, 145, 3], [186, 130, 2.8], [187, 116, 2.6]]), // carotide interne
+  A([-1, -0.6], [[184, 160, 3], [181, 148, 2.6], [178, 134, 2.2], [174, 118, 1.8], [170, 100, 1.5], [167, 82, 1.3], [166, 62, 1.1], [168, 46, 0.8]]), // carotide externe, temporale superficielle
+  A([-0.8, -0.4], [[183, 156, 1.3], [188, 160, 1.1], [192, 166, 0.9]]), // thyroïdienne supérieure
+  A([-0.8, -0.6], [[182, 150, 1.3], [188, 146, 1.1], [192, 140, 0.9]]), // linguale
+  A([-0.8, 0], [[181, 146, 1.5], [178, 138, 1.4], [180, 128, 1.2], [185, 118, 1], [190, 108, 0.8], [193, 98, 0.6]]), // faciale
+  A([-1.2, -1.2], [[176, 128, 1.3], [184, 124, 1.1], [190, 122, 0.9]]), // maxillaire
+  A([-0.4, 0], [[167, 74, 1], [174, 58, 0.8], [182, 44, 0.6]]), // branche frontale de la temporale
+  // membre supérieur
+  A([-1, -0.6], [[124, 203, 4], [116, 216, 3.8], [112, 236, 3.6], [110, 252, 3.2], [107, 285, 3], [103, 325, 2.8], [100, 360, 2.6], [97, 386, 2.5], [96, 398, 2.4]]), // axillaire, humérale
+  A([-0.6, -0.4], [[128, 200, 1.2], [124, 192, 1], [118, 190, 0.8]]), // thoraco-acromiale
+  A([-0.8, -0.6], [[118, 214, 1.3], [122, 236, 1.2], [125, 260, 1], [127, 285, 0.8]]), // thoracique latérale
+  A([-1.2, -1.2], [[110, 256, 1.6], [105, 276, 1.4], [99, 300, 1.2], [95, 330, 1], [94, 360, 0.8]]), // humérale profonde
+  A([-0.8, -0.4], [[96, 398, 1.6], [92, 420, 1.5], [87, 450, 1.4], [82, 480, 1.3], [78, 505, 1.2], [76, 522, 1.1]]), // radiale
+  A([-0.8, -0.6], [[96, 398, 1.7], [96, 420, 1.6], [94, 450, 1.5], [91, 480, 1.4], [89, 505, 1.3], [87, 524, 1.2]]), // ulnaire
+  A([-1.2, -1.2], [[96, 404, 1], [93, 430, 0.9], [90, 460, 0.8]]), // interosseuse commune
+  A([-0.2, -0.2], [[87, 524, 1.1], [86, 536, 1], [82, 540, 1], [78, 536, 0.9]]), // arcade palmaire superficielle
+  A([-0.6, -0.6], [[76, 522, 1], [78, 530, 0.9], [84, 530, 0.9]]), // arcade palmaire profonde
+  A([-0.2, -0.2], [[78, 538, 0.8], [75, 565, 0.65], [75, 586, 0.5]]), A([-0.2, -0.2], [[81, 540, 0.8], [80, 570, 0.65], [79, 592, 0.5]]),
+  A([-0.2, -0.2], [[85, 539, 0.8], [84, 566, 0.65], [83, 586, 0.5]]), A([-0.2, -0.2], [[77, 530, 0.8], [70, 548, 0.6], [66, 563, 0.5]]), // digitales
+  // bassin et membre inférieur
+  A([-3, -3.4], [[183, 458, 3], [187, 470, 2.7], [190, 482, 2.3]]), // iliaque interne
+  A([-3.4, -3.8], [[189, 478, 1.6], [180, 484, 1.4], [170, 486, 1.2]]), // glutéale supérieure
+  A([-3.4, -3.2], [[190, 482, 1.5], [193, 494, 1.3], [192, 506, 1.1]]), // obturatrice
+  A([-2.6, -1], [[182, 460, 4.6], [176, 478, 4.5], [170, 498, 4.4], [168, 514, 4.3], [167, 530, 4], [167, 560, 3.6], [168, 600, 3.4], [170, 640, 3.2], [172, 672, 3], [171, 700, 2.9], [169, 725, 2.8], [168, 748, 2.7]]), // iliaque externe, fémorale, poplitée
+  A([-1.6, -0.8], [[175, 486, 1.4], [180, 470, 1.3], [183, 450, 1.1], [185, 428, 0.9], [186, 410, 0.7]]), // épigastrique inférieure
+  A([-1.6, -1.6], [[172, 492, 1.1], [160, 484, 1], [148, 476, 0.8]]), // circonflexe iliaque profonde
+  A([-1.4, -1.8], [[167, 522, 3], [161, 540, 2.8], [157, 570, 2.4], [155, 610, 2], [155, 650, 1.6], [156, 680, 1.2]]), // fémorale profonde
+  A([-1.2, -1], [[160, 536, 2], [150, 542, 1.8], [144, 550, 1.6]]), // circonflexe fémorale latérale
+  A([-1, -1], [[146, 548, 1.4], [144, 590, 1.2], [146, 640, 1], [150, 690, 0.8]]), // sa branche descendante
+  A([-1.6, -1.8], [[161, 538, 1.6], [168, 548, 1.4], [174, 552, 1.2]]), // circonflexe fémorale médiale
+  A([-0.8, -0.6], [[171, 690, 1.1], [178, 705, 1], [182, 720, 0.8]]), A([-0.8, -0.6], [[168, 712, 1], [159, 716, 0.9], [154, 724, 0.8]]), // géniculées
+  A([-1, -0.2], [[168, 748, 2.2], [162, 764, 2.1], [160, 800, 2], [159, 840, 1.9], [161, 880, 1.8], [164, 915, 1.7], [166, 935, 1.6]]), // tibiale antérieure
+  A([-0.2, 0], [[166, 935, 1.6], [166, 955, 1.4], [165, 972, 1.1]]), A([0, 0], [[166, 958, 0.9], [160, 962, 0.8], [156, 966, 0.6]]), // pédieuse, arquée
+  A([-1.2, -1.2], [[168, 748, 2.4], [170, 760, 2.3], [171, 770, 2.2]]), // tronc tibio-fibulaire
+  A([-1.2, -0.8], [[171, 770, 2.1], [174, 810, 2], [176, 860, 1.8], [178, 905, 1.6], [179, 928, 1.5], [177, 950, 1.2], [174, 966, 0.9]]), // tibiale postérieure
+  A([-1.6, -1.6], [[171, 770, 1.8], [169, 820, 1.6], [169, 870, 1.4], [170, 910, 1.1]]), // fibulaire
+];
+// artères du tronc (asymétriques)
 const ART_C = [
-  [[208, 356, 3.4], [196, 358, 3.1], [184, 361, 2.7]], [[209, 354, 3.4], [222, 355, 3.1], [234, 359, 2.7]], // rénales
-  [[207, 412, 6], [197, 428, 5.6], [188, 444, 5.3], [182, 458, 5]], // iliaque commune droite
-  [[207, 412, 6], [212, 428, 5.6], [216, 444, 5.3], [218, 458, 5]], // iliaque commune gauche
+  A([-3.2, -1.2], [[209, 340, 3.4], [208, 337, 3.2], [205, 334, 3]]), // tronc cœliaque (T12)
+  A([-1.2, -1.4], [[205, 334, 2.4], [198, 331, 2.2], [190, 326, 2], [183, 319, 1.7], [178, 313, 1.4]]), // hépatique commune (vers le foie)
+  A([-1.2, -1.8], [[206, 334, 2.6], [213, 328, 2.5], [220, 333, 2.4], [228, 326, 2.2], [236, 331, 2.1], [244, 324, 1.9], [251, 320, 1.6]]), // splénique (sinueuse)
+  A([-1.2, -1.4], [[207, 334, 1.4], [211, 326, 1.2], [214, 318, 1]]), // gastrique gauche
+  A([-2.8, -1, -0.8, -0.8, -0.8, -0.8], [[208, 352, 3.4], [206, 361, 3.2], [203, 378, 2.8], [201, 394, 2.4], [200, 410, 2], [202, 428, 1.4]]), // mésentérique supérieure (L1), devant la veine rénale gauche
+  A([-0.8, -0.8], [[204, 372, 1.4], [214, 380, 1.2], [222, 392, 1]]), A([-0.8, -0.8], [[202, 388, 1.3], [214, 398, 1.1], [220, 410, 0.9]]), // jéjunales
+  A([-0.8, -0.8], [[201, 398, 1.4], [190, 410, 1.2], [182, 424, 1]]), // iléo-colique
+  A([-3.4, -3.6], [[208, 362, 3.4], [196, 364, 3.2], [182, 368, 2.8], [170, 372, 2.4], [163, 374, 2]]), A([-3.4, -3.6], [[209, 360, 3.4], [220, 361, 3.2], [230, 363, 2.8], [238, 365, 2.2]]), // rénales (L1-L2), jusqu'au hile
+  A([-3.2, -2], [[209, 396, 2.2], [214, 404, 2], [219, 414, 1.8], [222, 428, 1.5], [221, 440, 1.2]]), // mésentérique inférieure (L3)
+  A([-3, -1], [[207, 372, 0.9], [198, 400, 0.8], [190, 440, 0.8], [184, 480, 0.7], [182, 500, 0.6]]), A([-3, -1], [[209, 374, 0.9], [216, 400, 0.8], [214, 440, 0.8], [216, 480, 0.7], [218, 500, 0.6]]), // gonadiques
+  A([-3.2, -2.6], [[207, 414, 5.2], [197, 430, 5], [188, 446, 4.9], [182, 460, 4.8]]), A([-3.2, -2.6], [[207, 414, 5.2], [212, 430, 5], [216, 446, 4.9], [218, 460, 4.8]]), // iliaques communes (L4)
+  A([-2.4, -2.6], [[222, 187, 2], [216, 174, 1.9], [213, 155, 1.8], [211, 130, 1.6], [210, 112, 1.4]]), // vertébrale gauche
 ];
-const ART_R = [ // de chaque côté
-  [[184, 158, 3], [185, 140, 2.8], [186, 124, 2.5]], // carotide interne
-  [[184, 158, 2.8], [180, 144, 2.5], [176, 128, 2.2], [171, 108, 1.8], [167, 86, 1.4], [166, 62, 1.1]], // carotide externe, temporale superficielle
-  [[167, 88, 1.2], [174, 64, 1], [182, 46, 0.8]],
-  [[181, 148, 1.8], [177, 139, 1.6], [178, 129, 1.4], [183, 120, 1.2], [188, 113, 1]], // faciale
-  [[112, 210, 3.4], [110, 240, 3.2], [107, 280, 3], [103, 320, 2.8], [100, 355, 2.7], [97, 385, 2.6]], // axillaire, humérale
-  [[97, 385, 2.4], [90, 420, 2.2], [84, 460, 2], [79, 500, 1.8], [76, 522, 1.5]], // radiale
-  [[97, 386, 2.4], [96, 420, 2.2], [93, 460, 2], [89, 500, 1.8], [87, 524, 1.5]], // ulnaire
-  [[76, 522, 1.3], [78, 536, 1.2], [84, 539, 1.2], [87, 524, 1.3]], // arcade palmaire
-  [[78, 537, 1], [75, 565, 0.8], [75, 585, 0.6]], [[81, 539, 1], [80, 570, 0.8], [79, 592, 0.6]], [[85, 537, 1], [84, 565, 0.8], [83, 585, 0.6]],
-  [[183, 456, 3.2], [188, 472, 2.8], [192, 486, 2.3], [193, 498, 1.8]], // iliaque interne
-  [[182, 458, 4.8], [176, 478, 4.6], [170, 498, 4.4], [167, 520, 4.2], [166, 545, 3.9], [166, 590, 3.6], [167, 640, 3.4], [169, 690, 3.2], [168, 722, 3], [167, 752, 2.8]], // iliaque externe, fémorale, poplitée
-  [[166, 550, 2.8], [158, 575, 2.4], [154, 615, 2], [153, 655, 1.5]], // fémorale profonde
-  [[167, 752, 2.4], [161, 775, 2.2], [159, 830, 2], [162, 890, 1.8], [166, 930, 1.6], [166, 962, 1.2], [166, 976, 0.9]], // tibiale antérieure, pédieuse
-  [[168, 754, 2.4], [172, 800, 2.2], [175, 860, 2], [177, 925, 1.7], [175, 955, 1.2]], // tibiale postérieure
-  [[168, 770, 1.8], [169, 830, 1.6], [170, 890, 1.3]], // fibulaire
-];
-
-/* ── Veines périphériques ── (les veines caves et les troncs brachiocéphaliques partent du modèle) */
-const VEIN_C = [
-  [[195, 416, 6.4], [188, 432, 6], [181, 446, 5.6], [176, 460, 5.3]], // iliaque commune droite
-  [[195, 416, 6.4], [206, 430, 6], [217, 446, 5.6], [224, 460, 5.3]], // iliaque commune gauche
-];
-// devant les artères : veines rénales (la gauche passe devant l'aorte), veines sous-clavières (en avant des artères)
-const VEIN_TOP = [[[194, 360, 3.6], [184, 362, 3.3], [175, 365, 3]], [[195, 358, 3.6], [208, 356, 3.4], [222, 357, 3.2], [236, 361, 2.9]]];
-const VEIN_TOP_R = [[[185, 189, 5], [168, 192, 4.6], [150, 196, 4.3], [134, 200, 4], [122, 208, 3.8], [115, 216, 3.6]]]; // sous-clavière, axillaire
+// veines, de chaque côté
 const VEIN_R = [
-  [[185, 189, 5], [181, 172, 4.4], [178, 154, 4], [176, 136, 3.5], [175, 120, 3]], // jugulaire interne
-  [[170, 192, 2.2], [167, 172, 2], [164, 152, 1.8], [163, 132, 1.5], [164, 114, 1.2]], // jugulaire externe
-  [[115, 216, 3.6], [113, 245, 3.4], [110, 285, 3.2], [106, 325, 3], [103, 355, 2.8], [101, 388, 2.6], [98, 425, 2.3], [93, 465, 2], [89, 505, 1.8]], // basilique
-  [[136, 200, 2.6], [122, 212, 2.6], [108, 226, 2.5], [96, 250, 2.4], [91, 290, 2.3], [87, 330, 2.2], [84, 370, 2.1], [80, 410, 2], [78, 450, 1.8], [75, 490, 1.6], [74, 515, 1.3]], // céphalique
-  [[86, 372, 1.8], [94, 380, 1.7], [101, 389, 1.7]], // médiane du coude
-  [[75, 520, 1.3], [76, 540, 1.1], [75, 565, 0.9]], [[82, 522, 1.3], [82, 548, 1.1], [81, 575, 0.9]], [[88, 520, 1.2], [86, 545, 1], [85, 568, 0.8]],
-  [[176, 460, 5.3], [174, 480, 5], [173, 500, 4.8], [173, 522, 4.6], [174, 548, 4.3], [175, 600, 4], [175, 650, 3.7], [174, 695, 3.4], [172, 725, 3.1], [171, 752, 2.9]], // iliaque externe, fémorale, poplitée
-  [[174, 540, 2.6], [181, 575, 2.5], [186, 630, 2.4], [184, 690, 2.3], [181, 730, 2.2], [181, 790, 2.1], [179, 860, 1.9], [178, 915, 1.7], [173, 945, 1.4], [168, 962, 1.2]], // grande saphène
-  [[171, 752, 2.4], [174, 800, 2.2], [178, 860, 2], [180, 925, 1.7]], // tibiales postérieures
-  [[170, 754, 2.2], [164, 778, 2], [162, 835, 1.8], [164, 895, 1.6], [168, 935, 1.4]], // tibiales antérieures
-  [[160, 958, 1.3], [168, 965, 1.3], [177, 958, 1.3]], // arcade veineuse du pied
+  V([0.2, -0.4], [[185, 190, 6.4], [181, 172, 5.8], [178, 154, 5.2], [176, 136, 4.6], [175, 120, 4], [176, 108, 3.2]]), // jugulaire interne (en dehors de la carotide)
+  V([1.5, 1.5], [[171, 194, 2.4], [168, 174, 2.2], [165, 154, 2], [164, 134, 1.8], [165, 116, 1.5]]), // jugulaire externe
+  V([0.5, 0.5], [[177, 138, 1.6], [181, 128, 1.4], [186, 116, 1.2], [190, 104, 1]]), // faciale
+  V([0.6, 0.2], [[185, 190, 6], [168, 193, 5.6], [150, 197, 5.2], [134, 202, 4.8], [124, 210, 4.4], [117, 222, 4.2]]), // sous-clavière, axillaire (devant l'artère)
+  V([-1.3, -1.1], [[117, 222, 4.2], [114, 240, 3.4], [111, 256, 2.6], [108, 285, 2.2], [104, 325, 2], [101, 360, 1.8], [98, 388, 1.6]]), // humérales
+  V([2, 2, 2, 2, 2, 1.5, 0, -1, -1.2], [[89, 505, 1.8], [93, 465, 2], [97, 425, 2.2], [100, 392, 2.4], [103, 360, 2.6], [107, 325, 2.8], [111, 290, 3], [113, 262, 3.2], [114, 244, 3.4]]), // basilique
+  V([2, 0.8], [[73, 515, 1.4], [74, 490, 1.6], [77, 450, 1.8], [80, 410, 2], [84, 370, 2.1], [87, 330, 2.2], [91, 290, 2.3], [96, 250, 2.4], [108, 226, 2.5], [120, 212, 2.6], [128, 206, 2.7]]), // céphalique (sillon delto-pectoral)
+  V([2.2, 2.2], [[86, 372, 1.9], [94, 381, 1.8], [101, 390, 1.8]]), // médiane du coude
+  V([2.2, 2.2], [[94, 383, 1.4], [90, 420, 1.3], [86, 460, 1.2], [83, 500, 1]]), // médiane de l'avant-bras
+  V([2.2, 2.2], [[75, 520, 1.3], [76, 540, 1.1], [75, 565, 0.9]]), V([2.2, 2.2], [[82, 522, 1.3], [82, 548, 1.1], [81, 575, 0.9]]), V([2.2, 2.2], [[88, 520, 1.2], [86, 545, 1], [85, 568, 0.8]]),
+  V([2.2, 2.2], [[74, 532, 1.1], [80, 536, 1.1], [87, 532, 1.1]]), // réseau dorsal de la main
+  V([-2.2, -1.3], [[176, 472, 5.6], [174, 488, 5.4], [173, 504, 5.3], [173, 522, 5.2], [174, 548, 4.8], [175, 580, 4.4], [175, 620, 4.1], [175, 660, 3.8], [174, 695, 3.6], [172, 725, 3.4], [171, 750, 3.2]]), // iliaque externe, fémorale, poplitée
+  V([-1.8, -2], [[174, 524, 3], [164, 545, 2.6], [159, 575, 2.2], [157, 615, 1.8], [157, 655, 1.4]]), // fémorale profonde
+  V([-0.8, 1.5, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], [[174, 532, 3.4], [179, 546, 3], [183, 575, 2.8], [186, 630, 2.6], [185, 690, 2.4], [182, 730, 2.3], [181, 790, 2.2], [180, 850, 2], [178, 905, 1.9], [175, 930, 1.7], [170, 948, 1.5], [165, 958, 1.3]]), // grande saphène
+  V([1.8, 1.8], [[178, 540, 1.3], [180, 520, 1.1], [182, 498, 0.9], [184, 478, 0.7]]), V([1.8, 1.8], [[177, 542, 1.2], [165, 532, 1], [153, 520, 0.8]]), // épigastrique et circonflexe iliaque superficielles
+  V([2, 2], [[180, 555, 1.4], [172, 590, 1.2], [168, 630, 1]]), // saphène accessoire
+  V([-1.5, -1], [[171, 752, 2.6], [174, 800, 2.4], [177, 860, 2.2], [179, 915, 1.9], [180, 930, 1.7]]), // tibiales postérieures
+  V([-1.3, -0.4], [[170, 754, 2.2], [164, 778, 2], [161, 835, 1.9], [163, 895, 1.7], [167, 932, 1.5]]), // tibiales antérieures
+  V([1, 1], [[158, 958, 1.4], [166, 966, 1.4], [176, 960, 1.4], [180, 948, 1.4]]), // arcade veineuse dorsale du pied
+];
+const VEIN_C = [
+  V([-1.8, -2.2], [[194, 364, 4.4], [184, 367, 4], [174, 371, 3.6], [164, 376, 3]]), // rénale droite
+  V([-1.8, -2.4], [[194, 362, 4.6], [204, 360, 4.4], [214, 361, 4.2], [226, 362, 3.8], [237, 363, 3.2]]), // rénale gauche (entre l'aorte et la mésentérique supérieure), jusqu'au hile
+  V([-1.6, -1], [[194, 384, 1.2], [190, 420, 1.1], [186, 460, 1], [183, 500, 0.9]]), V([-1.9, -1], [[222, 362, 1.2], [220, 400, 1.1], [216, 440, 1], [217, 480, 0.9], [218, 500, 0.8]]), // gonadiques
+  V([-1.6, -2.2], [[194, 430, 6.6], [187, 446, 6.2], [180, 460, 5.8], [176, 472, 5.6]]), // iliaque commune droite (L5)
+  V([-3.8, -2.6], [[194, 430, 6.6], [204, 442, 6.2], [214, 456, 5.8], [222, 468, 5.6], [224, 472, 5.6]]), // iliaque commune gauche (derrière l'iliaque commune droite)
 ];
 
-/* ── Raccords au modèle ── Extrémités des gros vaisseaux du modèle (hooks.plate().ends, en cm) : point, direction vers
-   l'extérieur, rayon ; sur la planche, chaque vaisseau commence 3 mm dans le moignon (il passe sous l'image) */
+/* ── Raccords au modèle ── Extrémités des gros vaisseaux du modèle (hooks.plate().ends, en cm) : point (x, y, z),
+   direction vers l'extérieur, rayon ; sur la planche, chaque vaisseau commence 3 mm dans le moignon */
 const toSvg = (p) => [OX + K * p[0], OY - K * p[1]];
 function joints(ends) {
   const J = {};
   for (const [k, e] of Object.entries(ends)) {
     const [x, y] = toSvg(e.p), dx = e.d[0], dy = -e.d[1], w = Math.max(3, Math.min(14, 2 * e.r * K));
-    J[k] = { x, y, dx, dy, w, at: (cm) => [x + dx * cm * K, y + dy * cm * K] }; // at(−0,3) : dans le moignon ; at(> 0) : au-delà
+    J[k] = { x, y, z: e.p[2] ?? 0, dx, dy, w, at: (cm) => [x + dx * cm * K, y + dy * cm * K] }; // at(−0,3) : dans le moignon ; at(> 0) : au-delà
   }
   return J;
 }
-// tronc et branches de la crosse, veines caves et troncs brachiocéphaliques, partis des extrémités du modèle
-function centralVessels(J) {
-  const from = (j, w1, rest) => [[...j.at(-0.3), j.w], [j.x, j.y, j.w], [...j.at(0.6), (j.w + w1) / 2], ...rest];
-  return {
-    art: [
-      from(J.ao, 10, [[209, 330, 10], [208, 360, 9.6], [208, 386, 9.2], [207, 412, 8.6]]), // aorte abdominale
-      from(J.rcar, 3.6, [[186, 166, 3.6], [184, 158, 3.4]]), // carotide commune droite
-      from(J.lcar, 3.6, [[214, 166, 3.6], [216, 158, 3.4]]), // carotide commune gauche
-      from(J.rsub, 3.6, [[152, 190, 3.8], [136, 194, 3.6], [123, 201, 3.5], [112, 210, 3.4]]), // sous-clavière droite
-      from(J.lsub, 3.6, [[248, 190, 3.8], [264, 194, 3.6], [277, 201, 3.5], [288, 210, 3.4]]), // sous-clavière gauche
-    ],
-    vein: [
-      from(J.ivc, 11, [[193, 320, 11], [194, 345, 10.6], [194, 375, 10], [195, 416, 9]]), // veine cave inférieure
-    ],
-    // troncs brachiocéphaliques : devant les branches de la crosse ; ils rejoignent la veine cave supérieure du modèle
-    veinTop: [
-      [[185, 189, 5.4], [186, 196, 6], [J.svc.x - 2, J.svc.y - 3, 6.4], [...J.svc.at(-0.3), 6.4]],
-      [[215, 189, 5.4], [209, 195, 6], [200, 200, 6.4], [J.svc.x + 2, J.svc.y - 3, 6.4], [...J.svc.at(-0.3), 6.4]],
-    ],
-  };
+// vaisseau qui part d'une extrémité du modèle : profondeur du moignon, puis zEnd
+const from = (k, j, w1, rest, zEnd) => {
+  const p = [[...j.at(-1.2), j.w * 0.96], [j.x, j.y, j.w], [...j.at(0.6), (j.w + w1) / 2], ...rest], n = p.length; // 12 mm dans le moignon (caché), au calibre du moignon à sa sortie
+  return { k, p, z: p.map((_, i) => (i < 2 ? j.z : j.z + ((zEnd - j.z) * (i - 1)) / (n - 2))) };
+};
+// Réseau entier (lignes centrales en unités de la planche) : ce que js/app.js rend en 3D
+export function vesselNetwork(ends) {
+  const J = joints(ends), S = J.svc;
+  return [
+    from('a', J.ao, 11, [[209, 320, 11], [209, 340, 11], [208, 360, 10.4], [208, 386, 9.6], [207, 414, 9.2]], -3.2), // aorte abdominale
+    from('a', J.rcar, 3.6, [[185, 170, 3.6], [184, 160, 3.4]], -1.2), from('a', J.lcar, 3.6, [[212, 170, 3.6], [216, 160, 3.4]], -1.2), // carotides communes
+    from('a', J.rsub, 4.6, [[160, 189, 4.6], [146, 193, 4.4], [132, 198, 4.2], [124, 203, 4]], -1), // sous-clavière droite
+    from('a', J.lsub, 4.6, [[240, 189, 4.6], [254, 193, 4.4], [268, 198, 4.2], [276, 203, 4]], -1), // sous-clavière gauche
+    from('v', J.ivc, 11, [[193, 300, 11], [193, 320, 11.4], [194, 345, 11.2], [194, 375, 10.8], [194, 405, 10.4], [194, 430, 9.6]], -1.6), // veine cave inférieure
+    // troncs brachiocéphaliques : devant les branches de la crosse, jusqu'à la veine cave supérieure du modèle
+    { k: 'v', z: [0.2, 0.3, 0.1, S.z, S.z], p: [[185, 190, 6.8], [186, 197, 7], [S.x - 2, S.y - 3, 7.2], [S.x, S.y, 7.2], [...S.at(-0.3), 7.2]] },
+    { k: 'v', z: [0.2, 0.4, 0.4, 0.1, S.z, S.z], p: [[215, 190, 6.8], [209, 196, 7], [199, 201, 7.2], [S.x + 2, S.y - 3, 7.2], [S.x, S.y, 7.2], [...S.at(-0.3), 7.2]] },
+    ...ART_C, ...ART_R, ...ART_R.map(mirrorV), ...VEIN_C, ...VEIN_R, ...VEIN_R.map(mirrorV),
+  ];
 }
 // trajets du dispositif, jusqu'à l'abord du cœur (dans le moignon du modèle)
 function routes(J) {
+  const S = J.svc;
   return {
-    tavi: [[167, 527], [167, 520], [170, 498], [176, 478], [182, 458], [188, 444], [197, 428], [207, 412], [208, 386], [208, 360], [209, 330], J.ao.at(0.6), [J.ao.x, J.ao.y], J.ao.at(-1.6)],
-    fop: [[173, 529], [173, 522], [173, 500], [174, 480], [176, 460], [181, 446], [188, 432], [195, 416], [194, 375], [194, 345], [193, 320], J.ivc.at(0.6), [J.ivc.x, J.ivc.y], J.ivc.at(-1.4)],
-    pm: [[258, 198], [250, 196], [232, 192], [215, 189], [209, 195], [200, 200], [J.svc.x + 2, J.svc.y - 3], [J.svc.x, J.svc.y], J.svc.at(-1.2)],
+    tavi: [[167, 529], [167, 520], [168, 514], [170, 498], [176, 478], [182, 460], [188, 446], [197, 430], [207, 414], [208, 386], [208, 360], [209, 340], [209, 320], J.ao.at(0.6), [J.ao.x, J.ao.y], J.ao.at(-1.6)],
+    fop: [[173, 530], [173, 522], [173, 504], [174, 488], [176, 472], [180, 460], [187, 446], [194, 430], [194, 405], [194, 375], [194, 345], [193, 320], [193, 300], J.ivc.at(0.6), [J.ivc.x, J.ivc.y], J.ivc.at(-1.4)],
+    pm: [[258, 199], [250, 197], [232, 193], [215, 190], [209, 196], [199, 201], [S.x + 2, S.y - 3], [S.x, S.y], S.at(-1.2)],
   };
 }
 export const ROUTES = {
@@ -179,7 +233,8 @@ const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS,
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Planche : corps, vaisseaux, image du cœur du modèle (plate : { url, rect: [x0, x1, y0, y1] en cm, ends })
+// Planche : corps, puis l'image du réseau et du cœur rendue en 3D (plate : { images: [{ url, rect: [x0, x1, y0, y1] en cm }],
+// ends }) — l'image entière, puis celle du tronc, plus fine, par-dessus
 function buildPlate(svg, plate) {
   const defs = el('defs', {}, svg);
   defs.innerHTML = `
@@ -196,20 +251,11 @@ function buildPlate(svg, plate) {
   const hints = el('g', { fill: 'none', stroke: '#dcb6a4', 'stroke-width': 1.4, 'stroke-linecap': 'round', opacity: 0.8 }, svg);
   for (const h of [...HINTS_R, ...HINTS_R.map(mirror)]) el('path', { d: `M${spline(h, false, 8).map((q) => `${f1(q[0])} ${f1(q[1])}`).join('L')}` }, hints);
   el('circle', { cx: MID, cy: 410, r: 2.2, fill: '#d9b09d' }, svg); // ombilic
-  // vaisseaux : corps, reflet ; veines dessous, artères dessus, puis les veines qui passent devant
-  const vessels = (list, fill, edge, shine) => {
-    const g = el('g', {}, svg);
-    for (const v of list) el('path', { d: tube(v), fill, stroke: edge, 'stroke-width': 0.5 }, g);
-    for (const v of list) if (v[0][2] > 1.6) el('path', { d: tube(v, 0.3, -0.18), fill: shine, opacity: 0.5 }, g);
-  };
-  const J = joints(plate.ends), C = centralVessels(J);
-  const VEIN = ['#3e519e', '#2e3d7a', '#93a6e6'], ART = ['#c43a33', '#962a27', '#f19a8e'];
-  vessels([...VEIN_C, ...C.vein, ...VEIN_R, ...VEIN_R.map(mirror)], ...VEIN);
-  vessels([...ART_C, ...C.art, ...ART_R, ...ART_R.map(mirror)], ...ART);
-  vessels([...VEIN_TOP, ...C.veinTop, ...VEIN_TOP_R, ...VEIN_TOP_R.map(mirror)], ...VEIN);
-  // cœur : l'image du modèle, à la même échelle, par-dessus les raccords
-  const [x0, x1, y0, y1] = plate.rect, [ix, iy] = toSvg([x0, y1]);
-  el('image', { href: plate.url, x: f1(ix), y: f1(iy), width: f1((x1 - x0) * K), height: f1((y1 - y0) * K), preserveAspectRatio: 'none' }, svg);
+  for (const im of plate.images) {
+    const [x0, x1, y0, y1] = im.rect, [ix, iy] = toSvg([x0, y1]);
+    el('image', { href: im.url, x: f1(ix), y: f1(iy), width: f1((x1 - x0) * K), height: f1((y1 - y0) * K), preserveAspectRatio: 'none' }, svg);
+  }
+  const J = joints(plate.ends);
   const device = el('g', {}, svg);
   const fx = el('g', {}, svg); // aiguille, point de ponction, bout du dispositif, étiquette
   return { device, fx, routes: routes(J), heart: toSvg([0, 0.5]) };

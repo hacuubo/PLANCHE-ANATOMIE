@@ -13,7 +13,7 @@ import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.j
 import { createTaviAnimation, TAVI_STEPS } from './tavi-anim.js';
 import { createClosureAnimation } from './pfo-closure.js';
 import { buildPacingView, createPacingAnimation } from './pacing-anim.js';
-import { createRouteIntro } from './route-intro.js';
+import { createRouteIntro, vesselNetwork } from './route-intro.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -667,87 +667,158 @@ const pacing = createPacingAnimation(heart, VALVE_VIEWS.stim, {
   caption: (k, text) => procCaption(pacing.steps)(k, text),
   finish() { syncTaviBtn(); syncMenu(); },
 });
-// Image du cœur pour la planche du corps entier (js/route-intro.js) : rendu de face sans perspective (repère de la
-// scène, en cm), cœur au repos, sans coupe ni fantôme ; aorte et branches de la crosse teintées en rouge, veines caves
-// en bleu (ombrage gardé), pour se fondre dans le réseau de la planche — et, comme sur les planches, artères pulmonaires
-// en bleu, veines pulmonaires en rouge ; extrémités de ces vaisseaux (raccords : point,
-// direction vers l'extérieur, rayon). Calculée une fois, au premier lancement d'une introduction.
-let plateCache = null;
-function heartPlate() {
+// Planche du corps entier (js/route-intro.js) : le réseau de la grande circulation et le cœur, rendus ensemble en 3D, de
+// face et sans perspective (repère de la scène, en cm), avec la lumière et les matières de la scène. Le cœur est le
+// modèle, au repos, sans coupe ni fantôme ; les vaisseaux du corps sont des tubes le long des lignes centrales de la
+// planche (vesselNetwork), au calibre de chaque vaisseau, qui partent des extrémités des gros vaisseaux du modèle.
+// Teintes comme dans les atlas : une passe repère le sang oxygéné (aorte et ses branches, veines pulmonaires) et le
+// sang pauvre en oxygène (veines, artères pulmonaires) ; leur ombrage est traduit en dégradés de rouge (ombre bordeaux,
+// rouge franc, reflet rosé) et de bleu (ombre marine, bleu, reflet clair), le même pour le cœur et pour le corps ; ombre
+// portée douce sur la peau. Deux images : le corps entier (10 px/cm) et le tronc, plus fine (36 px/cm), pour les plans
+// rapprochés. Livrée toute faite (assets/planche/, tools/make-plate.mjs), chargée au démarrage ; à défaut, calculée au
+// premier lancement d'une introduction.
+let plateCache = null, plateStatic = null;
+fetch('assets/planche/planche.json').then((r) => (r.ok ? r.json() : null)).then((j) => {
+  if (!j) return;
+  plateStatic = { images: j.images.map((im) => ({ url: 'assets/planche/' + im.src, rect: im.rect })), ends: j.ends };
+  plateStatic.images.forEach((im) => { new Image().src = im.url; }); // en cache avant la première introduction
+}).catch(() => {});
+function heartPlate(fmt = 'image/png') {
   if (plateCache) return plateCache;
-  const X0 = -6, X1 = 8.5, Y0 = -9, Y1 = 14.5, PPC = 56, W = Math.round((X1 - X0) * PPC), H = Math.round((Y1 - Y0) * PPC);
-  const cam = new THREE.OrthographicCamera(X0, X1, Y1, Y0, 1, 200); cam.position.set(0, 0, 60); cam.lookAt(0, 0, 0);
   const ids = heart.structureIds, sidOf = (n) => ids.indexOf(n);
-  const cat = new Float32Array(256); // structure → 1 : sang oxygéné (rouge), 2 : sang pauvre en oxygène (bleu)
-  for (const n of ['aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche', 'veines-pulmonaires']) if (sidOf(n) >= 0) cat[sidOf(n)] = 1;
-  for (const n of ['veine-cave-superieure', 'veine-cave-inferieure', 'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche']) if (sidOf(n) >= 0) cat[sidOf(n)] = 2;
-  // seul le cœur : ni fond, ni brouillard, ni coupe, ni fantôme
+  // extrémités des gros vaisseaux du modèle (raccords) : sommets les plus avancés dans une direction (bande de 3,5 mm),
+  // direction d'après la bande 9 à 14 mm en retrait, rayon : demi-largeur de la bande
+  heart.root.updateMatrixWorld(true);
+  const pos = heart.envelope.geometry.attributes.position, tis = heart.envelope.geometry.attributes.tis, M = heart.envelope.matrixWorld, v = new THREE.Vector3(), bySid = new Map();
+  for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(M); const k = Math.round(tis.getW(i) * 255); if (!bySid.has(k)) bySid.set(k, []); bySid.get(k).push([v.x, v.y, v.z]); }
+  const mean = (A) => A.reduce((s, q) => s.map((c, j) => c + q[j] / A.length), [0, 0, 0]);
+  const end = (name, dx, dy) => {
+    const V = bySid.get(sidOf(name)) ?? [[0, 0, 0]], m = Math.max(...V.map(([x, y]) => x * dx + y * dy));
+    const E = V.filter(([x, y]) => x * dx + y * dy > m - 0.35), Q = V.filter(([x, y]) => { const s = x * dx + y * dy; return s > m - 1.4 && s < m - 0.9; });
+    const P = mean(E), q = Q.length ? mean(Q) : [P[0] - dx, P[1] - dy, P[2]], l = Math.hypot(P[0] - q[0], P[1] - q[1]) || 1;
+    const r = Math.max(0.2, ...E.map(([x, y]) => Math.abs(-(x - P[0]) * dy + (y - P[1]) * dx)));
+    return { p: P, d: [(P[0] - q[0]) / l, (P[1] - q[1]) / l], r };
+  };
+  // aorte descendante et veine cave inférieure : moignons coupés net à y = CUT (plan horizontal, pendant ce rendu) ; le
+  // raccord est pris sur la coupe (section du moignon à ce niveau)
+  const CUT = -5.6;
+  const at = (name) => {
+    const V = bySid.get(sidOf(name)) ?? [[0, CUT, 0]], E = V.filter(([, y]) => Math.abs(y - CUT) < 0.25), Q = V.filter(([, y]) => Math.abs(y - CUT - 1) < 0.25);
+    const P = mean(E), q = Q.length ? mean(Q) : [P[0], CUT + 1, P[2]], l = Math.hypot(P[0] - q[0], P[1] - q[1]) || 1;
+    return { p: [P[0], CUT, P[2]], d: [(P[0] - q[0]) / l, (P[1] - q[1]) / l], r: Math.max(0.2, ...E.map(([x]) => Math.abs(x - P[0]))) };
+  };
+  const ends = {
+    ao: at('aorte'), ivc: at('veine-cave-inferieure'), svc: end('veine-cave-superieure', 0, 1),
+    rcar: end('tronc-brachio-cephalique', 0, 1), rsub: end('tronc-brachio-cephalique', -1, 0), lcar: end('carotide-commune-gauche', 0, 1), lsub: end('subclaviere-gauche', 1, 0),
+  };
+  // tubes du réseau : rayon variable le long de chaque vaisseau, bouts arrondis ; catégorie dans l'attribut tis (w)
+  const { K, OX, OY } = intro.frame, CAT_A = 254, CAT_V = 253;
+  const matA = new THREE.MeshPhysicalMaterial({ color: 0xf3dac6, roughness: 0.34, clearcoat: 0.7, clearcoatRoughness: 0.18 });
+  const matV = new THREE.MeshPhysicalMaterial({ color: 0xd5daf0, roughness: 0.34, clearcoat: 0.7, clearcoatRoughness: 0.18 });
+  const tag = (geo, cat) => { const a = new Uint8Array(geo.attributes.position.count * 4); for (let i = 3; i < a.length; i += 4) a[i] = cat; geo.setAttribute('tis', new THREE.BufferAttribute(a, 4, true)); return geo; };
+  const net = new THREE.Group();
+  for (const ves of vesselNetwork(ends)) {
+    const n = ves.p.length, zs = ves.z.length === n ? ves.z : ves.p.map((_, i) => ves.z[0] + ((ves.z[1] - ves.z[0]) * i) / (n - 1));
+    const P = ves.p.map(([x, y], i) => new THREE.Vector3((x - OX) / K, (OY - y) / K, zs[i]));
+    const cum = [0]; for (let i = 1; i < n; i++) cum.push(cum[i - 1] + P[i].distanceTo(P[i - 1]));
+    const rAt = (u) => { const s = u * cum[n - 1]; let i = 1; while (i < n - 1 && cum[i] < s) i++; const f = Math.min(1, Math.max(0, (s - cum[i - 1]) / (cum[i] - cum[i - 1] || 1))); return (ves.p[i - 1][2] + (ves.p[i][2] - ves.p[i - 1][2]) * f) / 2 / K; };
+    const curve = new THREE.CatmullRomCurve3(P, false, 'centripetal'), seg = Math.max(4, Math.ceil(curve.getLength() * 4)), RS = 16;
+    const geo = new THREE.TubeGeometry(curve, seg, 1, RS, false), gp = geo.attributes.position, c = new THREE.Vector3(), q = new THREE.Vector3();
+    for (let i = 0; i <= seg; i++) { curve.getPointAt(i / seg, c); const r = rAt(i / seg); for (let j = 0; j <= RS; j++) { const k = i * (RS + 1) + j; q.fromBufferAttribute(gp, k).sub(c).multiplyScalar(r).add(c); gp.setXYZ(k, q.x, q.y, q.z); } }
+    const cat = ves.k === 'a' ? CAT_A : CAT_V, mat = ves.k === 'a' ? matA : matV;
+    net.add(new THREE.Mesh(tag(geo, cat), mat));
+    for (const [p, r] of [[P[0], rAt(0)], [P[n - 1], rAt(1)]]) { const s = new THREE.Mesh(tag(new THREE.SphereGeometry(r, 16, 10), cat), mat); s.position.copy(p); net.add(s); }
+  }
+  // reins (≈ 11 × 6 × 4 cm, le droit plus bas, en arrière des vaisseaux) : les vaisseaux rénaux aboutissent au hile
+  const kidneyMat = new THREE.MeshPhysicalMaterial({ color: 0x94504a, roughness: 0.5, clearcoat: 0.5, clearcoatRoughness: 0.25 });
+  for (const [sx, cx, cy] of [[-1, 147, 380], [1, 254, 368]]) {
+    const g = new THREE.SphereGeometry(1, 40, 28), kp = g.attributes.position;
+    for (let i = 0; i < kp.count; i++) {
+      let x = kp.getX(i) * 3, y = kp.getY(i) * 5.5, z = kp.getZ(i) * 2;
+      const t = 1 - (y / 5.5) ** 2;
+      if (x < 0) x += 1.3 * Math.max(0, 1 - (y / 2.4) ** 2) * Math.min(1, -x / 1.5); // hile (en dedans : x < 0)
+      x += 0.5 * t; // haricot
+      kp.setXYZ(i, -sx * x, y, z);
+    }
+    g.computeVertexNormals();
+    const k = new THREE.Mesh(g, kidneyMat); k.position.set((cx - OX) / K, (OY - cy) / K, -5); k.rotation.z = sx * 0.2; net.add(k);
+  }
+  // rendu : seul le cœur et le réseau ; ni fond, ni brouillard, ni coupe, ni fantôme
   const hidden = [], hide = (o) => { if (o.visible) { o.visible = false; hidden.push(o); } };
   scene.children.forEach((o) => { if (o !== heart.root.parent && !o.isLight) hide(o); });
   ghosts.forEach(hide);
+  scene.add(net);
   const bg = scene.background, fog = scene.fog, clip = renderer.localClippingEnabled, cutOn = heart.cutUniforms.uCutOn.value;
   const cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
-  scene.background = null; scene.fog = null; renderer.localClippingEnabled = false; heart.cutUniforms.uCutOn.value = 0;
+  scene.background = null; scene.fog = null; renderer.localClippingEnabled = true; heart.cutUniforms.uCutOn.value = 0;
+  const cutBelow = [new THREE.Plane(new THREE.Vector3(0, 1, 0), -CUT)], clips = heart.materials.map((m) => [m, m.clippingPlanes]);
+  heart.materials.forEach((m) => { m.clippingPlanes = cutBelow; m.needsUpdate = true; });
   renderer.setClearColor(0x000000, 0);
   heart.setBeat(null);
-  const shot = (override = null) => {
-    const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
-    scene.overrideMaterial = override;
-    renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, cam);
-    const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
-    renderer.setRenderTarget(null); rt.dispose(); scene.overrideMaterial = null;
-    return px;
-  };
-  const col = shot();
-  // passe des vaisseaux : artères (rouge), veines (vert), d'après la structure de chaque sommet de l'enveloppe
+  const cat = new Float32Array(256); // structure → 1 : sang oxygéné (rouge), 2 : sang pauvre en oxygène (bleu)
+  for (const n of ['aorte', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche', 'veines-pulmonaires']) if (sidOf(n) >= 0) cat[sidOf(n)] = 1;
+  for (const n of ['veine-cave-superieure', 'veine-cave-inferieure', 'tronc-pulmonaire', 'artere-pulmonaire-droite', 'artere-pulmonaire-gauche']) if (sidOf(n) >= 0) cat[sidOf(n)] = 2;
+  cat[CAT_A] = 1; cat[CAT_V] = 2;
   const idMat = new THREE.ShaderMaterial({
     uniforms: { uCat: { value: cat } },
     vertexShader: 'attribute vec4 tis; varying float vSid; void main() { vSid = floor(tis.w * 255.0 + 0.5); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'uniform float uCat[256]; varying float vSid; void main() { float c = uCat[int(clamp(vSid, 0.0, 255.0))]; gl_FragColor = vec4(c == 1.0 ? 1.0 : 0.0, c == 2.0 ? 1.0 : 0.0, 0.0, 1.0); }',
   });
-  const idp = shot(idMat); idMat.dispose();
+  // dégradés des atlas (ombre → ton → reflet) selon la luminance du rendu
+  const RAMP = { 1: [[0.2, [52, 4, 10]], [0.55, [128, 16, 24]], [0.76, [188, 34, 34]], [0.9, [214, 70, 60]], [0.99, [238, 140, 124]]],
+    2: [[0.2, [8, 12, 44]], [0.55, [22, 38, 104]], [0.76, [42, 72, 158]], [0.9, [78, 114, 196]], [0.99, [150, 178, 232]]] };
+  const ramp = (R, L) => { L = Math.min(R[R.length - 1][0], Math.max(R[0][0], L)); let i = 1; while (i < R.length - 1 && R[i][0] < L) i++; const [a, ca0] = R[i - 1], [b, cb] = R[i], f = Math.min(1, Math.max(0, (L - a) / (b - a))); return ca0.map((x, j) => x + (cb[j] - x) * f); };
+  const render = ([X0, X1, Y0, Y1], ppc) => {
+    const W = Math.round((X1 - X0) * ppc), H = Math.round((Y1 - Y0) * ppc);
+    const cam = new THREE.OrthographicCamera(X0, X1, Y1, Y0, 1, 200); cam.position.set(0, 0, 60); cam.lookAt(0, 0, 0);
+    const shot = (override = null) => {
+      const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
+      scene.overrideMaterial = override;
+      renderer.setRenderTarget(rt); renderer.clear(); renderer.render(scene, cam);
+      const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+      renderer.setRenderTarget(null); rt.dispose(); scene.overrideMaterial = null;
+      return px;
+    };
+    const col = shot(), idp = shot(idMat);
+    // lignes dans l'ordre de l'écran, alpha non prémultiplié, vaisseaux teintés
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c2 = cv.getContext('2d'), img = c2.createImageData(W, H), o = img.data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const s = ((H - 1 - y) * W + x) * 4, d = (y * W + x) * 4, al = col[s + 3];
+      if (!al) continue;
+      let r = Math.min(255, (col[s] * 255) / al), g = Math.min(255, (col[s + 1] * 255) / al), b = Math.min(255, (col[s + 2] * 255) / al);
+      const wa = idp[s] / 255, wv = idp[s + 1] / 255, m = Math.min(1, wa + wv);
+      if (m > 0.01) {
+        const t = ramp(RAMP[wa >= wv ? 1 : 2], ((0.3 * r + 0.59 * g + 0.11 * b) / 255) ** 1.25);
+        r += (t[0] - r) * m; g += (t[1] - g) * m; b += (t[2] - b) * m;
+      }
+      o[d] = r; o[d + 1] = g; o[d + 2] = b; o[d + 3] = al;
+    }
+    c2.putImageData(img, 0, 0);
+    // ombre portée douce sur la peau (lumière en haut à gauche)
+    const out = document.createElement('canvas'); out.width = W; out.height = H;
+    const c3 = out.getContext('2d');
+    c3.shadowColor = 'rgba(70, 30, 30, 0.32)'; c3.shadowBlur = 0.22 * ppc; c3.shadowOffsetX = 0.05 * ppc; c3.shadowOffsetY = 0.1 * ppc;
+    c3.drawImage(cv, 0, 0);
+    return out.toDataURL(fmt, 0.9);
+  };
+  const rects = [[[-26, 26, -135, 44], 10], [[-18.5, 18.5, -56, 19.5], 36]];
+  const images = rects.map(([rect, ppc]) => ({ url: render(rect, ppc), rect }));
+  idMat.dispose();
+  scene.remove(net);
+  net.traverse((o) => o.geometry?.dispose()); matA.dispose(); matV.dispose(); kidneyMat.dispose();
   scene.background = bg; scene.fog = fog; renderer.localClippingEnabled = clip; heart.cutUniforms.uCutOn.value = cutOn;
+  clips.forEach(([m, c]) => { m.clippingPlanes = c; m.needsUpdate = true; });
   renderer.setClearColor(cc, ca);
   hidden.forEach((o) => { o.visible = true; });
   restPose(); renderer.shadowMap.needsUpdate = true;
-  // image : lignes dans l'ordre de l'écran, alpha non prémultiplié, vaisseaux teintés
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const c2 = cv.getContext('2d'), img = c2.createImageData(W, H), o = img.data, RED = [196, 58, 51], BLUE = [62, 81, 158];
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const s = ((H - 1 - y) * W + x) * 4, d = (y * W + x) * 4, al = col[s + 3];
-    if (!al) continue;
-    let r = Math.min(255, (col[s] * 255) / al), g = Math.min(255, (col[s + 1] * 255) / al), b = Math.min(255, (col[s + 2] * 255) / al);
-    const wa = idp[s] / 255, wv = idp[s + 1] / 255, m = Math.min(1, wa + wv);
-    if (m > 0.01) {
-      const sh = 0.3 + (0.95 * (0.3 * r + 0.59 * g + 0.11 * b)) / 255, base = wa >= wv ? RED : BLUE;
-      r += (Math.min(255, base[0] * sh) - r) * m; g += (Math.min(255, base[1] * sh) - g) * m; b += (Math.min(255, base[2] * sh) - b) * m;
-    }
-    o[d] = r; o[d + 1] = g; o[d + 2] = b; o[d + 3] = al;
-  }
-  c2.putImageData(img, 0, 0);
-  // extrémités : sommets les plus avancés dans une direction (bande de 3,5 mm), direction d'après la bande 9 à 14 mm en
-  // retrait, rayon : demi-largeur de la bande
-  heart.root.updateMatrixWorld(true);
-  const pos = heart.envelope.geometry.attributes.position, tis = heart.envelope.geometry.attributes.tis, M = heart.envelope.matrixWorld, v = new THREE.Vector3(), bySid = new Map();
-  for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(M); const k = Math.round(tis.getW(i) * 255); if (!bySid.has(k)) bySid.set(k, []); bySid.get(k).push([v.x, v.y]); }
-  const mean = (A) => A.reduce((s, q) => [s[0] + q[0] / A.length, s[1] + q[1] / A.length], [0, 0]);
-  const end = (name, dx, dy) => {
-    const V = bySid.get(sidOf(name)) ?? [[0, 0]], m = Math.max(...V.map(([x, y]) => x * dx + y * dy));
-    const E = V.filter(([x, y]) => x * dx + y * dy > m - 0.35), Q = V.filter(([x, y]) => { const s = x * dx + y * dy; return s > m - 1.4 && s < m - 0.9; });
-    const P = mean(E), q = Q.length ? mean(Q) : [P[0] - dx, P[1] - dy], l = Math.hypot(P[0] - q[0], P[1] - q[1]) || 1;
-    const r = Math.max(0.2, ...E.map(([x, y]) => Math.abs(-(x - P[0]) * dy + (y - P[1]) * dx)));
-    return { p: P, d: [(P[0] - q[0]) / l, (P[1] - q[1]) / l], r };
-  };
-  plateCache = { url: cv.toDataURL('image/png'), rect: [X0, X1, Y0, Y1], ends: {
-    ao: end('aorte', 0, -1), ivc: end('veine-cave-inferieure', 0, -1), svc: end('veine-cave-superieure', 0, 1),
-    rcar: end('tronc-brachio-cephalique', 0, 1), rsub: end('tronc-brachio-cephalique', -1, 0), lcar: end('carotide-commune-gauche', 0, 1), lsub: end('subclaviere-gauche', 1, 0),
-  } };
+  plateCache = { images, ends };
   return plateCache;
 }
 // Première partie de chaque animation (js/route-intro.js) : du point de ponction à l'abord du cœur, sur la planche du
 // corps entier ; au relais, la caméra 3D se pose sur le cadrage de la planche et la deuxième partie démarre dessous
 const intro = createRouteIntro(canvasWrap, {
-  plate: heartPlate,
+  plate: () => plateStatic ?? heartPlate(),
   caption: (kind, text) => { const st = kind === 'tavi' ? TAVI_STEPS : kind === 'fop' ? closure.steps : pacing.steps; showCaption(st.length + 1, 0, text); },
 });
 let introProc = null, introLive = false; // animation qui suit l'introduction en cours ; avant le relais
@@ -1596,4 +1667,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { tavi, closure, pacing, intro, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
+window.__planche = { tavi, closure, pacing, intro, renderPlate: (fmt) => { plateCache = null; return heartPlate(fmt); }, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
