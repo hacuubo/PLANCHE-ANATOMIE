@@ -12,6 +12,7 @@ import { createDoppler, restTime } from './doppler.js';
 import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.js';
 import { createTaviAnimation, TAVI_STEPS } from './tavi-anim.js';
 import { createClosureAnimation } from './pfo-closure.js';
+import { buildPacingView, createPacingAnimation } from './pacing-anim.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -122,6 +123,10 @@ for (const k of ['fosse', 'fop']) if (VALVE_VIEWS[k]) VALVE_VIEWS[k].onActivate 
 // fermeture du FOP : pas de bulles pendant la mise en place (le test de contrôle est lancé à la fin) ; matériel retiré en
 // quittant la vue
 if (VALVE_VIEWS.fermeture) VALVE_VIEWS.fermeture.onActivate = (on) => { bubbles.setActive(false, false); if (!on) closure.stop(); };
+// Rubrique Stimulation : stimulation de branche gauche, coupe 4 cavités, caméra fixe (js/pacing-anim.js) ; sondes
+// retirées en quittant la vue
+VALVE_VIEWS.stim = buildPacingView(heart);
+VALVE_VIEWS.stim.onActivate = (on) => { if (!on) pacing.stop(); };
 
 // Ombres et « fantôme » de la partie retirée par la coupe (voile très léger qui garde la silhouette lisible).
 const ghostMats = [], ghosts = [];
@@ -639,8 +644,14 @@ const closure = VALVE_VIEWS.fermeture ? createClosureAnimation(heart, VALVE_VIEW
     syncTaviBtn();
   },
 }) : { playing: false, shown: false, steps: [], play() {}, stop() {}, update() {}, frame() {} };
+// Animation de l'implantation du stimulateur (js/pacing-anim.js) : lancée à l'ouverture de la vue « Stimulation de
+// branche gauche » ; le cœur bat pendant toute l'animation, les sondes suivent le battement
+const pacing = createPacingAnimation(heart, VALVE_VIEWS.stim, {
+  caption: (k, text) => procCaption(pacing.steps)(k, text),
+  finish() { syncTaviBtn(); syncMenu(); },
+});
 // animation de la vue en cours (bouton « Voir… » / « Arrêter »)
-const procOf = () => (state.valve === 'fermeture' ? closure : state.valve === 'aortique' && VALVE_VIEWS.aortique.variant === 'tavi' ? tavi : null);
+const procOf = () => (state.valve === 'fermeture' ? closure : state.valve === 'stim' ? pacing : state.valve === 'aortique' && VALVE_VIEWS.aortique.variant === 'tavi' ? tavi : null);
 function syncTaviBtn() {
   const p = procOf();
   taviBtn.classList.toggle('hidden', !p);
@@ -652,10 +663,21 @@ function startClosure() {
   if (trans) { pendingAction = startClosure; return; }
   if (state.valve !== 'fermeture') return;
   if (state.battement) toggle('battement', false);
-  frozenPhase = null; syncPhaseButtons();
+  frozenPhase = null;
   bubbles.setActive(false, false);
   closure.play();
   syncTaviBtn(); restPose();
+}
+function startPacing() {
+  if (trans) { pendingAction = startPacing; return; }
+  if (state.valve !== 'stim') return;
+  if (!state.battement) toggle('battement', true); // implantation sur un cœur qui bat
+  pacing.play();
+  syncTaviBtn(); syncMenu();
+}
+function stopPacing() {
+  if (!pacing.shown) return;
+  pacing.stop(); syncTaviBtn(); syncMenu();
 }
 // arrêt : matériel retiré ; dans la vue, retour au cadrage de la coupe bicave
 function stopClosure() {
@@ -693,7 +715,7 @@ function startTavi() {
   if (trans) { pendingAction = startTavi; return; }
   if (state.comparer) setCompare(false);
   if (state.battement) toggle('battement', false);
-  frozenPhase = null; valveOpen = true; syncPhaseButtons(); // valve native ouverte (petit orifice), cœur sans déformation
+  frozenPhase = null; valveOpen = true; // valve native ouverte (petit orifice), cœur sans déformation
   tavi.play();
   syncDoppler(); syncTaviBtn(); syncLocator();
   setValveSide('L');
@@ -845,9 +867,6 @@ function setValveSide(side) {
     { dur: 1.2, to: () => closeCam(v), onUpdate: (e) => valveCut(v, FAR * (1 - smooth01(0.2, 0.95, e))), onEnd: () => viewOffset() },
   ], () => { restPose(); renderer.shadowMap.needsUpdate = true; });
 }
-function syncPhaseButtons() {
-  document.querySelectorAll('[data-vphase]').forEach((x) => x.classList.toggle('active', frozenPhase === null && !state.battement && (x.dataset.vphase === 'ouvert') === valveOpen));
-}
 // Interface : bouton « Valves », panneau (valve, côté, variante, position)
 function syncValveUI() {
   const v = state.valve && VALVE_VIEWS[state.valve];
@@ -855,6 +874,7 @@ function syncValveUI() {
   canvasWrap.classList.toggle('is-valve', !!v);
   if ((tavi.playing || tavi.held) && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
   if (closure.shown && state.valve !== 'fermeture') stopClosure();
+  if (pacing.shown && state.valve !== 'stim') stopPacing();
   syncTaviBtn();
   syncCutOnly();
   syncDoppler(); syncLocator();
@@ -896,7 +916,7 @@ function syncMenu() {
   menuEl.querySelectorAll('.menu-page').forEach((el) => el.classList.toggle('on', el.dataset.page === page));
   menuEl.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === state.modeCoupe));
   menuBack.classList.toggle('hidden', page === 'home');
-  menuTitle.textContent = { home: 'Menu', coupe: 'Plan en coupe', valves: 'Valves', valve: v?.title ?? 'Valve', fop: 'FOP', coro: 'Coronaires' }[page];
+  menuTitle.textContent = { home: 'Menu', coupe: 'Plan en coupe', valves: 'Valves', valve: v?.title ?? 'Valve', fop: 'FOP', coro: 'Coronaires', stim: 'Stimulation' }[page];
   const slot = menuEl.querySelector(`.menu-page[data-page="${page}"] .proc-slot`); // animation de la vue (TAVI, fermeture du FOP)
   if (slot && taviBtn.parentElement !== slot) slot.appendChild(taviBtn);
   let t = HOME.title, sub = HOME.sub;
@@ -905,6 +925,7 @@ function syncMenu() {
   else if (page === 'valves') { t = 'Valves'; sub = 'Choisissez une valve'; }
   else if (v?.group === 'fop') { t = 'FOP'; sub = v.title; }
   else if (v?.group === 'coro') { t = 'Coronaires'; sub = variantName(v); }
+  else if (v?.group === 'stim') { t = 'Stimulation'; sub = pacing.playing ? 'Implantation pacemaker' : v.title; }
   if (brandTitle.textContent !== t) brandTitle.textContent = t;
   if (brandSub.textContent !== sub) brandSub.textContent = sub;
 }
@@ -921,6 +942,7 @@ menuEl.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', 
   const g = b.dataset.go;
   if (g === 'coupe') toggle('coupe', true);
   else if (g === 'valves') { valvePanel = true; valveList = false; syncValveUI(); }
+  else if (g === 'stim') goValve('stim'); // coupe 4 cavités ; l'animation se lance depuis la sous-rubrique
   else goValve(g === 'fop' ? 'fosse' : 'coronaires');
 }));
 // téléphone : le menu se referme quand on choisit une vue (il recouvre la scène)
@@ -999,6 +1021,12 @@ const valveMarks = {};
       mark('Tunnel du FOP', fo.tunnel[1].clone().addScaledVector(fo.tunnelDir, 0.95).addScaledVector(fo.n, 0.15))].map((o) => Object.assign(o, { userData: { anat: true } }));
     valveMarks.fop.push(...anat());
     valveMarks.fermeture = [mark('Oreillette droite', fo.ra, 'struct'), mark('Oreillette gauche', fo.la, 'struct'), mark('Veine cave inférieure', fo.ivc, 'struct'), ...anat()];
+  }
+  { // stimulation : les quatre cavités de la coupe, le septum, la veine cave supérieure
+    const g = VALVE_VIEWS.stim.geo, at = (p, x, y) => p.clone().addScaledVector(g.X, x).addScaledVector(g.Y, y).addScaledVector(g.n, 0.1);
+    const MV = heart.landmarks.valves['valve-mitrale'].center;
+    valveMarks.stim = [mark('Oreillette droite', at(g.O, 0.6, 1.7), 'struct'), mark('Ventricule droit', at(g.S, -1.6, -0.6), 'struct'), mark('Ventricule gauche', at(g.S, 2.6, -1.6), 'struct'),
+      mark('Oreillette gauche', at(MV, 0, 1.6), 'struct'), mark('Septum interventriculaire', at(g.line[Math.round(g.line.length * 0.6)], 0, 0)), mark('Veine cave supérieure', g.svc)];
   }
   const inf = heart.infarct;
   valveMarks.coronaires = [];
@@ -1125,7 +1153,6 @@ function toggle(name, value) {
     const t = document.querySelector('.beat-txt'); if (t) t.textContent = state.battement ? 'Pause' : 'Battement';
     if (state.battement) { if (frozenPhase !== null) beatPhase = frozenPhase; frozenPhase = null; }
     else frozenPhase = beatPhase; // pause : le cœur reste à l'instant où on l'arrête
-    syncPhaseButtons();
   }
   if (name === 'reperes') { canvasWrap.classList.toggle('show-marks', state.reperes); syncMarks(); }
   if (name === 'doppler') syncDoppler();
@@ -1178,14 +1205,14 @@ function applyURL() {
     toggle('battement', false);
     if (Number.isFinite(inst)) { frozenPhase = ((inst / 940) % 1 + 1) % 1; beatPhase = frozenPhase; } else frozenPhase = null;
     if (pos) valveOpen = pos === 'ouverte';
-    syncPhaseButtons(); syncCycleUI(); restPose();
+    syncCycleUI(); restPose();
   }
   const valve = q.get('valve'), coupe = q.get('coupe');
   if (VALVE_VIEWS[valve]) {
     valveSide = q.get('cote') === 'ventricule' ? 'V' : 'C';
     const v = VALVE_VIEWS[valve], vr = q.get('variante');
     if (vr && v.variantList.some(([k]) => k === vr)) v.setVariant(vr);
-    goValve(valve, () => { if (q.get('comparer') === '1') setCompare(true); if (valve === 'fermeture') startClosure(); });
+    goValve(valve, () => { if (q.get('comparer') === '1') setCompare(true); if (valve === 'fermeture') startClosure(); if (valve === 'stim') startPacing(); });
   } else if (CUT_MODES[coupe] && !coupe.startsWith('v-')) { toggle('coupe', true); chooseCut(coupe); }
 }
 let toastTimer = 0;
@@ -1253,19 +1280,13 @@ function buildPanel() {
   document.querySelector('[data-action="recentrer"]').addEventListener('click', recenter);
   taviBtn.addEventListener('click', () => {
     if (procOf() === closure) closure.playing ? stopClosure() : startClosure();
+    else if (procOf() === pacing) pacing.playing ? stopPacing() : startPacing();
     else tavi.playing ? stopTavi() : startTavi();
   });
   document.querySelector('[data-action="partager"]').addEventListener('click', shareView);
   document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
-  document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => { valveList = false; goValve(b.dataset.valve, b.dataset.valve === 'fermeture' ? startClosure : undefined); })); // fermeture du FOP : l'animation, d'emblée
+  document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => { valveList = false; goValve(b.dataset.valve, { fermeture: startClosure, stim: startPacing }[b.dataset.valve]); })); // fermeture du FOP, stimulation : l'animation, d'emblée
   document.querySelectorAll('[data-vside]').forEach((b) => b.addEventListener('click', () => setValveSide(b.dataset.vside)));
-  document.querySelectorAll('[data-vphase]').forEach((b) => b.addEventListener('click', () => {
-    valveOpen = b.dataset.vphase === 'ouvert';
-    if (state.battement) toggle('battement', false);
-    frozenPhase = null; // position choisie : plus d'instant figé du cycle
-    syncPhaseButtons(); syncCycleUI();
-    restPose();
-  }));
   document.getElementById('cut-depth').addEventListener('input', (e) => setCutDepth(parseFloat(e.target.value)));
   // curseur du cycle : glisser arrête le cœur à cet instant (valves comprises) ; vitesse : réel, ½, ¼
   cyclePos.addEventListener('pointerdown', () => { scrubbing = true; });
@@ -1275,7 +1296,7 @@ function buildPanel() {
     if (state.battement) toggle('battement', false);
     frozenPhase = parseInt(cyclePos.value, 10) / 1000; beatPhase = frozenPhase;
     cyclePos.setAttribute('aria-valuetext', phaseText(frozenPhase));
-    syncPhaseButtons(); syncCycleUI(); restPose();
+    syncCycleUI(); restPose();
   });
   document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => {
     beatSpeed = parseFloat(b.dataset.speed);
@@ -1392,6 +1413,12 @@ function animate() {
     controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(sd.camDir, f.dist * portrait()); setCameraUp(sd.up);
   }
   closure.update(Math.min(dt, 0.1));
+  pacing.update(Math.min(dt, 0.1));
+  if (pacing.shown && !trans && state.valve === 'stim') { // caméra de l'animation : 4 cavités, septum, oreillette droite
+    const f = pacing.frame(), sd = VALVE_VIEWS.stim.sides.C;
+    controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(sd.camDir, f.dist * portrait()); setCameraUp(sd.up);
+  }
+  if (!trans) controls.enabled = !VALVE_VIEWS[state.valve]?.fixed; // stimulation : coupe 4 cavités fixe
   if (closure.playing && !trans && state.valve === 'fermeture') { // caméra de l'animation (gaine, disque gauche, disque droit, coupe)
     const f = closure.frame();
     controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(f.dir, f.dist * portrait()); setCameraUp(f.up);
@@ -1416,4 +1443,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { tavi, closure, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
+window.__planche = { tavi, closure, pacing, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };

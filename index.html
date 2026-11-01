@@ -94,6 +94,7 @@
         <button class="mtile" data-go="valves" type="button" style="--c: var(--c-valves)"><b>Valves</b><small>Aortique, mitrale, tricuspide, pulmonaire</small></button>
         <button class="mtile" data-go="fop" type="button" style="--c: var(--c-fop)"><b>FOP</b><small>Foramen ovale perméable, sa fermeture</small></button>
         <button class="mtile" data-go="coro" type="button" style="--c: var(--c-coro)"><b>Coronaires</b><small>Les artères du cœur, l'infarctus</small></button>
+        <button class="mtile" data-go="stim" type="button" style="--c: var(--c-stim)"><b>Stimulation</b><small>Pacemaker : la pose des sondes</small></button>
       </div>
       <div class="menu-page" data-page="coupe" style="--c: var(--c-coupe)">
         <button class="mitem" data-cut="cinq-cavites" data-close type="button" title="Coupe 5 cavités passant par le centre des valves tricuspide, mitrale et aortique">5 cavités</button>
@@ -115,11 +116,6 @@
           <button data-vside="C" class="active" type="button" title="Vue chirurgicale : depuis l'oreillette (ou l'aorte), comme le chirurgien">Chirurgien</button>
           <button data-vside="V" type="button" title="Vue ventriculaire : depuis l'intérieur du ventricule, du côté opposé">Ventricule</button>
         </div>
-        <h3 class="mlabel">Position</h3>
-        <div class="seg" role="group" aria-label="Position de la valve">
-          <button data-vphase="ferme" class="active" type="button">Fermée</button>
-          <button data-vphase="ouvert" type="button">Ouverte</button>
-        </div>
         <button class="mitem mtoggle" data-toggle="doppler" type="button" aria-pressed="false" title="Doppler couleur : le sang qui traverse la valve et les fuites, en fumée rouge, plus vive quand le sang va vite">Doppler couleur</button>
       </div>
       <div class="menu-page" data-page="fop" style="--c: var(--c-fop)">
@@ -130,6 +126,10 @@
       </div>
       <div class="menu-page" data-page="coro" style="--c: var(--c-coro)">
         <div class="mlist variants"></div>
+      </div>
+      <div class="menu-page" data-page="stim" style="--c: var(--c-stim)">
+        <button class="mitem" data-valve="stim" data-close type="button" title="Implantation d'un stimulateur double chambre : sonde vissée dans le septum (branche gauche), sonde de l'oreillette droite">Stimulation de branche gauche</button>
+        <div class="proc-slot"></div>
       </div>
     </nav>
 

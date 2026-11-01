@@ -79,9 +79,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
 - **Modèle visuel** : la scène, sans texte, légende ni nom de structure ; coronaires toujours affichées ; battement
   automatique dès l'ouverture, bouton « Pause » (le cœur reste à l'instant où on l'arrête).
 - **Menu** (à droite ; sur téléphone, une carte compacte en haut à droite, ouverte par le bouton « Menu » et refermée en touchant la scène à côté) : les rubriques en rectangles de couleur — **Plan
-  en coupe**, **Valves**, **FOP**, **Coronaires** ; un clic sur l'une fait place à ses sous-rubriques (coupe 5 cavités,
-  frontale et profondeur ; la liste des valves, puis pour la valve choisie son état, la vue, la position, le Doppler ;
-  les trois vues du FOP ; normale ou infarctus), une flèche « Retour » ramène en arrière (de la valve à la liste des
+  en coupe**, **Valves**, **FOP**, **Coronaires**, **Stimulation** ; un clic sur l'une fait place à ses sous-rubriques
+  (coupe 5 cavités, frontale et profondeur ; la liste des valves, puis pour la valve choisie son état, la vue, le
+  Doppler ; les trois vues du FOP ; normale ou infarctus ; stimulation de branche gauche), une flèche « Retour » ramène en arrière (de la valve à la liste des
   valves sans quitter la vue, puis à l'accueil). En haut de l'écran, le titre dit où l'on est (« Valve mitrale ·
   Prolapsus P2 · vue du chirurgien », « FOP · Fermeture du FOP »…). Sous la scène, au-dessus du cycle : **Pause**,
   **Recentrer**, **Légende**, **Partager**. Thème : fond de studio bleu-gris, encre marine, rectangles.
@@ -90,7 +90,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
   comprises ; ralenti ¼.
 - **Légende** (bouton, à la demande) : côtés du patient, et dans les vues des valves noms des feuillets, des cuspides et
   de l'aorte. **Recentrer** : cadrage de départ de la vue en cours. **Partager** : lien de la vue en cours (valve, côté,
-  variante, position ou instant du cycle, coupe, vitesse, repères, comparaison), tenu à jour dans la barre d'adresse et
+  variante, instant du cycle, coupe, vitesse, repères, comparaison), tenu à jour dans la barre d'adresse et
   rouvert tel quel (par exemple `?valve=mitrale&cote=ventricule&variante=prolapsus&instant=300`).
 - **Valves** (vues de face tirées du cœur lui-même, js/aortic-view.js et js/av-views.js) : la rubrique « Valves » ouvre
   le choix de la valve sans bouger la vue ; le clic sur le nom de la valve lance le zoom depuis la vue en cours : la
@@ -100,7 +100,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
   face ventriculaire des feuillets) ou dans la chambre de chasse. Même orientation des deux côtés (image en miroir) :
   aorte à 12 h pour la mitrale, feuillet septal à 6 h pour la tricuspide, cuspide coronaire droite à 6 h pour
   l'aortique, cuspide antérieure à 12 h pour la pulmonaire. Les variantes pathologiques prennent la place de la valve dans le cœur et battent avec lui. Choix de la
-  variante et de la position (fermée / ouverte) ; pendant le battement, la coupe suit la valve qui descend et remonte
+  variante (la valve bat avec le cœur ; « Pause » ou le curseur du cycle l'arrêtent à un instant) ; pendant le battement, la coupe suit la valve qui descend et remonte
   avec la base. Au retour, la vue et la coupe de départ sont rétablies. Derrière la valve, le fond s'assombrit
   doucement (éclairage frontal du chirurgien) : la valve se détache. **Valve pathologique : écran partagé d'emblée**,
   valve normale à gauche et valve malade à droite, dans le même cœur, au même instant du cycle et sous le même angle
@@ -196,6 +196,22 @@ une liste numérotée des structures, et une fiche explicative par structure.
   l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),
   akinésie des segments 7, 8, 13, 14 et 17 du modèle AHA (ni épaississement, ni mouvement vers le centre, ni torsion),
   territoire plus terne ; comparaison en écran partagé.
+- **Stimulation** (js/pacing-anim.js) : **stimulation de branche gauche**, animation « Implantation pacemaker » (≈ 20 s)
+  dans la coupe 4 cavités (pointe, centres des valves mitrale et tricuspide), oreillettes en haut, regard incliné de 25°
+  vers la base ; le lecteur ne peut pas tourner la vue. Le cœur bat pendant toute l'animation : chaque point des sondes
+  et de la gaine suit la déformation du battement (et garde, près du plan, sa hauteur par rapport à la coupe, qui ne
+  suit que le centre de la vue). Étapes (légende de chacune) : la cible, sur la face droite du septum, à la jonction du
+  1er et du 2e tiers de la distance qui va de la jonction auriculo-ventriculaire (charnière septale de la tricuspide)
+  à la pointe, avec la ligne du septum et ses tiers en pointillés ; gaine de pose préformée (C315HIS, 7 F, 2,4 mm) qui
+  amène la sonde par la veine cave supérieure, l'oreillette droite et le centre de la tricuspide, tourne dans le
+  ventricule droit et arrive perpendiculaire au septum ; vissage (≈ 7 tours, liseré de la sonde qui tourne), toujours
+  perpendiculaire, dans le plan de coupe, jusqu'aux 3/4 de l'épaisseur du septum mesurée au même endroit (≈ 9 mm
+  → ≈ 6,8 mm) ; retrait de la gaine ; sonde auriculaire (5076, 6 F, ≈ 2 mm) qui descend au plancher de l'oreillette
+  droite, s'y recourbe en crosse et se pose sur la paroi latérale, vis sortie en tournant ; les deux sondes en place
+  suivent le battement. Sonde ventriculaire : SelectSecure 3830, 4,1 F (1,4 mm), sans lumière, vis fixe de 1,8 mm,
+  électrode annulaire ≈ 1 cm en arrière. Caméra, toujours dans l'axe de la vue : les 4 cavités, rapprochée sur le
+  septum pendant le vissage, sur l'oreillette droite pendant la pose de la sonde auriculaire, puis sur les deux sondes.
+  Légende : les quatre cavités, le septum interventriculaire, la veine cave supérieure.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
@@ -244,6 +260,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles, fermeture) et Coronaires (infarctus de l'IVA) |
 | `js/pfo-closure.js` | Animation de la fermeture percutanée du FOP (gaine, prothèse à double disque, largage) |
+| `js/pacing-anim.js` | Rubrique Stimulation : vue 4 cavités fixe, animation de l'implantation d'un stimulateur (sonde de branche gauche, sonde auriculaire) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
