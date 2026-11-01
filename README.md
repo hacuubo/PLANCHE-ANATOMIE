@@ -139,10 +139,11 @@ une liste numérotée des structures, et une fiche explicative par structure.
     cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
     (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : d'abord la valve malade, 2 s, dans la vue en cours,
     cœur qui bat ; puis vue dans le plan de la crosse aortique (coupe passant par le centre de la valve), cœur arrêté en
-    diastole, artère pulmonaire masquée (elle passe sous la crosse et cachait l'aorte) et aorte ouverte sur toute sa
-    longueur, jusque dans l'aorte descendante (sa moitié tournée vers l'observateur est retirée) — masque en volume de
-    1,5 mm, calculé au premier lancement : lumière et paroi de l'artère pulmonaire, moitié avant de l'aorte au-delà de
-    3,5 cm de la valve (voxels plus proches de ces lumières que de toute autre lumière ou cavité) ; guide qui remonte
+    diastole, coupe inchangée ; l'artère pulmonaire (elle passe sous la crosse et cachait l'aorte) et la paroi
+    antérieure de l'aorte thoracique au-delà de l'aorte ascendante sont en transparence (voile clair), pour suivre le
+    guide dès l'aorte descendante — champ en volume de 1,5 mm calculé au premier lancement (voxels plus proches de ces
+    lumières que de toute autre lumière ou cavité ; pour l'aorte, devant sa ligne centrale), à limites lisses ; seule la
+    tranche de l'artère pulmonaire est écartée, les autres tranches sont celles de la coupe ; guide qui remonte
     l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche (« queue de cochon ») ;
     cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
     ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement
@@ -209,9 +210,11 @@ une liste numérotée des structures, et une fiche explicative par structure.
   1er et du 2e tiers de la distance qui va de la jonction auriculo-ventriculaire (charnière septale de la tricuspide)
   à la pointe, avec la ligne du septum et ses tiers en pointillés ; gaine de pose préformée (C315HIS, 7 F, 2,4 mm) qui
   amène la sonde par la veine cave supérieure, l'oreillette droite et le centre de la tricuspide, tourne dans le
-  ventricule droit et arrive perpendiculaire au septum ; vissage (≈ 7 tours, liseré de la sonde qui tourne), toujours
+  ventricule droit et arrive perpendiculaire au septum — rigide, elle garde sa forme et ne suit que le déplacement de son
+  bout (la sonde qu'elle contient la suit) ; vissage (≈ 7 tours, liseré de la sonde qui tourne), toujours
   perpendiculaire, dans le plan de coupe, jusqu'aux 3/4 de l'épaisseur du septum mesurée au même endroit (≈ 9 mm
-  → ≈ 6,8 mm) ; retrait de la gaine ; sonde auriculaire (5076, 6 F, ≈ 2 mm) qui descend au plancher de l'oreillette
+  → ≈ 6,8 mm) ; retrait de la gaine : la sonde, souple, prend sa propre forme à mesure que la gaine la libère (du bout
+  vers l'arrière), à travers la tricuspide, avec une légère réserve dans l'oreillette ; sonde auriculaire (5076, 6 F, ≈ 2 mm) qui descend au plancher de l'oreillette
   droite, s'y recourbe en crosse et se pose sur la paroi latérale, vis sortie en tournant ; les deux sondes en place
   suivent le battement. Sonde ventriculaire : SelectSecure 3830, 4,1 F (1,4 mm), sans lumière, vis fixe de 1,8 mm,
   électrode annulaire ≈ 1 cm en arrière. Caméra, toujours dans l'axe de la vue : les 4 cavités, rapprochée sur le

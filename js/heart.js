@@ -793,17 +793,21 @@ export async function buildHeart(onProgress) {
       root.add(m); cutOnly.push(m);
     }
   }
-  // Masque de l'animation de la TAVI (vue dans le plan de la crosse) : l'artère pulmonaire, qui passe sous la crosse et
-  // cachait l'aorte et le guide, est masquée ; l'aorte est ouverte sur toute sa longueur, au-delà de l'aorte ascendante
-  // (que la coupe ouvre déjà) : sa moitié tournée vers l'observateur est retirée, le guide se suit jusque dans l'aorte
-  // descendante. Masque en volume (voxels de 1,5 mm) : un voxel appartient à un vaisseau si la surface la plus proche,
-  // parmi les lumières des vaisseaux et les cavités, est sa lumière, à moins de 1,7 cm (propagation des distances par
-  // chanfrein) — lumière et paroi du vaisseau, jamais les structures voisines, plus proches de leur propre lumière ou
-  // cavité. La lumière « veineuse » compte plusieurs pièces séparées (tronc pulmonaire et branches, veines caves) : sont
-  // de l'artère pulmonaire celles dont la plupart des points ont pour sommet d'enveloppe le plus proche le tronc
-  // pulmonaire, une branche ou le ligament artériel. Calculé au premier lancement de l'animation (buildTaviMask : ligne
-  // centrale de l'aorte, normale du plan de la crosse côté observateur). Les matériaux passés à addTaviMask (tissu,
-  // solides des tranches, tranches, voile) écartent ces fragments quand uTaviMask = 1.
+  // Transparence de l'animation de la TAVI (vue dans le plan de la crosse) : l'artère pulmonaire, qui passe sous la
+  // crosse, et la paroi antérieure de l'aorte thoracique au-delà de l'aorte ascendante (que la coupe ouvre déjà) sont
+  // dessinées en transparence, pour suivre le guide de l'aorte descendante à la valve. La coupe ne change pas : mêmes
+  // solides, mêmes tranches, sauf la tranche de l'artère pulmonaire, transparente elle aussi (écartée).
+  // Champ en volume (voxels de 1,5 mm), calculé au premier lancement de l'animation (buildTaviMask : ligne centrale de
+  // l'aorte, normale du plan de la crosse côté observateur), à partir des distances aux lumières des vaisseaux et aux
+  // cavités (propagation par chanfrein) :
+  //   r : artère pulmonaire — plus proche de sa lumière que de toute autre lumière ou cavité, à moins de 1,7 cm ;
+  //   g : aorte, moitié côté observateur — plus proche de la lumière artérielle que des autres, à moins de 1,7 cm, devant
+  //       sa ligne centrale (point le plus proche), à plus de 3,5 cm de la valve le long de cette ligne.
+  // Chaque canal garde une marge signée (± 5 mm autour de 0,5) : interpolée entre voxels, la limite est nette et lisse
+  // (bissectrice entre deux lumières, plan de la ligne centrale) et non en marches d'escalier.
+  // Les matériaux passés à addTaviMask écartent ces fragments quand uTaviMask = 1 : 'hide' (tissu opaque de l'enveloppe,
+  // intima de la lumière veineuse : r ou g), 'cap' (tranches : r seulement), 'show' (enveloppe transparente : hors de r
+  // et de g).
   const maskU = { uTaviMask: { value: 0 }, uTMTex: { value: null }, uTMMin: { value: new THREE.Vector3() }, uTMSize: { value: new THREE.Vector3() }, uTMInv: { value: new THREE.Matrix4() } };
   const buildTaviMask = (cl, nObs) => {
     if (maskU.uTMTex.value) return;
@@ -821,51 +825,53 @@ export async function buildHeart(onProgress) {
       const r = find(i), v = vote.get(r) ?? [0, 0]; v[isPA(j) ? 0 : 1]++; vote.set(r, v);
     }
     const paLum = (i) => { const v = vote.get(find(i)); return !!v && v[0] > v[1]; };
-    const ap = geos['lumiere-artere'].geometry.attributes.position;
+    const ap = geos['lumiere-artere'].geometry.attributes.position, cp = geos.cavites.geometry.attributes.position;
     const lo = new THREE.Vector3(Infinity, Infinity, Infinity), hi = lo.clone().negate(), p = new THREE.Vector3();
     for (let i = 0; i < lp.count; i++) if (paLum(i)) { p.fromBufferAttribute(lp, i); lo.min(p); hi.max(p); }
     for (let i = 0; i < ap.count; i++) { p.fromBufferAttribute(ap, i); lo.min(p); hi.max(p); }
     lo.subScalar(1.8); hi.addScalar(1.8);
     const VS = 0.15, nx = Math.ceil((hi.x - lo.x) / VS), ny = Math.ceil((hi.y - lo.y) / VS), nz = Math.ceil((hi.z - lo.z) / VS), N = nx * ny * nz;
-    const dist = new Float32Array(N).fill(Infinity), lab = new Uint8Array(N);
-    // graines : sommets des lumières et des cavités ; 1 : lumière de l'artère pulmonaire, 2 : lumière artérielle (aorte)
-    const seed = (pos, f) => { for (let i = 0; i < pos.count; i++) {
-      p.fromBufferAttribute(pos, i);
-      const x = Math.floor((p.x - lo.x) / VS), y = Math.floor((p.y - lo.y) / VS), z = Math.floor((p.z - lo.z) / VS);
-      if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) continue;
-      const k = x + nx * (y + ny * z), d = Math.hypot(p.x - lo.x - (x + 0.5) * VS, p.y - lo.y - (y + 0.5) * VS, p.z - lo.z - (z + 0.5) * VS);
-      if (d < dist[k]) { dist[k] = d; lab[k] = f(i); }
-    } };
-    seed(lp, (i) => (paLum(i) ? 1 : 0)); seed(ap, () => 2); seed(geos.cavites.geometry.attributes.position, () => 0);
     const nb = []; // voisins déjà parcourus (passe avant) ; la passe arrière prend les opposés
-    for (let c = -1; c <= 0; c++) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) if (c < 0 || b < 0 || (b === 0 && a < 0)) nb.push([a, b, c, VS * Math.hypot(a, b, c)]);
-    for (let pass = 0; pass < 2; pass++) for (const s of [1, -1]) {
-      for (let z0 = 0; z0 < nz; z0++) for (let y0 = 0; y0 < ny; y0++) for (let x0 = 0; x0 < nx; x0++) {
-        const x = s > 0 ? x0 : nx - 1 - x0, y = s > 0 ? y0 : ny - 1 - y0, z = s > 0 ? z0 : nz - 1 - z0, k = x + nx * (y + ny * z);
-        for (const [a, b, c, w] of nb) {
-          const X = x + s * a, Y = y + s * b, Z = z + s * c;
-          if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
-          const j = X + nx * (Y + ny * Z);
-          if (dist[j] + w < dist[k]) { dist[k] = dist[j] + w; lab[k] = lab[j]; }
+    for (let c = -1; c <= 0; c++) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) if (c < 0 || b < 0 || (b === 0 && a < 0)) nb.push([a + nx * (b + ny * c), a, b, c, VS * Math.hypot(a, b, c)]);
+    // distance aux sommets retenus (graines au centre de leur voxel, distance exacte), propagée par chanfrein
+    const field = (sets) => {
+      const dist = new Float32Array(N).fill(Infinity);
+      for (const [pos, keep] of sets) for (let i = 0; i < pos.count; i++) {
+        if (!keep(i)) continue;
+        p.fromBufferAttribute(pos, i);
+        const x = Math.floor((p.x - lo.x) / VS), y = Math.floor((p.y - lo.y) / VS), z = Math.floor((p.z - lo.z) / VS);
+        if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) continue;
+        const k = x + nx * (y + ny * z), d = Math.hypot(p.x - lo.x - (x + 0.5) * VS, p.y - lo.y - (y + 0.5) * VS, p.z - lo.z - (z + 0.5) * VS);
+        if (d < dist[k]) dist[k] = d;
+      }
+      for (let pass = 0; pass < 2; pass++) for (const s of [1, -1]) {
+        for (let z0 = 1; z0 < nz - 1; z0++) for (let y0 = 1; y0 < ny - 1; y0++) for (let x0 = 1; x0 < nx - 1; x0++) {
+          const k = s > 0 ? x0 + nx * (y0 + ny * z0) : (nx - 1 - x0) + nx * ((ny - 1 - y0) + ny * (nz - 1 - z0));
+          let m = dist[k];
+          for (const [o, , , , w] of nb) { const v = dist[k + s * o] + w; if (v < m) m = v; }
+          dist[k] = m;
         }
       }
-    }
-    // aorte : moitié côté observateur (par rapport au point le plus proche de sa ligne centrale), à plus de 3,5 cm de la
-    // valve le long de cette ligne (racine et aorte ascendante : la coupe les ouvre déjà, et la vue chirurgicale les garde)
+      return dist;
+    };
+    const all = () => true;
+    const dPA = field([[lp, paLum]]), dA = field([[ap, all]]), dC = field([[lp, (i) => !paLum(i)], [cp, all]]);
     const arc = [0]; for (let i = 1; i < cl.length; i++) arc.push(arc[i - 1] + cl[i].distanceTo(cl[i - 1]));
-    const data = new Uint8Array(N), q = new THREE.Vector3();
+    const data = new Uint8Array(2 * N), q = new THREE.Vector3(), byte = (f) => Math.max(0, Math.min(255, Math.round(128 + f * 254)));
     for (let z = 0, k = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++, k++) {
-      if (!lab[k] || dist[k] >= 1.7) continue;
-      if (lab[k] === 1) { data[k] = 255; continue; }
+      data[2 * k] = byte(Math.min(Math.min(dA[k], dC[k]) - dPA[k], 1.7 - dPA[k]));
+      const fA = Math.min(Math.min(dPA[k], dC[k]) - dA[k], 1.7 - dA[k]);
+      if (fA < -0.5) continue;
       p.set(lo.x + (x + 0.5) * VS, lo.y + (y + 0.5) * VS, lo.z + (z + 0.5) * VS);
       let bi = 0, bd = Infinity; for (let i = 0; i < cl.length; i++) { const d = cl[i].distanceToSquared(p); if (d < bd) { bd = d; bi = i; } }
-      if (arc[bi] > 3.5 && nObs.dot(q.copy(p).sub(cl[bi])) > 0) data[k] = 255;
+      data[2 * k + 1] = byte(Math.min(fA, nObs.dot(q.copy(p).sub(cl[bi])), arc[bi] - 3.5));
     }
     const tex = new THREE.Data3DTexture(data, nx, ny, nz);
-    tex.format = THREE.RedFormat; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    tex.format = THREE.RGFormat; tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
     maskU.uTMTex.value = tex; maskU.uTMMin.value.copy(lo); maskU.uTMSize.value.set(nx * VS, ny * VS, nz * VS);
   };
-  const addTaviMask = (mat) => {
+  const TM_TEST = { hide: 'tm.r > 0.5 || tm.g > 0.5', cap: 'tm.r > 0.5', show: '!(tm.r > 0.5 || tm.g > 0.5)' };
+  const addTaviMask = (mat, mode = 'hide') => {
     const prev = mat.onBeforeCompile, key = mat.customProgramCacheKey.bind(mat);
     mat.onBeforeCompile = (sh, r) => {
       prev?.call(mat, sh, r);
@@ -874,16 +880,17 @@ export async function buildHeart(onProgress) {
       sh.fragmentShader = 'uniform float uTaviMask;\nuniform sampler3D uTMTex;\nuniform vec3 uTMMin;\nuniform vec3 uTMSize;\nuniform mat4 uTMInv;\nvarying vec3 vTMW;\n'
         + sh.fragmentShader.replace('void main() {', `void main() {
   if (uTaviMask > 0.5) { vec3 tcTM = ((uTMInv * vec4(vTMW, 1.0)).xyz - uTMMin) / uTMSize;
-    if (all(greaterThan(tcTM, vec3(0.0))) && all(lessThan(tcTM, vec3(1.0))) && texture(uTMTex, tcTM).r > 0.5) discard; }`);
+    vec2 tm = all(greaterThan(tcTM, vec3(0.0))) && all(lessThan(tcTM, vec3(1.0))) ? texture(uTMTex, tcTM).rg : vec2(0.0);
+    if (${TM_TEST[mode]}) discard; }`);
     };
-    mat.customProgramCacheKey = () => key() + '|masqueTAVI';
+    mat.customProgramCacheKey = () => key() + '|masqueTAVI-' + mode;
     return mat;
   };
   addTaviMask(envMat);
   root.children.filter((m) => m.isMesh && m.geometry === geos['lumiere-veine'].geometry && m.material.colorWrite !== false).forEach((m) => addTaviMask(m.material)); // intima de la lumière veineuse
-  // solides des tranches (js/app.js) : ceux de l'enveloppe et de la lumière veineuse
-  envelope.userData.taviMask = true;
-  root.children.forEach((m) => { if (m.isMesh && m.geometry === geos['lumiere-veine'].geometry) m.userData.taviMask = true; });
+  // enveloppe transparente : artère pulmonaire et paroi antérieure de l'aorte, en voile (visible avec le masque)
+  const taviVeil = new THREE.Mesh(envelope.geometry, addTaviMask(addDeformTo(new THREE.MeshPhysicalMaterial({ color: 0xf0d4c6, roughness: 0.45, clearcoat: 0.4, transparent: true, opacity: 0.24, depthWrite: false }), deformU, K_EPI), 'show'));
+  taviVeil.visible = false; taviVeil.renderOrder = 5; root.add(taviVeil); materials.push(taviVeil.material);
   // Racine pulmonaire : la lumière du tronc (BodyParts3D) ne commence qu'en haut des sinus (≈ 1,1 cm au-dessus de
   // l'anneau) ; entre l'anneau et elle, la racine comptait comme du muscle et sa tranche recouvrait les cuspides dans
   // les coupes. Volume creux de l'anneau au début de la lumière (cylindre au rayon de l'anneau), et sa face interne
@@ -1505,8 +1512,8 @@ export async function buildHeart(onProgress) {
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve, ostia,
     infarct, setInfarct, fossa, setPFO, setPFOClosure,
-    addTaviMask, buildTaviMask, // animation de la TAVI : artère pulmonaire masquée, aorte ouverte sur sa longueur
-    setTaviMask: (on) => { maskU.uTaviMask.value = on && maskU.uTMTex.value ? 1 : 0; root.updateMatrixWorld(); maskU.uTMInv.value.copy(root.matrixWorld).invert(); },
+    addTaviMask, buildTaviMask, // animation de la TAVI : artère pulmonaire et paroi antérieure de l'aorte en transparence
+    setTaviMask: (on) => { const v = !!(on && maskU.uTMTex.value); maskU.uTaviMask.value = v ? 1 : 0; taviVeil.visible = v; root.updateMatrixWorld(); maskU.uTMInv.value.copy(root.matrixWorld).invert(); },
     structureIds: ids, // indice de structure (attribut sid des cavités) → nom
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)

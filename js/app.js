@@ -145,7 +145,6 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     // les recouvrements s'additionnent, d'où une opacité basse
     const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.09, depthWrite: false, clippingPlanes: [ghostPlane] });
     heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07, 'ghost');
-    if (o.userData.taviMask) heart.addTaviMask(gm); // masque de l'animation de la TAVI
     const gh = new THREE.Mesh(o.geometry, gm);
     gh.visible = false; gh.userData.ghost = true;
     o.add(gh); ghostMats.push(gm); ghosts.push(gh);
@@ -273,7 +272,6 @@ function makeStencilMeshes(solid, order) {
   front.stencilFail = front.stencilZFail = front.stencilZPass = solid.hole ? inc : dec;
   const g = new THREE.Group();
   heart.addDeform(back, solid.k ?? 0.07); heart.addDeform(front, solid.k ?? 0.07); // le stencil suit le battement
-  if (solid.mesh.userData.taviMask) { heart.addTaviMask(back); heart.addTaviMask(front); } // masque de la TAVI : ni compté ni tranché
   const m0 = new THREE.Mesh(solid.mesh.geometry, back); m0.renderOrder = order;
   const m1 = new THREE.Mesh(solid.mesh.geometry, front); m1.renderOrder = order;
   g.add(m0, m1);
@@ -367,7 +365,7 @@ heart.solids.forEach((s) => {
     const mat = () => (capKey === 'myo' || capKey === 'pilier' ? sectionMaterial(heart, { stencil: STENCIL_CAP, rank, papillary: capKey === 'pilier' })
       : LUMEN_TINT[capKey] ? lumenCapMaterial(capKey, rank)
       : new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, envMapIntensity: 0.5, ...STENCIL_CAP, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank }));
-    const caps = [new THREE.Mesh(new THREE.PlaneGeometry(60, 60), heart.addTaviMask(mat())), new THREE.Mesh(curveGeo, heart.addTaviMask(mat()))]; // tranche écartée dans le masque de la TAVI
+    const caps = [new THREE.Mesh(new THREE.PlaneGeometry(60, 60), heart.addTaviMask(mat(), 'cap')), new THREE.Mesh(curveGeo, heart.addTaviMask(mat(), 'cap'))]; // TAVI : tranche de l'artère pulmonaire écartée (transparente)
     for (const cap of caps) {
       cap.renderOrder = order + 1; cap.visible = false; cap.userData.capKey = capKey;
       cap.onAfterRender = (r) => r.clearStencil();

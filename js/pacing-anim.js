@@ -2,16 +2,18 @@
 // double chambre (≈ 20 s), dans la coupe 4 cavités (pointe, centres des valves mitrale et tricuspide), caméra fixe :
 //   1. la cible : côté droit du septum interventriculaire, à la jonction du 1er et du 2e tiers de la distance qui va de la
 //      jonction auriculo-ventriculaire (charnière septale de la tricuspide) à la pointe ;
-//   2. une gaine préformée (type C315HIS) amène la sonde par la veine cave supérieure, l'oreillette droite et la valve
-//      tricuspide ; dans le ventricule droit, elle tourne pour arriver perpendiculaire au septum ;
+//   2. une gaine préformée (type C315HIS), rigide, amène la sonde par la veine cave supérieure, l'oreillette droite et la
+//      valve tricuspide ; dans le ventricule droit, sa courbure la fait arriver perpendiculaire au septum ;
 //   3. la sonde est vissée dans le septum, toujours perpendiculaire, jusqu'aux 3/4 de son épaisseur (zone de la branche
 //      gauche, sous l'endocarde gauche) ; sa progression se fait dans le plan de coupe, sur la tranche du septum ;
-//   4. la gaine est retirée, la sonde reste ;
+//   4. la gaine est retirée, la sonde reste : libérée de la gaine, du bout vers l'arrière, elle prend sa propre forme,
+//      souple, à travers la tricuspide, avec une légère réserve dans l'oreillette ;
 //   5. la sonde auriculaire descend dans l'oreillette droite, s'y recourbe et se pose sur la paroi latérale ; sa vis sort
 //      et se fixe ;
 //   6. les deux sondes suivent le battement.
-// Le cœur bat pendant toute l'animation : chaque point des sondes et de la gaine est déplacé par la déformation du
-// battement (heart.deformPoint), depuis sa position au repos.
+// Le cœur bat pendant toute l'animation : chaque point des sondes est déplacé par la déformation du battement
+// (heart.deformPoint), depuis sa position au repos. La gaine, rigide, garde sa forme : elle ne suit que le déplacement de
+// son bout (glissement réparti le long de la gaine), et la sonde qu'elle contient suit la gaine.
 // Matériel (fabricant) :
 //   - sonde ventriculaire sans lumière à vis fixe (Medtronic SelectSecure 3830) : 4,1 F, 1,4 mm ; vis de 1,8 mm ;
 //   - gaine de pose (Medtronic C315HIS) : 7 F, 2,4 mm de diamètre extérieur (5,4 F intérieur) ;
@@ -181,6 +183,10 @@ export function createPacingAnimation(heart, view, hooks) {
     // approche perpendiculaire au septum, puis le septum lui-même (prolongé pour la tangente)
     const routeV = [svc.clone().addScaledVector(su, 4), svc.clone().addScaledVector(su, 1.2), svc.clone(), at(1.0, 1.0, 1.2), at(0.15, 0.45, 0.25), O.clone(),
       at(-0.1, -1.1, 0), S.clone().addScaledVector(d, -1.25), S.clone().addScaledVector(d, -0.5), S.clone(), S.clone().addScaledVector(d, depth + 0.3)];
+    // sonde ventriculaire libérée de la gaine : sa propre forme, souple — une légère réserve dans l'oreillette, le centre
+    // de la tricuspide, une courbe douce dans le VD jusqu'au même point d'ancrage, perpendiculaire au septum
+    const routeR = [svc.clone().addScaledVector(su, 4), svc.clone().addScaledVector(su, 1.2), svc.clone(), at(0.9, 1.0, 1.0), at(0.05, 0.55, 0.3), O.clone(),
+      at(0.3, -1.0, 0), S.clone().addScaledVector(d, -0.65), S.clone().addScaledVector(d, -0.25), S.clone(), S.clone().addScaledVector(d, depth + 0.3)];
     // sonde auriculaire : même veine, descend vers la tricuspide, se recourbe vers la paroi latérale de l'OD
     const routeA = [svc.clone().addScaledVector(su, 4).addScaledVector(X, 0.25), svc.clone().addScaledVector(su, 1.2).addScaledVector(X, 0.25), svc.clone().addScaledVector(X, 0.25),
       at(1.4, 1.5, 1.1), at(0.45, 0.25, 0.5), at(-0.45, 0.15, 0.25), Rw.clone().addScaledVector(rn, -0.45), Rw.clone(), Rw.clone().addScaledVector(rn, 0.3)]; // crosse : descend au plancher de l'OD puis remonte vers la paroi
@@ -202,9 +208,11 @@ export function createPacingAnimation(heart, view, hooks) {
       // point et tangente déformés en u
       const pt = (u, f, o) => { u = Math.min(Math.max(u, 0), L); const k = Math.min(N - 2, Math.floor(u / DU)), fr = u / DU - k; return o.lerpVectors(P(k, f), P(k + 1, f), fr); };
       const tan = (u, f, o) => { const a = pt(u - 0.06, f, new THREE.Vector3()); return pt(u, f, o).sub(a).normalize(); };
-      return { L, N, rest, uOf, upTo, pt, tan };
+      // point au repos en u (gaine rigide)
+      const ptRest = (u, o) => { u = Math.min(Math.max(u, 0), L); const k = Math.min(N - 2, Math.floor(u / DU)), fr = u / DU - k; return o.lerpVectors(rest[k], rest[k + 1], fr); };
+      return { L, N, DU, rest, uOf, upTo, pt, tan, ptRest };
     };
-    const pv = path(routeV), pa = path(routeA);
+    const pv = path(routeV), pa = path(routeA), pr = path(routeR);
     const group = new THREE.Group(); group.visible = false; heart.root.add(group);
     const metal = new THREE.MeshStandardMaterial({ color: 0xc9cdd3, metalness: 0.9, roughness: 0.25 });
     const mk = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; group.add(m); return m; };
@@ -230,24 +238,28 @@ export function createPacingAnimation(heart, view, hooks) {
     }
     const target = mk(new THREE.TorusGeometry(0.24, 0.028, 10, 40), new THREE.MeshBasicMaterial({ color: 0xf2b23a, transparent: true, opacity: 0 }));
     target.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-    return { g, pv, pa, group, leadV, sheath, leadA, tipV, tipA, band, dots, dotM, tickM, target, uS: pv.uOf(S), uW: pa.uOf(Rw), ...Object.fromEntries(['bufV', 'bufS', 'bufA'].map((k) => [k, { pts: [], end: new THREE.Vector3() }])) };
+    return { g, pv, pa, group, leadV, sheath, leadA, tipV, tipA, band, dots, dotM, tickM, target, uS: pv.uOf(S), uW: pa.uOf(Rw), pr, uRS: pr.uOf(S),
+      poolV: Array.from({ length: pv.N + 2 }, () => new THREE.Vector3()), poolS: Array.from({ length: pv.N + 2 }, () => new THREE.Vector3()), bufA: { pts: [], end: new THREE.Vector3() } };
   };
-  // pose d'une extrémité de sonde : corps jusqu'à uB ; manchon, vis (sortie de ext ∈ [0, 1]) tournée de spin, anneau
+  // pose d'une extrémité de sonde, d'après les points de son axe (pts[0..n-1], pas du ≈ 0,03 cm, le dernier au bout du
+  // corps) : manchon, vis (sortie de ext ∈ [0, 1]) tournée de spin, anneau à ringAt du bout
   const _p = new THREE.Vector3(), _t = new THREE.Vector3(), _q = new THREE.Quaternion(), _qs = new THREE.Quaternion();
-  const placeTip = (path, tip, uB, f, ext, spin, collarLen, ringAt) => {
-    const show = uB > 0.2;
+  const axisAt = (pts, n, i, o, t) => { i = Math.min(n - 1, Math.max(2, i)); o.copy(pts[i]); t.subVectors(pts[i], pts[i - 2]).normalize(); };
+  const placeTip = (tip, pts, n, ext, spin, collarLen, ringAt) => {
+    const show = n > 7;
     for (const m of Object.values(tip)) m.visible = show;
     if (!show) return;
-    path.pt(uB, f, _p); path.tan(uB, f, _t);
+    axisAt(pts, n, n - 1, _p, _t);
     _q.setFromUnitVectors(Yax, _t); _qs.setFromAxisAngle(Yax, spin);
     tip.collar.position.copy(_p).addScaledVector(_t, -collarLen / 2); tip.collar.quaternion.copy(_q);
     tip.helix.position.copy(_p).addScaledVector(_t, -HELIX * (1 - ext)); tip.helix.quaternion.copy(_q).multiply(_qs);
     tip.helix.visible = ext > 0.02;
-    path.pt(uB - ringAt, f, _p); path.tan(uB - ringAt, f, _t);
+    axisAt(pts, n, n - 1 - Math.round(ringAt / 0.03), _p, _t);
     tip.ring.position.copy(_p); tip.ring.quaternion.setFromUnitVectors(Yax, _t);
   };
+  const sm = (a, b, x) => ease((x - a) / (b - a));
   let frameNo = 0;
-  const _o = new THREE.Vector3();
+  const _o = new THREE.Vector3(), _r = new THREE.Vector3(), _dT = new THREE.Vector3();
   const pose = () => {
     const b = built, f = ++frameNo, starts = [];
     planeShift();
@@ -264,20 +276,39 @@ export function createPacingAnimation(heart, view, hooks) {
     const uContact = b.uS, uGo = ease(ph(1)) * uContact, screw = ph(2);
     const uTipV = screw > 0 ? uContact + b.g.depth * ease(screw) : uGo; // bout de la vis
     const spin = -2 * Math.PI * 7 * screw; // ≈ 7 tours
-    const nV = b.pv.upTo(Math.max(0, uTipV - HELIX), f, b.bufV);
-    b.leadV.set(b.bufV.pts, nV, spin / (2 * Math.PI));
-    placeTip(b.pv, b.tipV, uTipV - HELIX, f, 1, spin, 0.08, 0.95);
-    // gaine : suit la sonde jusqu'au septum, s'y appuie pendant le vissage, puis est retirée (4)
+    // gaine : avance avec la sonde jusqu'au septum, s'y appuie pendant le vissage, puis est retirée (4). Rigide : sa forme
+    // au repos, déplacée du mouvement de son bout, réparti le long de la gaine (rien à l'entrée de la veine cave)
     const uSh = ph(3) > 0 ? (uContact - 0.24) * (1 - ease(ph(3))) : Math.max(0, uGo - 0.24);
-    const nS = b.pv.upTo(uSh, f, b.bufS);
-    b.sheath.set(b.bufS.pts, nS);
+    move(_dT, b.pv.ptRest(uSh, _r)).sub(_r);
+    const sheathAt = (u, o) => b.pv.ptRest(u, o).addScaledVector(_dT, uSh > 0 ? Math.min(1, Math.max(0, u / uSh)) : 0);
+    const DU = b.pv.DU;
+    let nS = 0;
+    for (let u = 0; u < uSh; u += DU) sheathAt(u, b.poolS[nS++]);
+    if (uSh > 0) sheathAt(uSh, b.poolS[nS++]);
+    b.sheath.set(b.poolS, nS);
     b.band.visible = uSh > 0.3;
-    if (b.band.visible) { b.pv.pt(uSh - 0.06, f, _o); b.band.position.copy(_o); b.band.quaternion.setFromUnitVectors(Yax, b.pv.tan(uSh - 0.06, f, _t)); }
+    if (b.band.visible) { sheathAt(uSh - 0.06, b.band.position); b.band.quaternion.setFromUnitVectors(Yax, _t.subVectors(sheathAt(uSh, _o), b.band.position).normalize()); }
+    // sonde ventriculaire, de l'entrée au bout du corps (uB, sur le trajet de la gaine) : dans la gaine, elle suit la gaine ;
+    // au-delà de son bout, souple, elle suit le battement ; une fois la gaine retirée au-delà d'un point, elle y prend sa
+    // propre forme (trajet libre, même point d'ancrage)
+    const uB = Math.max(0, uTipV - HELIX), relax = ph(3) > 0, uRB = b.uRS + b.g.depth - HELIX;
+    let nV = 0;
+    for (let i = 0; ; i++) {
+      const u = Math.min(i * DU, uB), o = b.poolV[nV++];
+      b.pv.pt(u, f, o);
+      const cov = uSh > 0 ? 1 - sm(uSh - 0.05, uSh + 0.35, u) : 0;
+      if (cov > 0) o.lerp(sheathAt(u, _o), cov);
+      const r = relax ? (ph(3) >= 1 ? 1 : sm(uSh, uSh + 1.0, u)) : 0;
+      if (r > 0) o.lerp(b.pr.pt(uRB - (uB - u), f, _o), r);
+      if (u >= uB || nV >= b.poolV.length) break;
+    }
+    b.leadV.set(b.poolV, nV, spin / (2 * Math.PI));
+    placeTip(b.tipV, b.poolV, nV, 1, spin, 0.08, 0.95);
     // sonde auriculaire : descend, se recourbe, se pose (5 : 0 → 0,7), vis sortie en tournant (0,7 → 1)
-    const pA = ph(4), uB = b.uW * ease(pA / 0.7), ext = ease((pA - 0.72) / 0.28);
-    const nA = b.pa.upTo(uB, f, b.bufA);
+    const pA = ph(4), uA = b.uW * ease(pA / 0.7), ext = ease((pA - 0.72) / 0.28);
+    const nA = b.pa.upTo(uA, f, b.bufA);
     b.leadA.set(b.bufA.pts, nA);
-    placeTip(b.pa, b.tipA, uB, f, ext, -2 * Math.PI * 2.5 * ext, 0.14, 1.0);
+    placeTip(b.tipA, b.bufA.pts, nA, ext, -2 * Math.PI * 2.5 * ext, 0.14, 1.0);
     return k;
   };
   // cadrages, toujours dans l'axe de la vue (la coupe ne tourne pas) : [instant (s), centre, distance] — les 4 cavités (W),

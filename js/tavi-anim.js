@@ -1,7 +1,7 @@
 // Animation de l'implantation d'une TAVI (bioprothèse aortique à expansion par ballonnet, voie fémorale rétrograde),
 // dans le cœur du modèle, vue dans le plan de la crosse aortique (aorte ouverte sur toute sa longueur) :
 //   0. d'abord la valve malade, 2 s, dans la vue en cours (le cœur bat) ; puis la caméra passe dans le plan de la crosse,
-//      cœur arrêté, artère pulmonaire masquée (elle passe sous la crosse et cachait l'aorte et le guide) ;
+//      cœur arrêté, artère pulmonaire et paroi antérieure de l'aorte thoracique en transparence (on suit le guide) ;
 //   1. le guide rigide remonte l'aorte descendante, passe la crosse, franchit la valve rétrécie et se loge dans le
 //      ventricule gauche, son extrémité enroulée (« queue de cochon ») pour ne pas blesser la paroi ;
 //   2. le cathéter de largage monte le long du guide : valve sertie sur le ballonnet, cône jaune à l'avant ;
@@ -192,7 +192,7 @@ export function createTaviAnimation(heart, view, hooks) {
       if (tail >= 0 && (tail += dt) > 9) { tail = -1; if (!playing) hooks.caption(-1, ''); } // légende finale : 9 s
       if (!playing) return;
       t += dt;
-      // fin de l'étape sur la valve malade : aorte ouverte, artère pulmonaire masquée, vue de la crosse (hooks.enter)
+      // fin de l'étape sur la valve malade : aorte ouverte, artère pulmonaire et paroi antérieure de l'aorte en transparence, vue de la crosse (hooks.enter)
       if (!entered && t >= ON_VALVE) { entered = true; heart.rootUniforms.uOpenAo.value = 1; heart.setTaviMask(true); hooks.enter(); }
       const { k, e } = pose();
       api.syncValve(e, k);
