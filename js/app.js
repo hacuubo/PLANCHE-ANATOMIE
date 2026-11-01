@@ -145,6 +145,7 @@ const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     // les recouvrements s'additionnent, d'où une opacité basse
     const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.09, depthWrite: false, clippingPlanes: [ghostPlane] });
     heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07, 'ghost');
+    if (o.userData.taviMask) heart.addTaviMask(gm); // masque de l'animation de la TAVI
     const gh = new THREE.Mesh(o.geometry, gm);
     gh.visible = false; gh.userData.ghost = true;
     o.add(gh); ghostMats.push(gm); ghosts.push(gh);
@@ -272,6 +273,7 @@ function makeStencilMeshes(solid, order) {
   front.stencilFail = front.stencilZFail = front.stencilZPass = solid.hole ? inc : dec;
   const g = new THREE.Group();
   heart.addDeform(back, solid.k ?? 0.07); heart.addDeform(front, solid.k ?? 0.07); // le stencil suit le battement
+  if (solid.mesh.userData.taviMask) { heart.addTaviMask(back); heart.addTaviMask(front); } // masque de la TAVI : ni compté ni tranché
   const m0 = new THREE.Mesh(solid.mesh.geometry, back); m0.renderOrder = order;
   const m1 = new THREE.Mesh(solid.mesh.geometry, front); m1.renderOrder = order;
   g.add(m0, m1);
@@ -365,7 +367,7 @@ heart.solids.forEach((s) => {
     const mat = () => (capKey === 'myo' || capKey === 'pilier' ? sectionMaterial(heart, { stencil: STENCIL_CAP, rank, papillary: capKey === 'pilier' })
       : LUMEN_TINT[capKey] ? lumenCapMaterial(capKey, rank)
       : new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, envMapIntensity: 0.5, ...STENCIL_CAP, polygonOffset: true, polygonOffsetFactor: -rank, polygonOffsetUnits: -rank }));
-    const caps = [new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mat()), new THREE.Mesh(curveGeo, mat())];
+    const caps = [new THREE.Mesh(new THREE.PlaneGeometry(60, 60), heart.addTaviMask(mat())), new THREE.Mesh(curveGeo, heart.addTaviMask(mat()))]; // tranche écartée dans le masque de la TAVI
     for (const cap of caps) {
       cap.renderOrder = order + 1; cap.visible = false; cap.userData.capKey = capKey;
       cap.onAfterRender = (r) => r.clearStencil();
@@ -491,11 +493,15 @@ const cmpTags = document.createElement('div');
 cmpTags.className = 'compare-tags hidden'; cmpTags.setAttribute('aria-hidden', 'true');
 cmpTags.innerHTML = '<i></i><span class="cmp-l">Normale</span><span class="cmp-r"></span>';
 canvasWrap.appendChild(cmpTags);
+// écran partagé : à gauche la valve normale ; après une TAVI, la valve d'avant (rétrécissement serré)
+const leftOf = (v) => (v.variant === 'tavi' ? 'rao' : 'normale');
 function syncCompareTags() {
   const v = state.valve && VALVE_VIEWS[state.valve], on = !!(state.comparer && v);
   cmpTags.classList.toggle('hidden', !on);
   if (!on) return;
-  cmpTags.querySelector('.cmp-r').textContent = v.variantList.find(([k]) => k === v.variant)?.[1] ?? '';
+  const tavi = v.variant === 'tavi';
+  cmpTags.querySelector('.cmp-l').textContent = tavi ? 'Avant : rétrécissement serré' : 'Normale';
+  cmpTags.querySelector('.cmp-r').textContent = tavi ? 'Après : TAVI' : v.variantList.find(([k]) => k === v.variant)?.[1] ?? '';
   cmpTags.style.setProperty('--cmp-top', `${valveShift().top + 8}px`);
 }
 let splitShift = 0; // décalage vertical des vues des valves, relu au redimensionnement et à l'ouverture de la comparaison
@@ -510,10 +516,10 @@ const splitHooks = {
   before(i) {
     const v = VALVE_VIEWS[state.valve]; if (!v) return;
     if (v.applyHalf) { v.applyHalf(i); renderer.shadowMap.needsUpdate = true; halfCamera(true); return; }
-    const name = i === 0 ? 'normale' : v.variant, valve = v.valveFor(name), dil = v.dilationOf(name);
+    const name = i === 0 ? leftOf(v) : v.variant, valve = v.valveFor(name), dil = v.dilationOf(name);
     if (state.doppler) doppler.show(name);
     heart.showValve(v.heartValveId, valve);
-    if (v.dilationOf('normale') !== v.dilationOf(v.variant)) { // anneau dilaté d'un seul côté : cœur et valve redessinés
+    if (v.dilationOf(leftOf(v)) !== v.dilationOf(v.variant)) { // anneau dilaté d'un seul côté : cœur et valve redessinés
       heart.setDilation(dil);
       if (!trans) valveCut(v, 0);
       heart.redrawValve(valve, clock.elapsedTime, state.battement);
@@ -535,7 +541,7 @@ function setCompare(on) {
   on = !!(on && v);
   state.comparer = on;
   if (on && v.variant === 'normale') v.setVariant(v.variantList[1][0]); // à droite : la première pathologie
-  if (v?.valveFor) heart.setExtraValves(on ? [[v.heartValveId, v.valveFor('normale')]] : []);
+  if (v?.valveFor) heart.setExtraValves(on ? [[v.heartValveId, v.valveFor(leftOf(v))]] : []);
   contact.split = on ? splitHooks : null;
   if (v) { syncValveUI(); splitShift = valveShift().shift; restPose(); recenter(); } // cadrage refait pour une moitié d'écran
   syncCompareTags(); syncMarks(); syncLocator();
@@ -631,6 +637,7 @@ const procCaption = (steps) => (k, text) => {
 };
 const tavi = createTaviAnimation(heart, VALVE_VIEWS.aortique, {
   caption: procCaption(TAVI_STEPS),
+  enter() { taviEnter(); }, // après 2 s sur la valve malade : vue de la crosse, cœur arrêté
   finish() { taviToSurgical(); }, // dernière étape : vers la vue chirurgicale, sans coupure
 });
 // Animation de la fermeture du FOP (js/pfo-closure.js) : lancée à l'ouverture de la vue « Fermeture du FOP » (coupe
@@ -695,7 +702,8 @@ function stopClosure() {
 function taviToSurgical() {
   if (trans) { pendingAction = taviToSurgical; return; }
   const v = VALVE_VIEWS.aortique, sL = v.sides.L, sC = v.sides.C;
-  const done = () => { tavi.release(); if (!state.battement) toggle('battement', true); syncTaviBtn(); syncDoppler(); syncLocator(); };
+  // arrivée : la nouvelle valve bat, l'écran se partage avec la valve d'avant (à gauche)
+  const done = () => { tavi.release(); if (!state.battement) toggle('battement', true); syncTaviBtn(); syncDoppler(); syncLocator(); if (state.valve === 'aortique') setCompare(true); };
   if (state.valve !== 'aortique' || valveSide !== 'L') { done(); return; }
   // plans u·x = h (u : vers l'observateur), placés à δ devant le centre visé (cible de la caméra)
   const uL = sL.cut.normal.clone().negate(), uC = sC.cut.normal.clone().negate(), hL = sL.cut.def, hC = sC.cut.def;
@@ -711,13 +719,17 @@ function taviToSurgical() {
     done(); restPose(); renderer.shadowMap.needsUpdate = true;
   });
 }
+// d'abord la valve malade, 2 s, dans la vue en cours, cœur qui bat (tavi.play pose la valve native) ; puis taviEnter
 function startTavi() {
   if (trans) { pendingAction = startTavi; return; }
   if (state.comparer) setCompare(false);
-  if (state.battement) toggle('battement', false);
-  frozenPhase = null; valveOpen = true; // valve native ouverte (petit orifice), cœur sans déformation
   tavi.play();
   syncDoppler(); syncTaviBtn(); syncLocator();
+}
+function taviEnter() {
+  if (state.valve !== 'aortique' || !tavi.playing) return;
+  if (state.battement) toggle('battement', false);
+  frozenPhase = null; valveOpen = true; // valve native ouverte (petit orifice), cœur sans déformation
   setValveSide('L');
   restPose();
 }

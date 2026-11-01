@@ -137,16 +137,21 @@ une liste numérotée des structures, et une fiche explicative par structure.
     rayons (bord de l'espace sanguin, de la chambre de chasse au haut des sinus), ajusté à chaque hauteur en cercle
     décentré et ovalisé (forme d'une armature dilatée dans un anneau ovale), lissé le long de l'axe ; armature contre les
     cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
-    (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : vue dans le plan de la crosse aortique (coupe passant
-    par le centre de la valve, aorte ouverte sur toute sa longueur), cœur arrêté en diastole ; guide qui remonte
+    (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : d'abord la valve malade, 2 s, dans la vue en cours,
+    cœur qui bat ; puis vue dans le plan de la crosse aortique (coupe passant par le centre de la valve), cœur arrêté en
+    diastole, artère pulmonaire masquée (elle passe sous la crosse et cachait l'aorte) et aorte ouverte sur toute sa
+    longueur, jusque dans l'aorte descendante (sa moitié tournée vers l'observateur est retirée) — masque en volume de
+    1,5 mm, calculé au premier lancement : lumière et paroi de l'artère pulmonaire, moitié avant de l'aorte au-delà de
+    3,5 cm de la valve (voxels plus proches de ces lumières que de toute autre lumière ou cavité) ; guide qui remonte
     l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche (« queue de cochon ») ;
     cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
     ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement
     (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;
     puis, sans coupure, la caméra tourne vers la vue chirurgicale pendant que le plan de coupe tourne avec elle, face au
     regard, juste devant la valve (la valve reste dégagée, le ventricule et l'aorte ouverts se referment peu à peu) ; à
-    l'arrivée, la nouvelle valve bat. Caméra : plan large sur la crosse,
-    rapproché sur la valve du positionnement jusqu'au retrait du guide ; légende de chaque étape (7) au-dessus du
+    l'arrivée, la nouvelle valve bat et l'écran se partage : à gauche la valve d'avant (« Avant : rétrécissement
+    serré »), à droite la TAVI (« Après : TAVI »), au même instant du cycle. Caméra : plan large sur la crosse,
+    rapproché sur la valve du positionnement jusqu'au retrait du guide ; légende de chaque étape (8) au-dessus du
     cycle. Trajet : ligne centrale de la lumière aortique (barycentres successifs, lissée), puis chambre de chasse et
     ventricule gauche par le milieu de sa cavité, dans la moitié gardée par la coupe (barycentres de tranches de la
     cavité, recentrés par la distance signée à l'endocarde : le guide ne passe ni dans le septum ni devant sa tranche).

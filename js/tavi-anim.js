@@ -1,5 +1,7 @@
 // Animation de l'implantation d'une TAVI (bioprothèse aortique à expansion par ballonnet, voie fémorale rétrograde),
 // dans le cœur du modèle, vue dans le plan de la crosse aortique (aorte ouverte sur toute sa longueur) :
+//   0. d'abord la valve malade, 2 s, dans la vue en cours (le cœur bat) ; puis la caméra passe dans le plan de la crosse,
+//      cœur arrêté, artère pulmonaire masquée (elle passe sous la crosse et cachait l'aorte et le guide) ;
 //   1. le guide rigide remonte l'aorte descendante, passe la crosse, franchit la valve rétrécie et se loge dans le
 //      ventricule gauche, son extrémité enroulée (« queue de cochon ») pour ne pas blesser la paroi ;
 //   2. le cathéter de largage monte le long du guide : valve sertie sur le ballonnet, cône jaune à l'avant ;
@@ -9,7 +11,8 @@
 //   5. le ballonnet est dégonflé, puis retiré avec le cathéter ; la prothèse reste fixée par sa force radiale ;
 //   6. le guide est retiré ;
 //   7. sans coupure, la caméra tourne de la vue de la crosse à la vue chirurgicale pendant que le plan de coupe pivote
-//      avec elle (js/app.js) ; puis la nouvelle valve s'ouvre et se ferme à chaque battement.
+//      avec elle (js/app.js) ; puis la nouvelle valve s'ouvre et se ferme à chaque battement, et l'écran se partage :
+//      la valve d'avant (rétrécissement serré) à gauche, la TAVI à droite.
 // Matériel : guide de ≈ 0,9 mm, cathéter de ≈ 5,5 mm (14 F), cône d'introduction, bioprothèse sertie à ≈ 7 mm puis
 // déployée à la taille de l'anneau (armature de la valve finale, js/aortic-view.js). Le cœur est arrêté en diastole
 // pendant la mise en place (pose sans déformation : le matériel et la valve sertie sont placés au repos).
@@ -17,6 +20,7 @@ import * as THREE from 'three';
 
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 export const TAVI_STEPS = [
+  { d: 4.2, text: 'La valve aortique malade : épaissie et calcifiée, elle s’ouvre mal et freine la sortie du sang du cœur.' },
   { d: 4.2, text: 'Un guide fin est poussé depuis l’artère de l’aine, remonte l’aorte, passe la crosse, franchit la valve malade et s’enroule dans le ventricule gauche.' },
   { d: 6.0, text: 'Le long du guide monte la nouvelle valve, sertie sur un ballonnet ; le petit cône jaune ouvre la voie.' },
   { d: 2.0, text: 'Elle est placée au milieu de la valve malade, calcifiée et rétrécie.' },
@@ -28,6 +32,8 @@ export const TAVI_STEPS = [
 
 export function createTaviAnimation(heart, view, hooks) {
   let built = null, playing = false, t = 0, step = -1, tail = -1; // tail : temps écoulé depuis la fin (légende finale)
+  const ON_VALVE = 2.0; // durée sur la valve malade avant le passage dans le plan de la crosse
+  let entered = false;
   const build = () => {
     const kit = view.taviKit(), curve = kit.path.curve, L = kit.path.length, S = 900;
     const group = new THREE.Group(); group.visible = false; heart.root.add(group);
@@ -103,14 +109,14 @@ export function createTaviAnimation(heart, view, hooks) {
     let acc = 0; for (const s of TAVI_STEPS) { starts.push(acc); acc += s.d; }
     const ph = (k) => (TAVI_STEPS[k].d ? Math.min(1, Math.max(0, (t - starts[k]) / TAVI_STEPS[k].d)) : t >= starts[k] ? 1 : 0);
     const k = Math.max(0, starts.findLastIndex((s0) => t >= s0));
-    // guide : avance (étape 1), retrait (étape 6)
-    const uw = L * (ease(ph(0)) - ease(ph(5)));
+    // guide : avance (étape 1), retrait (étape 6) ; étape 0 : la valve malade
+    const uw = L * (ease(ph(1)) - ease(ph(6)));
     b.range(b.wire, 0, uw);
     // cathéter : centre de la valve sertie (étape 2 : arrivée sur l'anneau ; étape 5 : retrait)
-    const uStart = -4, uc = ph(1) < 1 ? uStart + (uV - uStart) * ease(ph(1)) : uV - (uV + 8) * ease((ph(4) - 0.35) / 0.65);
-    const blend = ph(1) >= 1 && ph(4) < 0.35 ? ease(ph(2)) : 0; // centrage exact sur l'anneau (étape 3)
-    const e = ease(ph(3)), deflate = ease(Math.min(1, ph(4) / 0.3));
-    const visible = ph(1) > 0 && ph(4) < 1;
+    const uStart = -4, uc = ph(2) < 1 ? uStart + (uV - uStart) * ease(ph(2)) : uV - (uV + 8) * ease((ph(5) - 0.35) / 0.65);
+    const blend = ph(2) >= 1 && ph(5) < 0.35 ? ease(ph(3)) : 0; // centrage exact sur l'anneau (étape 3)
+    const e = ease(ph(4)), deflate = ease(Math.min(1, ph(5) / 0.3));
+    const visible = ph(2) > 0 && ph(5) < 1;
     const uBack = uc - h / 2 - 0.25, uNose = uc + h / 2 + 0.15;
     b.range(b.cath, 0, visible ? uBack : 0);
     b.range(b.shaft, 0, visible ? uNose : 0); // tige interne : visible de la fin du cathéter au cône
@@ -121,8 +127,8 @@ export function createTaviAnimation(heart, view, hooks) {
     b.inflate(e * (1 - deflate));
     if (b.bal.visible) b.place(b.bal, uc, blend);
     // armature : sertie sur le ballonnet jusqu'au gonflement, puis déployée et fixe sur l'anneau
-    const deployed = ph(3) > 0;
-    b.rig.visible = ph(1) > 0 && (deployed || uc > -h);
+    const deployed = ph(4) > 0;
+    b.rig.visible = ph(2) > 0 && (deployed || uc > -h);
     if (deployed) { b.rig.position.copy(built.kit.center); b.rig.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), built.kit.axis); }
     else if (b.rig.visible) b.place(b.rig, uc, blend, true);
     const s = crimp + (1 - crimp) * e;
@@ -132,8 +138,8 @@ export function createTaviAnimation(heart, view, hooks) {
   // cadrage (vue L) : plan large sur la crosse pendant la montée du matériel, rapproché sur la valve pour le
   // positionnement et le déploiement, puis jusqu'à la fin des retraits (on reste sur la valve ; la fin passe
   // directement à la vue chirurgicale) ; [instant (s), hauteur du centre au-dessus de l'anneau (cm), distance (cm)]
-  // — le premier est celui de la vue L (js/aortic-view.js)
-  const SHOTS = [[0, 2.6, 30], [7.5, 2.6, 30], [10.2, 0.4, 13]];
+  // — le premier est celui de la vue L (js/aortic-view.js) ; le guide part à 4,2 s
+  const SHOTS = [[0, 2.6, 30], [11.7, 2.6, 30], [14.4, 0.4, 13]];
   const frameAt = () => {
     let i = 0; while (i < SHOTS.length - 1 && t >= SHOTS[i + 1][0]) i++;
     const a = SHOTS[i], b = SHOTS[Math.min(i + 1, SHOTS.length - 1)], f = b === a ? 0 : ease((t - a[0]) / (b[0] - a[0]));
@@ -150,8 +156,7 @@ export function createTaviAnimation(heart, view, hooks) {
     // lance l'animation (la vue L et le cœur arrêté sont posés par hooks.enter)
     play() {
       built ??= build();
-      t = -2.2; step = -1; playing = true; shownValve = null; tail = -1;
-      heart.rootUniforms.uOpenAo.value = 1;
+      t = 0; step = -1; playing = true; shownValve = null; tail = -1; entered = false;
       built.group.visible = true;
       pose();
       api.syncValve(0, 0);
@@ -168,14 +173,14 @@ export function createTaviAnimation(heart, view, hooks) {
     // fin du passage à la vue chirurgicale : matériel retiré, aorte refermée, valve finale (elle prend la même place)
     release() {
       if (!built || !held) return;
-      held = false; built.group.visible = false; heart.rootUniforms.uOpenAo.value = 0;
+      held = false; built.group.visible = false; heart.rootUniforms.uOpenAo.value = 0; heart.setTaviMask(false);
       shownValve = 'post'; heart.useValve(view.heartValveId, built.kit.post);
     },
     stop() {
       if (!built) return;
       playing = false; step = -1; held = false;
       built.group.visible = false;
-      heart.rootUniforms.uOpenAo.value = 0;
+      heart.rootUniforms.uOpenAo.value = 0; heart.setTaviMask(false);
       hooks.caption(-1, '');
     },
     // cadrage du moment (vue L) : { center, dist }
@@ -187,11 +192,13 @@ export function createTaviAnimation(heart, view, hooks) {
       if (tail >= 0 && (tail += dt) > 9) { tail = -1; if (!playing) hooks.caption(-1, ''); } // légende finale : 9 s
       if (!playing) return;
       t += dt;
+      // fin de l'étape sur la valve malade : aorte ouverte, artère pulmonaire masquée, vue de la crosse (hooks.enter)
+      if (!entered && t >= ON_VALVE) { entered = true; heart.rootUniforms.uOpenAo.value = 1; heart.setTaviMask(true); hooks.enter(); }
       const { k, e } = pose();
       api.syncValve(e, k);
       if (k !== step) {
         step = k; hooks.caption(k, TAVI_STEPS[k].text);
-        if (k === 6) { playing = false; held = true; tail = 0; hooks.finish(); }
+        if (k === TAVI_STEPS.length - 1) { playing = false; held = true; tail = 0; hooks.finish(); }
       }
     },
   };

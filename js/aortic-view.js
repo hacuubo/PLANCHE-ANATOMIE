@@ -474,6 +474,7 @@ export function buildSLView(heart, kind = 'aortique') {
       orient: 'Coupe dans le plan de la crosse aortique · <b>aorte ascendante en haut</b>' };
     let kit = null;
     view.taviKit = () => kit ??= (() => {
+      heart.buildTaviMask(path.centerline, path.archNormal); // artère pulmonaire masquée, aorte ouverte sur sa longueur
       const pre = valveOf('rao'), post = valveOf('tavi');
       // pendant le déploiement : cuspides natives plaquées seules (l'armature est celle de l'animation)
       const tm = taviParts(true);
@@ -583,6 +584,6 @@ function aorticPath(heart, C, A) {
     const curve = new THREE.CatmullRomCurve3([...sm.slice().reverse(), ...lv, ...loop], false, 'centripetal');
     return { curve, length: curve.getLength() };
   };
-  return { get curve() { return (route ??= ventricle()).curve; }, get length() { return (route ??= ventricle()).length; }, archNormal: n, aortaEnd: sm.length - 1 };
+  return { get curve() { return (route ??= ventricle()).curve; }, get length() { return (route ??= ventricle()).length; }, archNormal: n, aortaEnd: sm.length - 1, centerline: sm };
 }
 export const buildAorticView = (heart) => buildSLView(heart, 'aortique');
