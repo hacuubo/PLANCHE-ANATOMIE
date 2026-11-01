@@ -1,21 +1,24 @@
 // Animation de l'implantation d'une TAVI (bioprothèse aortique à expansion par ballonnet, voie fémorale rétrograde),
 // dans le cœur du modèle, vue dans le plan de la crosse aortique (aorte ouverte sur toute sa longueur) :
-//   0. d'abord la valve malade, 2 s, dans la vue en cours (le cœur bat) ; puis la caméra passe dans le plan de la crosse,
-//      cœur arrêté, artère pulmonaire et paroi antérieure de l'aorte thoracique en transparence (on suit le guide) ;
+//   0. d'abord la valve malade, 2 s, dans la vue en cours ; puis la caméra passe dans le plan de la crosse, artère
+//      pulmonaire et paroi antérieure de l'aorte thoracique en transparence (on suit le guide) ;
 //   1. le guide rigide remonte l'aorte descendante, passe la crosse, franchit la valve rétrécie et se loge dans le
 //      ventricule gauche, son extrémité enroulée (« queue de cochon ») pour ne pas blesser la paroi ;
 //   2. le cathéter de largage monte le long du guide : valve sertie sur le ballonnet, cône jaune à l'avant ;
 //   3. la valve sertie est centrée sur l'anneau, au milieu de la valve native calcifiée ;
-//   4. le ballonnet est gonflé (stimulation cardiaque rapide : le cœur n'éjecte plus pendant quelques secondes) :
-//      l'armature se déploie et plaque la valve native contre la paroi ;
+//   4. le ballonnet est gonflé sous stimulation ventriculaire rapide (≈ 200/min : le cœur s'agite vite et faiblement,
+//      n'éjecte plus pendant quelques secondes ; js/app.js, rapidPacing) : l'armature se déploie et plaque la valve
+//      native contre la paroi ;
 //   5. le ballonnet est dégonflé, puis retiré avec le cathéter ; la prothèse reste fixée par sa force radiale ;
 //   6. le guide est retiré ;
 //   7. sans coupure, la caméra tourne de la vue de la crosse à la vue chirurgicale pendant que le plan de coupe pivote
 //      avec elle (js/app.js) ; puis la nouvelle valve s'ouvre et se ferme à chaque battement, et l'écran se partage :
 //      la valve d'avant (rétrécissement serré) à gauche, la TAVI à droite.
 // Matériel : guide de ≈ 0,9 mm, cathéter de ≈ 5,5 mm (14 F), cône d'introduction, bioprothèse sertie à ≈ 7 mm puis
-// déployée à la taille de l'anneau (armature de la valve finale, js/aortic-view.js). Le cœur est arrêté en diastole
-// pendant la mise en place (pose sans déformation : le matériel et la valve sertie sont placés au repos).
+// déployée à la taille de l'anneau (armature de la valve finale, js/aortic-view.js). Le cœur bat pendant toute
+// l'animation : le matériel est placé au repos, et chacun de ses points est déplacé par la déformation du battement,
+// dans le shader, comme les tissus (heart.addDeform) — le guide et le cathéter suivent l'aorte et le ventricule, la
+// valve suit l'anneau.
 import * as THREE from 'three';
 
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
@@ -55,6 +58,8 @@ export function createTaviAnimation(heart, view, hooks) {
     const metal = new THREE.MeshStandardMaterial({ color: 0xaeb4bc, metalness: 0.85, roughness: 0.28 });
     const tissue = new THREE.MeshStandardMaterial({ color: 0xede5d3, roughness: 0.55, side: THREE.DoubleSide });
     kit.inner.traverse((o) => { if (o.isMesh) { o.material = o.geometry.attributes.col ? tissue : metal; o.frustumCulled = false; } });
+    // tout le matériel suit le battement (déformation dans le shader, sans coupe ; objets placés : dans leur repère)
+    const followBeat = () => group.traverse((o) => { if (o.isMesh && !o.material.userData.beat) { o.material.userData.beat = true; heart.addDeform(o.material, 0.1, 'none', true); } });
     const rig = new THREE.Group(); rig.add(kit.inner); group.add(rig);
     // ballonnet : fuseau translucide, effilé aux deux bouts, à la longueur de la valve + 8 mm
     const bl = kit.height + 0.8, bal = new THREE.Mesh(new THREE.LatheGeometry(Array.from({ length: 17 }, (_, i) => {
@@ -62,6 +67,7 @@ export function createTaviAnimation(heart, view, hooks) {
       return new THREE.Vector2(e < 0.72 ? 1 : Math.sqrt(Math.max(0.0025, 1 - ((e - 0.72) / 0.28) ** 2)) * 0.95 + 0.05, y);
     }), 32), new THREE.MeshPhysicalMaterial({ color: 0xeef3f6, transparent: true, opacity: 0.42, roughness: 0.15, clearcoat: 1, depthWrite: false }));
     bal.renderOrder = 3; group.add(bal);
+    followBeat();
     // repères le long du trajet : position de la valve déployée
     const samples = curve.getSpacedPoints(S);
     let iv = 0; samples.forEach((p, i) => { if (p.distanceTo(kit.center) < samples[iv].distanceTo(kit.center)) iv = i; });
@@ -153,6 +159,12 @@ export function createTaviAnimation(heart, view, hooks) {
   const api = {
     get playing() { return playing; },
     get step() { return step; },
+    // stimulation ventriculaire rapide (0 → 1) : du début du gonflement à la fin du dégonflement du ballonnet
+    get rapidPacing() {
+      if (!playing || !built) return 0;
+      let acc = 0; const st = TAVI_STEPS.map((s) => { const a = acc; acc += s.d; return a; });
+      return ease((t - st[4] + 0.4) / 0.6) * (1 - ease((t - st[5] - 1.0) / 0.8));
+    },
     // lance l'animation (la vue L et le cœur arrêté sont posés par hooks.enter) ; skipValve : sans l'arrêt sur la valve
     // malade (relais de la planche du corps entier, js/route-intro.js : le guide arrive par l'aorte descendante)
     prepare() { built ??= build(); }, // construction d'avance (pendant le trajet depuis la ponction, js/app.js)

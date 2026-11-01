@@ -181,6 +181,8 @@ vec3 heartDeform(vec3 p) {
 }
 `;
 const DEFORM_VERTEX = 'if (uDOn > 0.5) { vec4 wpD = modelMatrix * vec4(transformed, 1.0); transformed += heartDeform(wpD.xyz) - wpD.xyz; }';
+// même déplacement, ramené dans le repère de l'objet (objets placés par leur matrice : rotation, échelle)
+const DEFORM_VERTEX_LOCAL = 'if (uDOn > 0.5) { vec4 wpD = modelMatrix * vec4(transformed, 1.0); transformed += inverse(mat3(modelMatrix)) * (heartDeform(wpD.xyz) - wpD.xyz); }';
 // Coupe courbe (coupe 5 cavités, js/app.js) : surface z = h(x, y) dans un repère (uCutX, uCutY, uCutV) d'origine uCutO,
 // vue depuis +uCutV. h mêle un plan de fond (uCutAB) et quatre plans locaux (uCutP, centrés en uCutC) :
 // h = (fond + Σ k·wᵢ·planᵢ) / (1 + Σ k·wᵢ), wᵢ = exp(−(d/σ)^e), σ = uCutS.x, e = uCutS.y, k = uCutS.z.
@@ -259,18 +261,20 @@ bool inRootFloor(vec3 p) {
 `;
 const cutDiscard = (test) => `#include <clipping_planes_fragment>\n  if (uCutOn > 0.5 && ${test}) discard;`;
 // Ajoute la déformation à un matériau quelconque (stencil des coupes, fantôme) : uniformes partagés + raideur k.
-export function addDeformTo(mat, shared, k, cut = 'keep') {
+// cut : 'keep' (on garde ce qui est derrière la coupe), 'ghost' (l'inverse), 'none' (pas de coupe : matériel des
+// animations) ; local : objet placé par sa matrice (déplacement ramené dans son repère)
+export function addDeformTo(mat, shared, k, cut = 'keep', local = false) {
   const uniforms = { ...shared, uDK: { value: k }, uDOn: { value: 1 }, ...cutU };
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     if (prev) prev(sh, r);
     Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_DEFORM}\nvarying vec3 vCutW;`).replace('#include <begin_vertex>', `#include <begin_vertex>\n${DEFORM_VERTEX}\n${CUT_VERTEX}`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${GLSL_CUT}`)
-      .replace('#include <clipping_planes_fragment>', cutDiscard(cut === 'ghost' ? 'cutField(vCutW, 0.0) >= 0.0' : 'cutField(vCutW, 0.0) < 0.0'));
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_DEFORM}\nvarying vec3 vCutW;`).replace('#include <begin_vertex>', `#include <begin_vertex>\n${local ? DEFORM_VERTEX_LOCAL : DEFORM_VERTEX}\n${CUT_VERTEX}`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\n${GLSL_CUT}`);
+    if (cut !== 'none') sh.fragmentShader = sh.fragmentShader.replace('#include <clipping_planes_fragment>', cutDiscard(cut === 'ghost' ? 'cutField(vCutW, 0.0) >= 0.0' : 'cutField(vCutW, 0.0) < 0.0'));
   };
   const key = mat.customProgramCacheKey ? mat.customProgramCacheKey.bind(mat) : () => '';
-  mat.customProgramCacheKey = () => key() + '|deform-' + cut;
+  mat.customProgramCacheKey = () => key() + '|deform-' + cut + (local ? '-local' : '');
   return mat;
 }
 
@@ -884,7 +888,7 @@ export async function buildHeart(onProgress) {
     mat.onBeforeCompile = (sh, r) => {
       prev?.call(mat, sh, r);
       Object.assign(sh.uniforms, maskU);
-      sh.vertexShader = 'varying vec3 vTMW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vTMW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.vertexShader = 'varying vec3 vTMW;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vTMW = (modelMatrix * vec4(position, 1.0)).xyz;');
       sh.fragmentShader = 'uniform float uTaviMask;\nuniform sampler3D uTMTex;\nuniform vec3 uTMMin;\nuniform vec3 uTMSize;\nuniform mat4 uTMInv;\nvarying vec3 vTMW;\n'
         + sh.fragmentShader.replace('void main() {', `void main() {
   if (uTaviMask > 0.5) { vec3 tcTM = ((uTMInv * vec4(vTMW, 1.0)).xyz - uTMMin) / uTMSize;
@@ -1610,7 +1614,15 @@ export async function buildHeart(onProgress) {
     }
   }
   const REPOS = { atr: 0, ven: 0, av: 0.9, sl: 0 };
-  const setBeat = (phase) => setPose(phase === null ? REPOS : cycle(phase));
+  // amp < 1 : battement de faible amplitude, sans éjection (stimulation ventriculaire rapide de la TAVI) — mouvements
+  // réduits, valve aortique presque fermée
+  const setBeat = (phase, amp = 1) => {
+    if (phase === null) return setPose(REPOS);
+    const c = cycle(phase);
+    if (amp >= 1) return setPose(c);
+    const s = (x) => x * amp;
+    return setPose({ ven: s(c.ven), rad: c.rad.map(s), lg: s(c.lg), tw: c.tw.map(s), atr: c.atr.map(s), res: s(c.res), mv: c.mv, tv: c.tv, ao: s(s(c.ao)), pv: c.pv, get av() { return this.mv; }, get sl() { return this.ao; } });
+  };
   setBeat(null);
   // Variante affichée pour un orifice (null : valve normale) ; elle reprend la position de la valve qu'elle remplace.
   const useValve = (id, v) => {
@@ -1684,6 +1696,6 @@ export async function buildHeart(onProgress) {
     structureIds: ids, // indice de structure (attribut sid des cavités) → nom
     material: (key, preset) => matFor(key, preset), // matériaux « tissu » pour d'autres vues (valve aortique)
     // repères pour les coupes échographiques : pointe, base, centre et axe de chaque valve (axe : amont → aval)
-    landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k, cut) => addDeformTo(mat, deformU, k, cut),
+    landmarks: { apex: v3(F.apex), base: v3(F.base), valves: Object.fromEntries(Object.entries(header.valves || {}).map(([id, d]) => [id, { center: v3(d.center), axis: v3(d.axis).normalize() }])) }, addDeform: (mat, k, cut, local) => addDeformTo(mat, deformU, k, cut, local),
     deformUniforms: deformU, cutUniforms: cutU, rootUniforms: rootU, wall }; // tranches de coupe : déformation du battement et carte 3D de la paroi
 }

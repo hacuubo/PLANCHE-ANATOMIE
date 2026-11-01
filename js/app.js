@@ -946,10 +946,17 @@ function startTavi(skipIntro = false) {
 }
 function taviEnter() {
   if (state.valve !== 'aortique' || !tavi.playing) return;
-  if (state.battement) toggle('battement', false);
-  frozenPhase = null; valveOpen = true; // valve native ouverte (petit orifice), cœur sans déformation
+  frozenPhase = null; // à cœur battant : le matériel suit la déformation (js/tavi-anim.js)
   setValveSide('L', directEnter); directEnter = false;
-  restPose();
+  // depuis la planche (cœur immobile) : le battement part à la fin du fondu, de la fin de la diastole (pose de repos),
+  // pour un relais sans saut
+  taviBeat = true;
+}
+let taviBeat = false;
+function startTaviBeat() {
+  if (!taviBeat || (intro.playing && introProc === tavi)) return;
+  taviBeat = false;
+  if (tavi.playing && !state.battement) { beatPhase = 0.92; toggle('battement', true); }
 }
 function stopTavi() {
   if (!tavi.playing && !tavi.held) return;
@@ -1650,13 +1657,16 @@ function animate() {
   updateDepthFog(dt);
   // battement physiologique : cycle complet (≈ 64 battements par minute) ; au repos, planche figée en diastole
   if (state.battement) {
-    beatPhase = (beatPhase + Math.min(dt, 0.1) * beatSpeed * BPM / 60) % 1;
-    heart.setBeat(beatPhase); beatIdle = false;
+    // TAVI : stimulation ventriculaire rapide pendant le gonflement du ballonnet (≈ 200/min, battements faibles)
+    const rp = tavi.rapidPacing;
+    beatPhase = (beatPhase + Math.min(dt, 0.1) * beatSpeed * BPM / 60 * (1 + 2.1 * rp)) % 1;
+    heart.setBeat(beatPhase, 1 - 0.8 * rp); beatIdle = false;
     if (frame % (prStep ? 6 : 3) === 0) renderer.shadowMap.needsUpdate = true; // qualité réduite : ombres moins souvent
     if ((frame & 1) === 0) syncCycleUI();
   }
   else if (!beatIdle) { beatIdle = true; restPose(); }
   tavi.update(Math.min(dt, 0.1));
+  startTaviBeat();
   if (tavi.playing && !trans && valveSide === 'L') { // caméra de l'animation (plan large, rapproché…)
     const f = tavi.frame(), sd = VALVE_VIEWS.aortique.sides.L;
     controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(sd.camDir, f.dist * portrait()); setCameraUp(sd.up);

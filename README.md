@@ -139,7 +139,10 @@ une liste numérotée des structures, et une fiche explicative par structure.
     cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
     (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : après le trajet depuis la ponction (voir plus bas),
     vue dans le plan de la crosse aortique (coupe passant par le centre de la valve ; la légende présente d'abord la
-    valve malade), cœur arrêté en diastole ; l'aorte est fendue sur toute sa longueur, de la valve à l'aorte descendante, comme un tuyau coupé en long
+    valve malade), à cœur battant (le battement part à la fin du fondu depuis la planche, de la fin de la diastole) :
+    le matériel, placé au repos, est déplacé point par point par la déformation du battement, dans le shader, comme les
+    tissus — guide et cathéter suivent l'aorte et le ventricule, la valve sertie puis déployée suit l'anneau ; l'ouverture
+    de l'aorte est lue à la position de repos des tissus et suit la paroi qui bat ; l'aorte est fendue sur toute sa longueur, de la valve à l'aorte descendante, comme un tuyau coupé en long
     (surface d'ouverture passant par sa ligne centrale ; tranche de la paroi le long des deux bords) : seule reste sa
     moitié postérieure, en gouttière lisse d'une seule teinte (demi-tube qui épouse la lumière mesurée tous les 2,5 mm,
     à la place de l'intima de BodyParts3D, en deux pièces fendues à leur jonction) ; les branches de la crosse gardent
@@ -149,8 +152,9 @@ une liste numérotée des structures, et une fiche explicative par structure.
     guide qui remonte l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche
     (« queue de cochon ») ;
     cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
-    ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement
-    (stimulation rapide) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;
+    ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement sous
+    stimulation ventriculaire rapide (≈ 200/min, battements de faible amplitude, valve aortique presque fermée, du début
+    du gonflement à la fin du dégonflement) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;
     puis, sans coupure, la caméra tourne vers la vue chirurgicale pendant que le plan de coupe tourne avec elle, face au
     regard, juste devant la valve (la valve reste dégagée, le ventricule et l'aorte ouverts se referment peu à peu) ; à
     l'arrivée, la nouvelle valve bat et l'écran se partage : à gauche la valve d'avant (« Avant : rétrécissement
