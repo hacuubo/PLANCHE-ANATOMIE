@@ -474,7 +474,7 @@ export function buildSLView(heart, kind = 'aortique') {
       orient: 'Coupe dans le plan de la crosse aortique · <b>aorte ascendante en haut</b>' };
     let kit = null;
     view.taviKit = () => kit ??= (() => {
-      heart.buildTaviMask(path.centerline, path.archNormal, path.archNormal.dot(C)); // aorte fendue en long (plan de coupe de la vue L près de la valve), artère pulmonaire en transparence
+      heart.buildTaviMask(path.centerline, path.archNormal); // aorte fendue en long (gouttière postérieure), artère pulmonaire retirée
       const pre = valveOf('rao'), post = valveOf('tavi');
       // pendant le déploiement : cuspides natives plaquées seules (l'armature est celle de l'animation)
       const tm = taviParts(true);

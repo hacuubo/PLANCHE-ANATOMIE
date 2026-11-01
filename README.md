@@ -139,12 +139,13 @@ une liste numérotée des structures, et une fiche explicative par structure.
     cuspides natives, elles-mêmes contre la paroi ; feuillets, jupe et ballonnet gonflé à la même forme. **Animation de l'implantation** (js/tavi-anim.js), lancée au choix de « TAVI »
     (bouton « Voir l'implantation » pour la revoir, « Arrêter ») : d'abord la valve malade, 2 s, dans la vue en cours,
     cœur qui bat ; puis vue dans le plan de la crosse aortique (coupe passant par le centre de la valve), cœur arrêté en
-    diastole ; l'aorte est fendue sur toute sa longueur comme un tuyau coupé en long (surface d'ouverture passant par
-    sa ligne centrale, qui rejoint le plan de coupe près de la valve ; tranche de la paroi le long des deux bords), sa
-    moitié antérieure restant en voile clair d'un seul tenant, sans les tranches du plan de coupe qui gênaient la vue ;
-    l'artère pulmonaire (elle passe sous la crosse et cachait l'aorte) est en transparence elle aussi — champ en volume
-    de 1,5 mm calculé au premier lancement (territoire de chaque lumière, distance signée à l'ouverture et au plan),
-    à limites lisses ; ailleurs, la coupe ne change pas ; guide et cathéter dessinés nets par-dessus le voile ;
+    diastole ; l'aorte est fendue sur toute sa longueur, de la valve à l'aorte descendante, comme un tuyau coupé en long
+    (surface d'ouverture passant par sa ligne centrale ; tranche de la paroi le long des deux bords) : seule reste sa
+    moitié postérieure, en gouttière lisse d'une seule teinte (demi-tube qui épouse la lumière mesurée tous les 2,5 mm,
+    à la place de l'intima de BodyParts3D, en deux pièces fendues à leur jonction) ; les branches de la crosse gardent
+    la coupe d'origine ; l'artère pulmonaire (elle passe sous la crosse et cachait l'aorte), sa racine comprise, est
+    retirée — champ en volume de 1,5 mm calculé au premier lancement (territoire de chaque lumière, distance signée à
+    l'ouverture, tronc de l'aorte), à limites lisses ; ailleurs, la coupe ne change pas ;
     guide qui remonte l'aorte descendante et la crosse, franchit la valve et s'enroule dans le ventricule gauche
     (« queue de cochon ») ;
     cathéter bleu (≈ 14 F) avec la valve sertie (≈ 7 mm) sur son ballonnet, déjà dans son sens final (entrée vers le
@@ -175,7 +176,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
     cœur, feuillets attirés vers le ventricule, défaut de coaptation central).
 - **FOP** (js/special-views.js) : **fosse ovale normale** vue de l'oreillette droite (paroi libre retirée) — fosse
   placée sur la zone la plus mince du septum (19 × 16 mm, plancher mince du septum primum, limbe en fer à cheval ouvert
-  vers le bas, Naqvi 2018) ; **FOP · test aux bulles** : coupe bicave comme en ETO (OG en haut, veine cave supérieure à
+  vers le bas, Naqvi 2018), déformée avec le septum pendant tout le cycle (plancher, paroi et limbe d'un seul tenant) ; **FOP · test aux bulles** : coupe bicave comme en ETO (OG en haut, veine cave supérieure à
   droite), postérieure : elle passe par la fosse ovale (plancher et limbe en coupe) et par le FOP dans toute sa longueur.
   FOP (Goel 2009 ; Hara 2005) : le septum primum (plancher de la fosse) se prolonge côté OG en un rabat mince (≈ 0,8 mm,
   pâle) qui chevauche le septum secundum (limbe) au-delà du bord supérieur de la fosse, vers la veine cave supérieure,
