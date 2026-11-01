@@ -13,6 +13,7 @@ import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.j
 import { createTaviAnimation, TAVI_STEPS } from './tavi-anim.js';
 import { createClosureAnimation } from './pfo-closure.js';
 import { buildPacingView, createPacingAnimation } from './pacing-anim.js';
+import { createRouteIntro } from './route-intro.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -631,13 +632,18 @@ taviCap.innerHTML = '<div class="tc-steps"></div><p></p>';
 canvasWrap.appendChild(taviCap);
 const taviBtn = document.createElement('button');
 taviBtn.type = 'button'; taviBtn.className = 'mitem mproc hidden'; taviBtn.dataset.action = 'tavi'; // dans la page du menu de la vue
-// légende des étapes d'une animation (TAVI, fermeture du FOP) : barre de progression et texte de l'étape k
-const procCaption = (steps) => (k, text) => {
-  taviCap.classList.toggle('hidden', k < 0);
-  if (k < 0) return;
-  taviCap.querySelector('.tc-steps').innerHTML = steps.map((_, i) => `<i class="${i < k ? 'done' : i === k ? 'on' : ''}"></i>`).join('');
+// légende des étapes d'une animation (TAVI, fermeture du FOP, stimulateur) : barre de progression (n étapes, la i-ième
+// en cours) et texte ; la première étape est le trajet depuis la ponction (introduction, js/route-intro.js), l'étape k de
+// l'animation est la k + 1-ième
+const showCaption = (n, i, text) => {
+  taviCap.classList.remove('hidden');
+  taviCap.querySelector('.tc-steps').innerHTML = Array.from({ length: n }, (_, j) => `<i class="${j < i ? 'done' : j === i ? 'on' : ''}"></i>`).join('');
   taviCap.querySelector('p').textContent = text;
   syncTaviBtn();
+};
+const procCaption = (steps) => (k, text) => {
+  if (k < 0) { taviCap.classList.add('hidden'); return; }
+  showCaption(steps.length + 1, k + 1, text);
 };
 const tavi = createTaviAnimation(heart, VALVE_VIEWS.aortique, {
   caption: procCaption(TAVI_STEPS),
@@ -661,17 +667,34 @@ const pacing = createPacingAnimation(heart, VALVE_VIEWS.stim, {
   caption: (k, text) => procCaption(pacing.steps)(k, text),
   finish() { syncTaviBtn(); syncMenu(); },
 });
+// Première partie de chaque animation (js/route-intro.js) : du point de ponction au cœur, sur la planche du corps entier ;
+// la deuxième (ci-dessus) démarre sous le fondu de la planche
+const intro = createRouteIntro(canvasWrap, {
+  caption: (kind, text) => { const st = kind === 'tavi' ? TAVI_STEPS : kind === 'fop' ? closure.steps : pacing.steps; showCaption(st.length + 1, 0, text); },
+});
+let introProc = null; // animation qui suit l'introduction en cours
+function playIntro(kind, proc, start) {
+  introProc = proc;
+  intro.play(kind, () => { introProc = null; start(); });
+  syncTaviBtn();
+}
+function stopIntro() {
+  if (!intro.playing) return;
+  intro.stop(); introProc = null;
+  taviCap.classList.add('hidden'); syncTaviBtn();
+}
 // animation de la vue en cours (bouton « Voir… » / « Arrêter »)
 const procOf = () => (state.valve === 'fermeture' ? closure : state.valve === 'stim' ? pacing : state.valve === 'aortique' && VALVE_VIEWS.aortique.variant === 'tavi' ? tavi : null);
 function syncTaviBtn() {
   const p = procOf();
   taviBtn.classList.toggle('hidden', !p);
-  taviBtn.innerHTML = p?.playing
+  taviBtn.innerHTML = p?.playing || (p && intro.playing && introProc === p)
     ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg><span class="lbl">Arrêter</span>'
     : `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg><span class="lbl">${p === closure ? 'Voir la fermeture' : 'Voir l’implantation'}</span>`;
 }
-function startClosure() {
-  if (trans) { pendingAction = startClosure; return; }
+function startClosure(skipIntro = false) {
+  if (!skipIntro) { playIntro('fop', closure, () => startClosure(true)); return; }
+  if (trans) { pendingAction = () => startClosure(true); return; }
   if (state.valve !== 'fermeture') return;
   if (state.battement) toggle('battement', false);
   frozenPhase = null;
@@ -679,8 +702,9 @@ function startClosure() {
   closure.play();
   syncTaviBtn(); restPose();
 }
-function startPacing() {
-  if (trans) { pendingAction = startPacing; return; }
+function startPacing(skipIntro = false) {
+  if (!skipIntro) { playIntro('pm', pacing, () => startPacing(true)); return; }
+  if (trans) { pendingAction = () => startPacing(true); return; }
   if (state.valve !== 'stim') return;
   if (!state.battement) toggle('battement', true); // implantation sur un cœur qui bat
   pacing.play();
@@ -724,8 +748,9 @@ function taviToSurgical() {
   });
 }
 // d'abord la valve malade, 2 s, dans la vue en cours, cœur qui bat (tavi.play pose la valve native) ; puis taviEnter
-function startTavi() {
-  if (trans) { pendingAction = startTavi; return; }
+function startTavi(skipIntro = false) {
+  if (!skipIntro) { if (state.comparer) setCompare(false); playIntro('tavi', tavi, () => startTavi(true)); return; }
+  if (trans) { pendingAction = () => startTavi(true); return; }
   if (state.comparer) setCompare(false);
   tavi.play();
   syncDoppler(); syncTaviBtn(); syncLocator();
@@ -891,6 +916,7 @@ function syncValveUI() {
   if ((tavi.playing || tavi.held) && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
   if (closure.shown && state.valve !== 'fermeture') stopClosure();
   if (pacing.shown && state.valve !== 'stim') stopPacing();
+  if (intro.playing && procOf() !== introProc) stopIntro(); // autre vue : l'introduction s'arrête
   syncTaviBtn();
   syncCutOnly();
   syncDoppler(); syncLocator();
@@ -1295,6 +1321,8 @@ function buildPanel() {
   document.querySelectorAll('[data-toggle]').forEach((b) => b.addEventListener('click', () => toggle(b.dataset.toggle)));
   document.querySelector('[data-action="recentrer"]').addEventListener('click', recenter);
   taviBtn.addEventListener('click', () => {
+    if (intro.playing && introProc) { stopIntro(); return; } // avant la deuxième partie : rien d'autre à arrêter
+    if (intro.playing) stopIntro(); // pendant le fondu, la deuxième partie a démarré : on l'arrête aussi
     if (procOf() === closure) closure.playing ? stopClosure() : startClosure();
     else if (procOf() === pacing) pacing.playing ? stopPacing() : startPacing();
     else tavi.playing ? stopTavi() : startTavi();
@@ -1430,6 +1458,7 @@ function animate() {
   }
   closure.update(Math.min(dt, 0.1));
   pacing.update(Math.min(dt, 0.1));
+  intro.update(Math.min(dt, 0.1));
   if (pacing.shown && !trans && state.valve === 'stim') { // caméra de l'animation : 4 cavités, septum, oreillette droite
     const f = pacing.frame(), sd = VALVE_VIEWS.stim.sides.C;
     controls.target.copy(f.center); camera.position.copy(f.center).addScaledVector(sd.camDir, f.dist * portrait()); setCameraUp(sd.up);
@@ -1459,4 +1488,4 @@ function animate() {
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { tavi, closure, pacing, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
+window.__planche = { tavi, closure, pacing, intro, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };

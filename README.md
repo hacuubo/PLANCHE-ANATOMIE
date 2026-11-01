@@ -222,6 +222,19 @@ une liste numérotée des structures, et une fiche explicative par structure.
   électrode annulaire ≈ 1 cm en arrière. Caméra, toujours dans l'axe de la vue : les 4 cavités, rapprochée sur le
   septum pendant le vissage, sur l'oreillette droite pendant la pose de la sonde auriculaire, puis sur les deux sondes.
   Légende : les quatre cavités, le septum interventriculaire, la veine cave supérieure.
+- **Trajet depuis la ponction** (js/route-intro.js) : première partie de chaque animation de pose de dispositif, avant
+  celle du cœur. Planche vectorielle du corps entier, vue de face (côté droit du patient à gauche de l'écran), avec la
+  grande circulation seule — artères en rouge, veines en bleu, sans circulation pulmonaire — et un cœur immobile :
+  aorte et branches de la crosse, carotides, sous-clavières, axillaires, humérales, radiales, ulnaires et arcades
+  palmaires, rénales, iliaques, fémorales, poplitées, tibiales ; veines caves, troncs brachiocéphaliques (devant les
+  branches de la crosse), jugulaires, sous-clavières, basiliques, céphaliques, rénales (la gauche devant l'aorte),
+  iliaques, fémorales, grandes saphènes. L'aiguille ponctionne le vaisseau (anneau au point de ponction, étiquette),
+  puis le dispositif le remonte jusqu'au cœur ; la vue suit sa progression puis plonge sur le cœur, et la planche
+  s'efface sur la deuxième partie, qui démarre dessous. **TAVI** : artère fémorale droite, iliaque commune, aorte
+  abdominale puis thoracique, crosse, valve aortique (guide) ; **FOP** : veine fémorale droite, iliaque commune, veine
+  cave inférieure, oreillette droite (gaine) ; **pacemaker** : veine sous-clavière gauche, tronc veineux
+  brachiocéphalique gauche, veine cave supérieure, oreillette droite (sonde dans sa gaine). Première étape de la barre
+  de progression ; bouton « Passer » ; « Arrêter » l'interrompt.
 - **Sélection** : étiquette au survol et à la sélection, « mode focus » (le reste passe en retrait).
 - **Fiche** par structure (français ; traduction anglaise dans `js/data.en.js`).
 - **Ombres** : ombres portées (lumière principale, carte d'ombre déformée avec le battement, reçues aussi par
@@ -274,6 +287,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
+| `js/route-intro.js` | Première partie des animations de pose : planche du corps entier (grande circulation), trajet du dispositif de la ponction au cœur |
 | `js/tavi-anim.js` | Animation de l'implantation d'une TAVI (guide, cathéter, valve sertie, ballonnet, déploiement, retraits) |
 | `js/contact-shadows.js` | Ombres de contact : occlusion ambiante en espace écran calculée sur la profondeur de l'image affichée ; écran partagé |
 | `js/app.js` | Scène, coupes (clipping + capuchons stencil), vues des valves et comparaison, cycle cardiaque, liens, interface |
