@@ -333,6 +333,22 @@ const ASSEMBLIES = [
   { k: 0.4, parts: [['tronc-pulmonaire', 0], ['artere-pulmonaire-droite', 0.3], ['artere-pulmonaire-gauche', 0.3]] },
   { k: 0.4, parts: [['veine-cave-superieure', 0]] }, { k: 0.4, parts: [['veine-cave-inferieure', 0]] }, { k: 0.35, parts: [['veines-pulmonaires', 0]] },
 ];
+// Fosse ovale : zone la plus mince de la cloison interauriculaire (même repère que js/heart.js) — sommets de chaque
+// cavité auriculaire les plus proches de l'autre
+const FOSSA = (() => {
+  const near = (m, other) => { const a = verts(m).map((p) => [p, other.query(...p, 3)]), d0 = a.reduce((b, x) => Math.min(b, x[1]), 1e9); return meanOf(a.filter((x) => x[1] < d0 + 0.25).map((x) => x[0])); };
+  const F = near(cav['oreillette-droite'], S.OGc), Q = near(cav['oreillette-gauche'], S.ODc);
+  return { M: v3.mul(v3.add(F, Q), 0.5), n: v3.norm(v3.sub(Q, F)) };
+})();
+// Cloison interauriculaire pleine autour de la fosse : dans BodyParts3D, les parois des deux oreillettes y sont
+// séparées par le sillon interauriculaire (la surface externe s'enfonce entre elles, ≈ 2,6 mm) ; une coupe y montrait
+// un creux autour de la fosse et du FOP. Comblé là où les deux cavités sont à moins de 4,5 mm l'une et l'autre, dans un
+// disque de 2,4 cm autour de la fosse
+const septumFill = (x, y, z) => {
+  const q = [x - FOSSA.M[0], y - FOSSA.M[1], z - FOSSA.M[2]], al = v3.dot(q, FOSSA.n), rho = v3.len(v3.sub(q, v3.mul(FOSSA.n, al)));
+  if (rho > 2.9 || Math.abs(al) > 1.2) return 1e9;
+  return Math.max(Math.max(S.ODc.query(x, y, z, 1.5), S.OGc.query(x, y, z, 1.5)) - 0.45, rho - 2.4);
+};
 const core = (x, y, z) => {
   // épaisseur : celle des coronaires, au moins ≈ 1 cm pour le VG et 0,35 cm pour le VD (fiche : 8–12 mm et 3–5 mm)
   let myo = -smin(-(dV(x, y, z) - Math.max(thick(x, y, z), 0.35 + 0.65 * wLV(x, y, z))), baseCut(x, y, z), 0.3);
@@ -340,11 +356,15 @@ const core = (x, y, z) => {
   if (myo < 0.4) myo = Math.max(myo, 0.03 - groove(x, y, z));
   const od = smin(S.ODw.query(x, y, z, 1.5), S.ODc.query(x, y, z, 1.5), 0.25);
   const og = smin(S.OGw.query(x, y, z, 1.5), S.OGc.query(x, y, z, 1.5), 0.25);
-  return { myo, od, og, all: smin(smin(myo, od, 0.5), og, 0.5) };
+  return { myo, od, og, all: smin(smin(smin(myo, od, 0.5), og, 0.5), septumFill(x, y, z), 0.15) };
 };
-// Cavités réelles, réunies par les orifices auriculo-ventriculaires
+// Cavités réelles, réunies par les orifices auriculo-ventriculaires. Veines caves ouvertes dans l'oreillette droite :
+// la cavité de l'OD se prolonge dans la lumière de chaque veine cave (0,3 mm en dedans de l'intima), raccord arrondi —
+// vue de l'oreillette, la veine se lit comme un tuyau creux, et une coupe passe de l'une à l'autre sans cloison
+const CAVES = ['veine-cave-superieure', 'veine-cave-inferieure'];
+const cavaLum = (x, y, z) => Math.min(PARTS[CAVES[0]](x, y, z), PARTS[CAVES[1]](x, y, z)) + 0.18;
 const cavLeft = (x, y, z) => Math.min(S.VG.query(x, y, z, 2), S.OGc.query(x, y, z, 2), ORI[0](x, y, z));
-const cavRight = (x, y, z) => Math.min(S.VD.query(x, y, z, 2), S.ODc.query(x, y, z, 2), ORI[1](x, y, z));
+const cavRight = (x, y, z) => Math.min(S.VD.query(x, y, z, 2), smin(S.ODc.query(x, y, z, 2), cavaLum(x, y, z), 0.3), ORI[1](x, y, z));
 const cavRaw = (x, y, z) => Math.min(cavLeft(x, y, z), cavRight(x, y, z));
 // Jonction auriculo-ventriculaire : les cavités BodyParts3D de l'oreillette et du ventricule se chevauchent par endroits
 // au-delà de l'anneau (tricuspide surtout, en avant et contre le septum) ; vu de l'oreillette, une fente s'ouvrait alors
@@ -453,9 +473,9 @@ const proxy = extract(field, ENV_B, 0.3, 2);
 log('maillage de clic :', proxy.verts.length, 'sommets');
 
 /* ─────────── 6. cavités et lumières (solides de coupe) ─────────── */
-// fermé au bord de la boîte : l'oreillette droite et la veine cave supérieure la dépassent (y > 5,5) ; un maillage
-// ouvert fausse le comptage du stencil (tranche de muscle en plein sang dans les vues qui regardent à travers)
-const CAV_B = { min: [-6, -6.5, -6.5], max: [6.5, 5.5, 5] };
+// fermé au bord de la boîte (un maillage ouvert fausse le comptage du stencil : tranche de muscle en plein sang dans
+// les vues qui regardent à travers) ; elle va jusqu'aux bouts des veines caves (y −6,5 et 12,5), prolongées dans la cavité
+const CAV_B = { min: [-6, -6.5, -6.5], max: [6.5, 12.5, 5] };
 const closedIn = (fn, B, h) => (x, y, z) => Math.max(fn(x, y, z), 1.5 * h - Math.min(x - B.min[0], B.max[0] - x, y - B.min[1], B.max[1] - y, z - B.min[2], B.max[2] - z));
 const cavities = extract(closedIn(cavField, CAV_B, 0.1), CAV_B, 0.1, 4);
 log('cavités :', cavities.verts.length, 'sommets');
@@ -516,7 +536,14 @@ env.attrs = env.verts.map((p, i) => {
 });
 proxy.sid = proxy.verts.map((p) => attributes(p).sid);
 const CAV_IDS = { VG: 'ventricule-gauche', VD: 'ventricule-droit', OGc: 'oreillette-gauche', ODc: 'oreillette-droite' };
-cavities.sid = cavities.verts.map((p) => { let b = 'VG', bd = 1e9; for (const k of Object.keys(CAV_IDS)) { const d = Math.abs(S[k].query(...p, 2)); if (d < bd) { bd = d; b = k; } } return ENV_IDS.indexOf(CAV_IDS[b]); });
+// structure de chaque sommet : la cavité la plus proche ; le prolongement dans les veines caves garde le nom de la veine
+// (centre de l'oreillette et fosse ovale calculés sur l'oreillette seule, js/heart.js)
+cavities.sid = cavities.verts.map((p) => {
+  let b = CAV_IDS.VG, bd = 1e9;
+  for (const k of Object.keys(CAV_IDS)) { const d = Math.abs(S[k].query(...p, 2)); if (d < bd) { bd = d; b = CAV_IDS[k]; } }
+  for (const id of CAVES) { const d = Math.abs(PARTS[id](...p) + 0.18); if (d < bd) { bd = d; b = id; } }
+  return ENV_IDS.indexOf(b);
+});
 log('attributs et occlusion ambiante calculés');
 
 /* ─────────── 8 bis. endocarde : trabécules charnues ─────────── */
@@ -548,7 +575,7 @@ log('attributs et occlusion ambiante calculés');
   taubin(cavities, 1, 0.4, -0.42); vertexNormals(cavities);
   const VEN = hex(0xc9636d), ATR = hex(0xc8737a);
   cavities.col = cavities.verts.map((p, i) => {
-    const id = ENV_IDS[cavities.sid[i]], h = hgt[i], base = id.startsWith('oreillette') ? ATR : VEN;
+    const id = ENV_IDS[cavities.sid[i]], h = hgt[i], base = /^(oreillette|veine-cave)/.test(id) ? ATR : VEN;
     const m = (0.86 + 0.3 * h) * (0.95 + 0.1 * fbm(p[0] * 1.3, p[1] * 1.3, p[2] * 1.3));
     return [...base.map((c) => Math.min(1, c * m)), 0.72 + 0.28 * Math.min(1, h * 1.6 + 0.3)];
   });
@@ -639,7 +666,7 @@ const addMesh = (name, m, extra = {}) => {
 addMesh('proxy', proxy, { sid: push(new Uint8Array(proxy.sid)) });
 {
   const col = new Uint8Array(cavities.verts.length * 4), tis = new Uint8Array(cavities.verts.length * 4);
-  cavities.col.forEach((c, i) => { for (let k = 0; k < 4; k++) col[i * 4 + k] = Math.round(c[k] * 255); tis[i * 4 + 2] = ENV_IDS[cavities.sid[i]].startsWith('oreillette') ? 255 : 0; tis[i * 4 + 3] = cavities.sid[i]; });
+  cavities.col.forEach((c, i) => { for (let k = 0; k < 4; k++) col[i * 4 + k] = Math.round(c[k] * 255); tis[i * 4 + 2] = /^(oreillette|veine-cave)/.test(ENV_IDS[cavities.sid[i]]) ? 255 : 0; tis[i * 4 + 3] = cavities.sid[i]; });
   addMesh('cavites', cavities, { sid: push(new Uint8Array(cavities.sid)), col: push(col), tis: push(tis) });
 }
 addMesh('lumiere-artere', lumA); addMesh('lumiere-veine', lumV);

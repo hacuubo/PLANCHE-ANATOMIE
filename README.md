@@ -155,7 +155,7 @@ une liste numérotée des structures, et une fiche explicative par structure.
     ventricule : elle arrive sur l'anneau sans pivoter), et le cône jaune ; centrage sur l'anneau ; gonflement sous
     stimulation ventriculaire rapide (≈ 200/min, battements de faible amplitude, valve aortique presque fermée, du début
     du gonflement à la fin du dégonflement) : l'armature se déploie et plaque la valve native ; dégonflement et retrait ; retrait du guide ;
-    puis, sans coupure, la caméra tourne vers la vue chirurgicale pendant que le plan de coupe tourne avec elle, face au
+    puis, sans coupure, la caméra tourne vers la vue chirurgicale pendant que le plan de coupe tourne avec elle (il suit la valve qui bat ; la gouttière de l'aorte ouverte, sa face interne et la tranche de l'ouverture sont coupées par lui et ne passent plus devant la valve), face au
     regard, juste devant la valve (la valve reste dégagée, le ventricule et l'aorte ouverts se referment peu à peu) ; à
     l'arrivée, la nouvelle valve bat et l'écran se partage : à gauche la valve d'avant (« Avant : rétrécissement
     serré »), à droite la TAVI (« Après : TAVI »), au même instant du cycle. Caméra : plan large sur la crosse,
@@ -188,12 +188,12 @@ une liste numérotée des structures, et une fiche explicative par structure.
   Son axe est la ligne qui vient de la veine cave inférieure (le flux de la VCI est dirigé vers la fosse), à moins de
   30° de l'axe de la veine cave. La fente creuse la tranche du septum et ouvre la paroi de la fosse et l'endocarde de
   l'OG à son passage (même lentille, dans le shader) ; elle s'élargit quand le matériel la traverse et s'écrase à la
-  fermeture. Cloison pleine en coupe : dans le modèle, les parois des deux oreillettes sont séparées par le sillon
-  interauriculaire, qui laissait en coupe un creux grossier autour de la fosse ; il est comblé (solide de coupe relevé
-  entre les deux faces du sillon, dans un disque de 2,4 cm), avec une tranche de muscle d'oreillette plein et un
-  endocarde plus fin. Veines caves creuses dans les trois vues : pas de tranche de sang dans les veines, et l'endocarde de
-  l'OD est ouvert au droit de chaque abouchement (dôme qui fermait la veine) : on voit l'intérieur de la veine, un tuyau
-  vide. Noms (Repères) : septum primum (rabat), septum secundum (limbe), tunnel du FOP. 1 280 bulles du
+  fermeture. Cloison pleine en coupe : dans BodyParts3D, les parois des deux oreillettes sont séparées par le sillon
+  interauriculaire, qui laissait en coupe un creux grossier autour de la fosse ; il est comblé dans le modèle lui-même
+  (tools/build-heart-bp3d.mjs : là où les deux cavités sont à moins de 4,5 mm l'une et l'autre, dans un disque de 2,4 cm
+  autour de la fosse), et la tranche y montre un endocarde plus fin. Veines caves creuses dans les trois vues : pas de
+  tranche de sang dans les veines, et, dans le modèle, la cavité de l'OD se prolonge dans la lumière de chaque veine cave
+  (raccord arrondi ; ces sommets portent le nom de la veine) : on voit l'intérieur de la veine, un tuyau vide. Noms (Repères) : septum primum (rabat), septum secundum (limbe), tunnel du FOP. 1 280 bulles du
   sérum salé agité arrivent
   par les veines caves et une partie passe dans l'OG pendant la contraction auriculaire et le début de la systole
   (Langholz 1991 ; positivité dans les 3 cycles, ASE/SCAI 2015) ; **Fermeture du FOP** (js/pfo-closure.js) : même
@@ -309,6 +309,23 @@ L'outil affiche l'épaisseur obtenue pour le myocarde et la taille du fichier ; 
 ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter ensuite
 `VERSION` dans `sw.js` pour que les applications installées se mettent à jour.
 
+Contrôle après une régénération (Python 3.12 : `pip install numpy scipy trimesh rtree`) : extraire les maillages de
+l'ancien et du nouveau fichier, puis les comparer — maillages fermés (arêtes libres : les solides de coupe ne doivent
+pas en avoir), écart de chaque maillage à l'ancien, creux du sillon interauriculaire autour de la fosse, prolongement
+de la cavité dans les veines caves :
+
+```bash
+node tools/hrt-export.mjs ancien-heart.bin maillages-avant
+```
+
+```bash
+node tools/hrt-export.mjs assets/heart.bin maillages-apres
+```
+
+```bash
+python tools/check_model.py maillages-avant maillages-apres
+```
+
 ## Organisation
 
 | Fichier | Rôle |
@@ -335,6 +352,7 @@ ancien fichier HRT2 se convertit avec `node tools/pack-heart.mjs`). Incrémenter
 | `tools/build-heart-bp3d.mjs` | Génère `assets/heart.bin` à partir de BodyParts3D |
 | `tools/lib/` | Distance aux maillages, extraction de surface (« surface nets »), lecture BodyParts3D, repères des valves, format compact du modèle, pilotage d'Edge pour les captures |
 | `tools/pack-heart.mjs` | Convertit `assets/heart.bin` au format compact HRT3 |
+| `tools/hrt-export.mjs`, `tools/check_model.py` | Contrôle du modèle après régénération : extraction des maillages (Node), comparaison et étanchéité (Python : numpy, scipy, trimesh) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | PWA |
 | `tools/make-icons.mjs` | Régénère les icônes PNG (`node tools/make-icons.mjs`) |
 | `tools/build-body-bp3d.mjs` | Extrait de BodyParts3D le corps de la planche (peau, squelette, reins, vaisseaux, veines reconstruites, trajets) dans `tools/cache/` (non versionné) |

@@ -379,8 +379,10 @@ heart.solids.forEach((s) => {
     }
     caps[1].frustumCulled = false;
     // TAVI : tranche de la paroi le long de l'ouverture de l'aorte (surface courbe, repère du cœur), posée avant la tranche
-    // plane (qui efface le stencil après elle)
+    // plane (qui efface le stencil après elle). Coupée par le plan de la vue : dans la vue de la crosse, elle est toute
+    // derrière lui ; quand il pivote vers la vue chirurgicale (fin de l'animation), sa partie avant barrait la valve
     const rib = new THREE.Mesh(heart.taviRibbon, heart.addTaviMask(mat(), 'ribbon'));
+    rib.material.clippingPlanes = [cutPlane];
     rib.renderOrder = order + 0.5; rib.visible = false; rib.frustumCulled = false; rib.userData.capKey = capKey;
     heart.root.add(rib); caps.push(rib);
     capGroups.set(capKey, caps);
@@ -925,12 +927,14 @@ function taviToSurgical() {
   // plans u·x = h (u : vers l'observateur), placés à δ devant le centre visé (cible de la caméra)
   const uL = sL.cut.normal.clone().negate(), uC = sC.cut.normal.clone().negate(), hL = sL.cut.def, hC = sC.cut.def;
   const t0 = controls.target.clone(), t1 = closeCam(v, 'C').target, dL = hL - uL.dot(t0), dC = hC - uC.dot(t1);
-  const qd = new THREE.Quaternion().setFromUnitVectors(uL, uC), q = new THREE.Quaternion(), u = new THREE.Vector3();
+  const qd = new THREE.Quaternion().setFromUnitVectors(uL, uC), q = new THREE.Quaternion(), u = new THREE.Vector3(), c0 = new THREE.Vector3(), c1 = new THREE.Vector3();
   const i0 = INTERIOR_OFF['v-aortique-L'] ?? 0.25, i1 = INTERIOR_OFF['v-aortique-C'] ?? 1.5;
   runSteps([{ dur: 1.9, to: () => closeCam(v, 'C'), onUpdate: (e) => {
     q.identity().slerp(qd, e); u.copy(uL).applyQuaternion(q);
     interiorOff = i0 + (i1 - i0) * e;
-    cutPlane.normal.copy(u).negate(); setCutDepth(u.dot(controls.target) + dL + (dC - dL) * e);
+    // le cœur bat : la coupe suit la valve (la base descend de 13 à 23 mm en systole), comme valveCut
+    c0.copy(sL.center).lerp(sC.center, e); heart.deformPoint(c1.copy(c0));
+    cutPlane.normal.copy(u).negate(); setCutDepth(u.dot(controls.target) + dL + (dC - dL) * e + u.dot(c1.sub(c0)));
   } }], () => {
     valveSide = 'C'; valveCut(v, 0); syncValveUI(); viewOffset();
     done(); restPose(); renderer.shadowMap.needsUpdate = true;
