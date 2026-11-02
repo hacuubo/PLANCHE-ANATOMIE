@@ -12,6 +12,7 @@ import { createDoppler, restTime } from './doppler.js';
 import { LOCATOR, LOCATOR_FRAMES, LOCATOR_COLS, LOCATOR_ROWS } from './reperes.js';
 import { createTaviAnimation, TAVI_STEPS } from './tavi-anim.js';
 import { createClosureAnimation } from './pfo-closure.js';
+import { createPciAnimation } from './pci-anim.js';
 import { buildPacingView, createPacingAnimation } from './pacing-anim.js';
 import { createRouteIntro } from './route-intro.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
@@ -674,6 +675,16 @@ const pacing = createPacingAnimation(heart, VALVE_VIEWS.stim, {
   caption: (k, text) => procCaption(pacing.steps)(k, text),
   finish() { syncTaviBtn(); syncMenu(); },
 });
+// Animations de l'angioplastie coronaire (js/pci-anim.js), rubrique Coronaires : infarctus de l'IVA (bouton « Voir
+// l'angioplastie ») et lésion serrée de l'IVA (lancée au choix de la vue) ; le cœur bat, l'artère et le matériel suivent
+const pci = createPciAnimation(heart, VALVE_VIEWS.coronaires, {
+  caption: (k, text) => { if (k < 0) { taviCap.classList.add('hidden'); return; } showCaption(pci.steps.length, k, text); },
+  label: (text, cls = '') => { const el = document.createElement('div'); el.className = 'ao-label ' + cls; el.textContent = text; const o = new CSS2DObject(el); o.visible = false; heart.root.add(o); return o; },
+  finish() { // retour à la vue du cœur entier
+    if (state.valve === 'coronaires' && !trans) { const c = closeCam(VALVE_VIEWS.coronaires); applyCam(c, c, 1); }
+    syncTaviBtn();
+  },
+});
 // Planche du corps entier (js/route-intro.js) : corps humain de BodyParts3D (peau, squelette, reins, vaisseaux de la
 // grande circulation, tools/build-body-bp3d.mjs) et cœur du modèle, dans le même repère, rendus de face sans
 // perspective. Deux passes : 1. le cœur, les vaisseaux et les reins, opaques, avec la lumière de la scène ; une passe
@@ -875,13 +886,14 @@ function stopIntro() {
   taviCap.classList.add('hidden'); syncTaviBtn();
 }
 // animation de la vue en cours (bouton « Voir… » / « Arrêter »)
-const procOf = () => (state.valve === 'fermeture' ? closure : state.valve === 'stim' ? pacing : state.valve === 'aortique' && VALVE_VIEWS.aortique.variant === 'tavi' ? tavi : null);
+const procOf = () => (state.valve === 'fermeture' ? closure : state.valve === 'stim' ? pacing : state.valve === 'aortique' && VALVE_VIEWS.aortique.variant === 'tavi' ? tavi
+  : state.valve === 'coronaires' && ['idm', 'stenose'].includes(VALVE_VIEWS.coronaires.variant) ? pci : null);
 function syncTaviBtn() {
   const p = procOf();
   taviBtn.classList.toggle('hidden', !p);
   taviBtn.innerHTML = p?.playing || (p && intro.playing && introProc === p)
     ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg><span class="lbl">Arrêter</span>'
-    : `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg><span class="lbl">${p === closure ? 'Voir la fermeture' : 'Voir l’implantation'}</span>`;
+    : `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z"/></svg><span class="lbl">${p === closure ? 'Voir la fermeture' : p === pci ? 'Voir l’angioplastie' : 'Voir l’implantation'}</span>`;
 }
 function startClosure(skipIntro = false) {
   if (!skipIntro) { playIntro('fop', closure, () => startClosure(true)); return; }
@@ -900,6 +912,33 @@ function startPacing(skipIntro = false) {
   if (!state.battement) toggle('battement', true); // implantation sur un cœur qui bat
   pacing.play();
   syncTaviBtn(); syncMenu();
+}
+// angioplastie coronaire : vue Coronaires en plein écran, cœur qui bat, artères visibles
+function startPci() {
+  if (trans) { pendingAction = startPci; return; }
+  const v = VALVE_VIEWS.coronaires;
+  if (state.valve !== 'coronaires' || !['idm', 'stenose'].includes(v.variant)) return;
+  if (state.comparer) setCompare(false);
+  if (!state.coronaires) toggle('coronaires', true);
+  if (!state.battement) toggle('battement', true);
+  pci.play(v.variant);
+  syncTaviBtn(); syncMenu();
+}
+function stopPci() {
+  if (!pci.shown) return;
+  const wasPlaying = pci.playing;
+  pci.stop(); VALVE_VIEWS.coronaires.activate(state.valve === 'coronaires'); // infarctus de la variante, sans produit de contraste
+  syncTaviBtn();
+  if (wasPlaying && state.valve === 'coronaires') runSteps([{ dur: 0.9, to: () => closeCam(VALVE_VIEWS.coronaires) }], () => { restPose(); renderer.shadowMap.needsUpdate = true; });
+}
+// gros plan de l'angioplastie : plan de coupe par l'axe de l'artère (js/pci-anim.js) ; ensuite, celui de la vue
+let pciCutOn = false;
+function pciCut() {
+  const c = state.valve === 'coronaires' ? pci.cut() : null;
+  if (c) { pciCutOn = true; cutPlane.normal.copy(c.normal); setCutDepth(c.depth); return; }
+  if (!pciCutOn) return;
+  pciCutOn = false;
+  const v = VALVE_VIEWS.coronaires; cutPlane.normal.copy(v.sides.C.cut.normal); valveCut(v, 0);
 }
 function stopPacing() {
   if (!pacing.shown) return;
@@ -1090,7 +1129,7 @@ function goValve(key, after) {
 // vues sans comparaison (FOP)
 function autoCompare() {
   const v = state.valve && VALVE_VIEWS[state.valve];
-  const want = !!(v && v.compare !== false && v.variant !== 'normale' && v.variant !== 'tavi');
+  const want = !!(v && v.compare !== false && v.variant !== 'normale' && v.variant !== 'tavi' && v.variant !== 'stenose');
   if (want !== state.comparer) setCompare(want);
 }
 // Change de côté (C ↔ V) : la coupe remonte, la caméra fait le tour de la valve par le côté, la coupe redescend
@@ -1121,6 +1160,7 @@ function syncValveUI() {
   if ((tavi.playing || tavi.held) && !(state.valve === 'aortique' && v.variant === 'tavi')) stopTavi();
   if (closure.shown && state.valve !== 'fermeture') stopClosure();
   if (pacing.shown && state.valve !== 'stim') stopPacing();
+  if (pci.shown && !(state.valve === 'coronaires' && VALVE_VIEWS.coronaires.variant === pci.kind)) stopPci();
   if (intro.playing && procOf() !== introProc) stopIntro(); // autre vue : l'introduction s'arrête
   syncTaviBtn();
   syncCutOnly();
@@ -1136,6 +1176,7 @@ function syncValveUI() {
       syncValveUI(); restPose(); renderer.shadowMap.needsUpdate = true;
       autoCompare(); // pathologie : écran partagé avec la valve normale ; normale : écran entier
       if (b.dataset.variant === 'tavi' && state.valve === 'aortique') startTavi(); // TAVI : l'implantation, d'emblée
+      if (b.dataset.variant === 'stenose' && state.valve === 'coronaires') startPci(); // lésion serrée : l'angioplastie, d'emblée
     }));
   }
   syncMenu();
@@ -1529,6 +1570,7 @@ function buildPanel() {
     if (intro.playing && introLive) { stopIntro(); return; } // avant la deuxième partie : rien d'autre à arrêter
     if (intro.playing) stopIntro(); // pendant le fondu, la deuxième partie a démarré : on l'arrête aussi
     if (procOf() === closure) closure.playing ? stopClosure() : startClosure();
+    else if (procOf() === pci) pci.playing ? stopPci() : startPci();
     else if (procOf() === pacing) pacing.playing ? stopPacing() : startPacing();
     else tavi.playing ? stopTavi() : startTavi();
   });
@@ -1677,6 +1719,12 @@ function animate() {
   }
   closure.update(Math.min(dt, 0.1));
   pacing.update(Math.min(dt, 0.1));
+  pci.update(Math.min(dt, 0.1));
+  controls.minDistance = pci.playing && pci.zoom > 0 ? 0.5 : 8; // gros plan de l'angioplastie : caméra à moins de 3 cm de l'artère
+  if (pci.playing && !trans && state.valve === 'coronaires') { // caméra de l'animation : cœur entier ↔ gros plan sur la lésion
+    const f = pci.frame();
+    procCam(f.center, f.dir, f.dist * (portrait() + (1 - portrait()) * pci.zoom), f.up, dt); // gros plan : sans recul supplémentaire en portrait
+  }
   intro.update(Math.min(dt, 0.1));
   if (pacing.shown && !trans && state.valve === 'stim') { // caméra de l'animation : 4 cavités, septum, oreillette droite
     const f = pacing.frame(), sd = VALVE_VIEWS.stim.sides.C;
@@ -1689,6 +1737,7 @@ function animate() {
   }
   if (trans) stepTrans(dt); // zoom vers une valve
   else if (state.valve && state.battement && !handoff) valveCut(VALVE_VIEWS[state.valve], 0); // la coupe suit la valve qui bat
+  if (!trans) pciCut();
   // valves : ressorts, retard du bord libre, vibration dans le flux (visibles seulement en coupe et dans les vues des valves)
   if (state.coupe && heart.stepValves(dt, t, state.battement) && frame % 3 === 0) renderer.shadowMap.needsUpdate = true;
   bubbles.update(Math.min(dt, 0.1) * beatSpeed, state.battement ? beatPhase : frozenPhase ?? 0, state.battement);
@@ -1701,11 +1750,11 @@ function animate() {
   if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
   if (frame % 30 === 0) syncURL();
   if ((frame++ & 3) === 0) occludeLabels();
-  adaptQuality(dt, tavi.playing || closure.playing || pacing.playing || (intro.playing && !intro.covering));
+  adaptQuality(dt, tavi.playing || closure.playing || pacing.playing || pci.playing || (intro.playing && !intro.covering));
   if (!intro.covering) contact.render(); // scène + ombres de contact + calque d'interface ; rien sous la planche opaque
   labelRenderer.render(scene, camera);
 }
 animate();
 
 // Exposé pour le débogage et les tests pilotés
-window.__planche = { tavi, closure, pacing, intro, renderPlate, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };
+window.__planche = { tavi, closure, pacing, pci, intro, renderPlate, debug, setValveSide, scene, camera, controls, heart, state, select, toggle, goView, goDir, setCutMode, renderer, contact, VALVE_VIEWS, goValve, chooseCut, CUT_MODES, get CURVE() { return CURVE; }, cutViewDir, setCutDepth };

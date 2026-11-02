@@ -18,7 +18,9 @@
 //   - « Normale » ;
 //   - « Infarctus (IVA) » : IVA occluse à partir de l'IVA moyenne (après la 1re diagonale), aval assombri (pas de
 //     sang : TIMI 0) ; segments 7, 8, 13, 14 et 17 du modèle AHA (Cerqueira 2002) akinétiques (ni épaississement, ni
-//     rapprochement vers le centre ; ASE/EACVI 2015), myocarde infarci plus terne.
+//     rapprochement vers le centre ; ASE/EACVI 2015), myocarde infarci plus terne ; animation de l'angioplastie
+//     primaire (js/pci-anim.js) ;
+//   - « Lésion serrée (IVA) » : rétrécissement serré de l'IVA proximale ; animation de l'angioplastie, d'emblée.
 import * as THREE from 'three';
 
 export function buildFOPViews(heart) {
@@ -64,7 +66,7 @@ export function buildCoronaryView(heart) {
   const dir = new THREE.Vector3(0.45, 0.1, 1).normalize();
   const view = {
     key: 'coronaires', title: 'Coronaires', group: 'coro', phase: null, compare: true, noFog: true,
-    variantList: [['normale', 'Normale'], ['idm', 'Infarctus (IVA)']],
+    variantList: [['normale', 'Normale'], ['idm', 'Infarctus (IVA)'], ['stenose', 'Lésion serrée (IVA)']],
     get variant() { return current; },
     setVariant(name) { current = name; if (view.active) view.activate(true); },
     // vue de face du cœur entier (comme la vue d'ouverture), sans coupe (plan rejeté loin devant le cœur)

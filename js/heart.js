@@ -295,6 +295,9 @@ function patchShader(sh) {
       #ifdef OCCL
       attribute float occl; varying float vOccl;
       #endif
+      #ifdef CTR
+      attribute float ctrd; varying float vCtr;
+      #endif
       #ifdef ENVELOPPE
       attribute vec4 col; attribute vec4 tis;
       #endif
@@ -308,6 +311,9 @@ function patchShader(sh) {
       #ifdef OCCL
       vOccl = occl;
       #endif
+      #ifdef CTR
+      vCtr = ctrd;
+      #endif
       #ifdef VALVE
       vPar = vparam;
       #endif
@@ -319,8 +325,8 @@ function patchShader(sh) {
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB; uniform vec3 uPfoO; uniform vec3 uPfoD; uniform vec3 uPfoW; uniform vec4 uPfoL;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#ifndef RACINES\nuniform float uOpenAo;\n#endif\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
-    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef RACINES\n  if ((!inRoot(vObj, 0.4) && !(uOpenAo > 0.5 && uRootSel < 0.5) && !(uOpenVein > 0.5 && uRootSel > 0.5)) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (dot(cameraPosition - uPulR.xyz, uPulA.xyz) > uPulA.w && al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef OSTENV\n  for (int i = 0; i < 2; i++) { if (uOst[i].w <= 0.0) continue; vec3 q = vObj - uOst[i].xyz; float a = dot(q, uOstN[i]);\n    if (a > -0.45 && a < 0.25 && length(q - uOstN[i] * a) < uOst[i].w * 1.45) discard; }\n  #endif\n  #ifdef AOROOT\n  { vec3 q = vObj - uAoR.xyz; float al = dot(q, uAoA.xyz); if ((uOpenAo > 0.5 || dot(cameraPosition - uAoR.xyz, uAoA.xyz) > uAoA.w) && al > 0.15 * uAoA.w && al < 1.05 * uAoA.w && length(q - uAoA.xyz * al) < uAoR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; }\n    if (uPfoL.w > 0.0) { vec3 p = vObj - uPfoO; float t = (dot(p, uPfoD) - uPfoL.x) / (uPfoL.y - uPfoL.x);\n    if (t > 0.0 && t < 1.0) { float tp = sqrt(sin(3.14159265 * clamp(t * 0.92 + 0.04, 0.0, 1.0))); float x = dot(p, uPfoW) / (uPfoL.z * (0.55 + 0.45 * tp)), m = dot(p, cross(uPfoD, uPfoW)) / (uPfoL.w * tp + 0.004); if (x * x + m * m < 1.0) discard; } } }\n  #endif')
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef CORONAIRE\nuniform vec4 uPciP[16]; uniform float uPciN;\n#endif\n#ifdef CTR\nuniform vec2 uCtr; varying float vCtr;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB; uniform vec3 uPfoO; uniform vec3 uPfoD; uniform vec3 uPfoW; uniform vec4 uPfoL;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#ifndef RACINES\nuniform float uOpenAo;\n#endif\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
+    .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  for (int i = 0; i < 15; i++) { if (float(i) + 1.5 > uPciN) break; vec3 a = uPciP[i].xyz, ab = uPciP[i + 1].xyz - a; float t = clamp(dot(vObj - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0); if (length(vObj - a - ab * t) < uPciP[i].w) discard; }\n  #endif\n  #ifdef RACINES\n  if ((!inRoot(vObj, 0.4) && !(uOpenAo > 0.5 && uRootSel < 0.5) && !(uOpenVein > 0.5 && uRootSel > 0.5)) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (dot(cameraPosition - uPulR.xyz, uPulA.xyz) > uPulA.w && al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef OSTENV\n  for (int i = 0; i < 2; i++) { if (uOst[i].w <= 0.0) continue; vec3 q = vObj - uOst[i].xyz; float a = dot(q, uOstN[i]);\n    if (a > -0.45 && a < 0.25 && length(q - uOstN[i] * a) < uOst[i].w * 1.45) discard; }\n  #endif\n  #ifdef AOROOT\n  { vec3 q = vObj - uAoR.xyz; float al = dot(q, uAoA.xyz); if ((uOpenAo > 0.5 || dot(cameraPosition - uAoR.xyz, uAoA.xyz) > uAoA.w) && al > 0.15 * uAoA.w && al < 1.05 * uAoA.w && length(q - uAoA.xyz * al) < uAoR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; }\n    if (uPfoL.w > 0.0) { vec3 p = vObj - uPfoO; float t = (dot(p, uPfoD) - uPfoL.x) / (uPfoL.y - uPfoL.x);\n    if (t > 0.0 && t < 1.0) { float tp = sqrt(sin(3.14159265 * clamp(t * 0.92 + 0.04, 0.0, 1.0))); float x = dot(p, uPfoW) / (uPfoL.z * (0.55 + 0.45 * tp)), m = dot(p, cross(uPfoD, uPfoW)) / (uPfoL.w * tp + 0.004); if (x * x + m * m < 1.0) discard; } } }\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
       float dH = tissueDetail(vObj, vTis, dTint);
@@ -346,6 +352,15 @@ function patchShader(sh) {
       diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.6, 0.62) + vec3(0.16, 0.14, 0.12), 0.85 * vInfW * uInfTint);
       #ifdef OCCL
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.045, 0.03, 0.035), 0.9 * vOccl * uOccl);
+      #endif
+      #ifdef CTR
+      { // coronarographie : produit de contraste iodé, opaque aux rayons X, figuré en blanc argenté dans la lumière
+        float occ = 0.0;
+        #ifdef OCCL
+        occ = vOccl * uOccl;
+        #endif
+        float c = uCtr.y * (1.0 - smoothstep(uCtr.x - 0.6, uCtr.x, vCtr)) * (1.0 - occ);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.92, 0.96), 0.85 * c); }
       #endif`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       normal = perturbN(-vViewPosition, normal, vec2(dFdx(dH), dFdy(dH)) * uBump, faceDirection);`)
@@ -673,7 +688,7 @@ export async function buildHeart(onProgress) {
       uVolScale: { value: wall ? new THREE.Vector3(1 / (wall.step * wall.n.x), 1 / (wall.step * wall.n.y), 1 / (wall.step * wall.n.z)) : new THREE.Vector3(1, 1, 1) },
       uVolHalf: { value: wall ? new THREE.Vector3(0.5 / wall.n.x, 0.5 / wall.n.y, 0.5 / wall.n.z) : new THREE.Vector3() },
       // infarctus de l'IVA (vue Coronaires) : territoire akinétique, teinte, artère occluse ; fosse ovale
-      uInf: { value: 0 }, uInfAnt: { value: new THREE.Vector3(1, 0, 0) }, uInfSep: { value: new THREE.Vector3(0, 1, 0) }, uInfTint: { value: 0 }, uOccl: { value: 0 },
+      uInf: { value: 0 }, uInfAnt: { value: new THREE.Vector3(1, 0, 0) }, uInfSep: { value: new THREE.Vector3(0, 1, 0) }, uInfTint: { value: 0 }, uOccl: { value: 0 }, uCtr: { value: new THREE.Vector2(0, 0) }, uPciN: { value: 0 }, uPciP: { value: Array.from({ length: 16 }, () => new THREE.Vector4()) },
       uFosC: { value: new THREE.Vector3() }, uFosN: { value: new THREE.Vector3(0, 0, 1) }, uFosU: { value: new THREE.Vector3(0, 1, 0) }, uFosAB: { value: new THREE.Vector3(1, 1, -1) }, uPfoO: { value: new THREE.Vector3() }, uPfoD: { value: new THREE.Vector3(0, 1, 0) }, uPfoW: { value: new THREE.Vector3(1, 0, 0) }, uPfoL: { value: new THREE.Vector4(0, 1, 1, -1) },
     };
   })();
@@ -708,7 +723,7 @@ export async function buildHeart(onProgress) {
     return depthCache.get(k);
   };
 
-  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, fossa = false, pulroot = false, aoroot = false, ostia = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
+  const tissue = (color, { tis = [0, 0, 0, 1], envelope = false, valve = false, cavClip = false, coro = false, occl = false, ctr = false, fossa = false, pulroot = false, aoroot = false, ostia = false, roots = false, rootSel = -1, trans = 0, bump = 0.22, sss = 0.32, rim = 0.12, deformK = K_EPI, deformOn = true, ...rest } = {}) => {
     const m = new THREE.MeshPhysicalMaterial({
       color, roughness: 0.5, metalness: 0, clearcoat: 0.3, clearcoatRoughness: 0.32, specularIntensity: 0.45,
       sheen: 0.5, sheenRoughness: 0.55, sheenColor: 0xffe2dc, envMapIntensity: 0.8, side: THREE.DoubleSide, ...rest,
@@ -718,6 +733,7 @@ export async function buildHeart(onProgress) {
     if (cavClip) m.defines = { ...m.defines, CAVCLIP: '' };
     if (coro) m.defines = { ...m.defines, CORONAIRE: '' };
     if (occl) m.defines = { ...m.defines, OCCL: '' };
+    if (ctr) m.defines = { ...m.defines, CTR: '' };
     if (fossa) m.defines = { ...m.defines, FOSSE: '' };
     if (pulroot) m.defines = { ...m.defines, PULROOT: '' };
     if (aoroot) m.defines = { ...m.defines, AOROOT: '' };
@@ -730,7 +746,7 @@ export async function buildHeart(onProgress) {
       ...cutU, uCutExtra: { value: 0 }, ...rootU, uRootSel: { value: rootSel },
     };
     m.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, uniforms); patchShader(sh); };
-    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', fossa && 'fosse', pulroot && 'racpulm', aoroot && 'racao', ostia && 'ostia', roots && 'racine'].filter(Boolean).join('-');
+    m.customProgramCacheKey = () => ['tissu', valve && 'valve', envelope && 'enveloppe', cavClip && 'cavite', coro && 'coronaire', occl && 'occlusion', ctr && 'contraste', fossa && 'fosse', pulroot && 'racpulm', aoroot && 'racao', ostia && 'ostia', roots && 'racine'].filter(Boolean).join('-');
     m.userData.uniforms = uniforms;
     m.userData.baseColor = new THREE.Color(color);
     materials.push(m); tissueMats.push(m);
@@ -753,7 +769,7 @@ export async function buildHeart(onProgress) {
     // vaisseaux coronaires : la partie qui dépasse de l'endocarde dans une cavité (grande veine du cœur contre
     // l'oreillette gauche ; sinus coronaire, voir aussi CAVCLIP) est coupée en position de repos (vObj) : la coupe
     // suit la contraction
-    coroA: (id) => tissue(COL.coronaire, { coro: true, occl: id === 'iva', tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
+    coroA: (id) => tissue(COL.coronaire, { coro: true, occl: id === 'iva', ctr: ['tronc-commun', 'iva', 'circonflexe'].includes(id), tis: [0, 1, 0, 1], roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.1, sss: 0.45, rim: 0.12, sheen: 0.08, sheenColor: 0xff8a7a }),
     // sinus coronaire : la pièce BodyParts3D se prolonge dans l'oreillette droite ; masquée au-delà de son orifice
     coroV: (id) => tissue(COL.veineCard, { cavClip: id === 'sinus-coronaire', coro: true, tis: [0, 1, 0, 1], roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.14, bump: 0.08, sss: 0.35, rim: 0.12, sheen: 0.08, sheenColor: 0xb8c8ff }),
   };
@@ -1151,25 +1167,39 @@ export async function buildHeart(onProgress) {
     // point d'occlusion : sommets du tronc à cette hauteur
     const near = P.filter((p, i) => Math.abs(S[i] - s0) < 0.025 && Math.abs(angOf(p) - 30) < 25);
     const O = near.length ? near.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / near.length) : null;
-    // aval : composantes connexes une fois retirés les sommets autour de l'occlusion ; une composante est en aval si
-    // son sommet le plus haut est sous l'occlusion
+    // aval : le maillage de l'IVA réunit plusieurs pièces de BodyParts3D (tronc, diagonales, septales) ; le tronc est
+    // sa plus grande composante connexe. L'occlusion est posée sur le tronc (le point trouvé plus haut, moyenne des
+    // sommets de cette hauteur, peut tomber sur la 1re diagonale) ; en aval : le tronc au-delà (fondu sur 2 mm) et les
+    // branches nées sous l'occlusion (leur sommet le plus haut est plus bas qu'elle)
     if (O) {
       const parent = new Int32Array(nV).map((_, i) => i), find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-      const cut = P.map((p) => p.distanceTo(O) < 0.32), idx = g.index.array;
-      for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) {
-        const a = idx[t + e], b = idx[t + (e + 1) % 3]; if (cut[a] || cut[b]) continue;
-        const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb;
-      }
-      const top = new Map(); P.forEach((p, i) => { if (cut[i]) return; const r = find(i); top.set(r, Math.min(top.get(r) ?? 9, S[i])); });
+      const idx = g.index.array;
+      for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) { const ra = find(idx[t + e]), rb = find(idx[t + (e + 1) % 3]); if (ra !== rb) parent[ra] = rb; }
+      const size = new Map(); for (let i = 0; i < nV; i++) { const r = find(i); size.set(r, (size.get(r) || 0) + 1); }
+      const trunk = [...size.entries()].sort((a, b) => b[1] - a[1])[0][0];
+      let iO = -1; P.forEach((p, i) => { if (find(i) === trunk && (iO < 0 || p.distanceTo(O) < P[iO].distanceTo(O))) iO = i; });
+      const ring = P.filter((p, i) => find(i) === trunk && p.distanceTo(P[iO]) < 0.3);
+      const Ot = ring.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / ring.length), sO = sOf(Ot);
+      const top = new Map(); P.forEach((p, i) => { const r = find(i); top.set(r, Math.min(top.get(r) ?? 9, S[i])); });
       const occl = new Float32Array(nV);
       const ramp = (x) => { const t = Math.min(1, Math.max(0, (x + 0.1) / 0.22)); return t * t * (3 - 2 * t); }; // fondu sur 2 mm
-      P.forEach((p, i) => { occl[i] = cut[i] ? ramp(p.clone().sub(O).dot(A)) : (top.get(find(i)) > s0 - 0.01 ? 1 : 0); });
+      P.forEach((p, i) => { const r = find(i); occl[i] = r === trunk ? ramp((S[i] - sO) * L) : (top.get(r) > sO - 0.01 ? 1 : 0); });
       g.setAttribute('occl', new THREE.BufferAttribute(occl, 1));
-      Object.assign(infarct, { s0, sD1, point: O.clone() });
+      Object.assign(infarct, { s0: sO, sD1, point: Ot.clone() });
     }
     // centre du territoire, sur l'épicarde : direction moyenne (antérieur-antéroseptal) au tiers apical
     infarct.center = B.clone().addScaledVector(A, L * 0.72).addScaledVector(eAnt.clone().lerp(eSep, 0.4).normalize(), 2.6);
   }
+  // coronarographie (rubrique Coronaires, js/pci-anim.js) : distance de chaque sommet du réseau gauche à l'ostium du tronc
+  // commun, pour le front du produit de contraste
+  if (ostia.gauche) for (const id of ['tronc-commun', 'iva', 'circonflexe']) for (const m of registry[id]?.meshes ?? []) {
+    const pa = m.geometry.attributes.position, d = new Float32Array(pa.count), p = new THREE.Vector3();
+    for (let i = 0; i < pa.count; i++) d[i] = p.fromBufferAttribute(pa, i).distanceTo(ostia.gauche.point);
+    m.geometry.setAttribute('ctrd', new THREE.BufferAttribute(d, 1));
+  }
+  const setContrast = (front, on = true) => { deformU.uCtr.value.set(front, on ? 1 : 0); };
+  // gros plan de l'angioplastie : l'IVA du modèle est effacée dans des capsules le long de la ligne centrale (points et rayon)
+  const setPciCut = (pts, r = 0) => { const P = deformU.uPciP.value; deformU.uPciN.value = pts ? Math.min(16, pts.length) : 0; (pts ?? []).slice(0, 16).forEach((p, i) => P[i].set(p.x, p.y, p.z, r)); };
   const setInfarct = (on, { tint = on, occl = on } = {}) => { deformU.uInf.value = on ? 1 : 0; deformU.uInfTint.value = tint ? 1 : 0; deformU.uOccl.value = occl ? 1 : 0; deformDirty = true; };
 
   /* ── Fosse ovale et foramen ovale perméable (rubrique FOP) ──
@@ -1622,7 +1652,7 @@ export async function buildHeart(onProgress) {
 
   return { root, registry, materials, solids, cutOnly, pickId, setHighlight, envelope, proxy, matrixLocal: M, source: header.source,
     cut4: { normal: v3(F.cut4), point: v3(F.base) }, valves, setBeat, setPose, stepValves, deformPoint, cycle, valveData: header.valves, addValve, useValve, showValves, setDilation, setExtraValves, showValve, redrawValve, ostia,
-    infarct, setInfarct, fossa, setPFO, setPFOClosure, setOpenVeins,
+    infarct, setInfarct, setContrast, setPciCut, fossa, setPFO, setPFOClosure, setOpenVeins,
     addTaviMask, buildTaviMask, prepareTaviMask, taviRibbon, // animation de la TAVI : aorte fendue en long, artère pulmonaire retirée
     setTaviMask: (on) => { const v = !!(on && maskU.uTMTex.value); maskU.uTaviMask.value = v ? 1 : 0; taviBack.visible = taviLiner.visible = v; root.updateMatrixWorld(); maskU.uTMInv.value.copy(root.matrixWorld).invert(); },
     structureIds: ids, // indice de structure (attribut sid des cavités) → nom

@@ -216,10 +216,37 @@ une liste numérotée des structures, et une fiche explicative par structure.
   bicave pour la montée de la gaine, puis inclinée côté OG (disque gauche de trois quarts), côté OD (disque droit),
   retour à la coupe, rapprochée sur la prothèse ; légende de chaque étape (9). Fin : cœur qui bat, la prothèse suit la
   cloison, test aux bulles de contrôle négatif (les bulles restent à droite).
-- **Coronaires** (js/special-views.js, js/heart.js) : vue de face du cœur qui bat, **normale** ou **infarctus de
-  l'IVA** — occlusion au début de l'IVA 2 (après la 1re diagonale), aval assombri (trouvé par connexité du maillage),
-  akinésie des segments 7, 8, 13, 14 et 17 du modèle AHA (ni épaississement, ni mouvement vers le centre, ni torsion),
-  territoire plus terne ; comparaison en écran partagé.
+- **Coronaires** (js/special-views.js, js/heart.js, js/pci-anim.js) : vue de face du cœur qui bat, **normale**,
+  **infarctus de l'IVA** ou **lésion serrée de l'IVA**. Infarctus : occlusion au début de l'IVA 2 (après la 1re
+  diagonale), posée sur le tronc de l'IVA (plus grande pièce de son maillage) ; en aval, le tronc et les branches nées
+  sous l'occlusion sont assombris (pas de sang) ; akinésie des segments 7, 8, 13, 14 et 17 du modèle AHA (ni
+  épaississement, ni mouvement vers le centre, ni torsion), territoire plus terne ; comparaison en écran partagé.
+  **Animations de l'angioplastie coronaire** (≈ 45 s chacune, bouton « Voir l'angioplastie » ; lésion serrée : d'emblée),
+  à cœur battant :
+  - **déroulé** (ESC 2023, syndromes coronaires aigus ; ESC 2024, syndromes coronaires chroniques) : coronarographie par
+    voie radiale, sonde guide 6 F à l'entrée de la coronaire gauche, produit de contraste (front qui avance depuis
+    l'ostium du tronc commun dans le réseau gauche ; dans l'infarctus, il s'arrête à l'occlusion : TIMI 0) ; guide de
+    0,014 pouce (0,36 mm, bout radio-opaque) poussé au-delà de la lésion ; prédilatation au ballon de 2,5 mm (infarctus :
+    reperfusion, le sang revient en aval) ; stent actif serti sur son ballon, d'un segment sain à l'autre, déployé à
+    ≈ 12 atm ; lésion serrée : post-dilatation au ballon non compliant (≈ 18 atm) ; contrôle (TIMI 3), retrait du guide
+    et de la sonde ; pas d'aspiration systématique du thrombus ; double anti-agrégation plaquettaire (12 mois après un
+    infarctus, 6 mois dans l'angor stable) ;
+  - **gros plan** sur l'IVA, à sa place et à l'échelle réelle, fendue en long (moitié avant retirée), sur la ligne
+    centrale du tronc de l'IVA du modèle (suivie pas à pas dans son maillage) ; un plan de coupe face au regard montre le
+    myocarde autour de l'artère, qui repose dans son sillon ; l'IVA du modèle est effacée sous le gros plan (capsules le
+    long de la ligne centrale, shader des coronaires). Paroi en coupe : intima (≈ 0,12 mm), limitantes élastiques interne
+    et externe en liserés clairs, média de cellules musculaires lisses (≈ 0,2 mm), adventice (≈ 0,2 mm, vasa vasorum) ;
+  - **plaques** : infarctus (IVA moyenne) — plaque rompue (chape fibreuse < 65 µm déchirée sur un cœur lipidique),
+    thrombus qui bouche la lumière (tête blanche plaquettaire, corps rouge), tassé contre la paroi par le ballon puis
+    pris sous le stent ; lésion serrée (IVA proximale) — plaque stable (chape épaisse, cœur lipidique, calcifications),
+    remodelage positif, rétrécissement de 75 % du diamètre ; la plaque se tasse et la paroi s'étire quand le ballon gonfle
+    (retour élastique après la prédilatation) ;
+  - **matériel** : ballons translucides avec leurs marqueurs radio-opaques, pliés en trois ailes dégonflés ; stent en
+    cobalt-chrome (anneaux sinusoïdaux de 8 sommets reliés par des ponts, mailles de 80 × 90 µm), serti puis ouvert : ses
+    bras gardent leur longueur, les anneaux raccourcissent un peu ; sang figuré par des globules qui accélèrent dans le
+    rétrécissement et s'arrêtent contre le caillot ; au contrôle, ils blanchissent derrière le front du produit de contraste ;
+  - **noms** de la paroi, de la plaque et du matériel pendant les étapes qui les présentent ; la caméra suit la lésion
+    qui bat (gros plan à ≈ 2,4 cm).
 - **Stimulation** (js/pacing-anim.js) : **stimulation de branche gauche**, animation « Implantation pacemaker » (≈ 20 s)
   dans la coupe 4 cavités (pointe, centres des valves mitrale et tricuspide), oreillettes en haut, regard incliné de 25°
   vers la base ; le lecteur ne peut pas tourner la vue. Le cœur bat pendant toute l'animation : chaque point des sondes
@@ -337,6 +364,7 @@ python tools/check_model.py maillages-avant maillages-apres
 | `js/valves.js` | Valves paramétriques (feuillets, cordages, cuspides) et leur ouverture |
 | `js/special-views.js` | Rubriques FOP (fosse ovale, test aux bulles, fermeture) et Coronaires (infarctus de l'IVA) |
 | `js/pfo-closure.js` | Animation de la fermeture percutanée du FOP (guide, gaine, prothèse à double disque, largage) |
+| `js/pci-anim.js` | Animations de l'angioplastie coronaire de l'IVA (infarctus, lésion serrée) : coronarographie, gros plan de l'artère fendue, guide, ballons, stent |
 | `js/pacing-anim.js` | Rubrique Stimulation : vue 4 cavités fixe, animation de l'implantation d'un stimulateur (sonde de branche gauche, sonde auriculaire) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
