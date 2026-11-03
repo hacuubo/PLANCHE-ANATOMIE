@@ -116,6 +116,7 @@
       <div class="menu-page" data-page="imagerie" style="--c: var(--c-imag)">
         <h3 class="mlabel">Échographie</h3>
         <div class="mlist" id="echo-list"></div>
+        <button class="mitem mtoggle" data-toggle="flux" type="button" aria-pressed="false" title="Flèches du trajet du sang dans la coupe">Circulation du sang</button>
         <h3 class="mlabel">Coronarographie</h3>
         <div class="mlist" id="angio-list"></div>
       </div>
@@ -123,6 +124,7 @@
         <button class="mitem" data-cut="cinq-cavites" data-close type="button" title="Coupe 5 cavités passant par le centre des valves tricuspide, mitrale et aortique">5 cavités</button>
         <button class="mitem" data-cut="frontale" data-close type="button" title="Coupe frontale passant par le centre et l'axe de la valve aortique">Frontale</button>
         <div id="cut-tools" class="mfield"><label id="cut-depth-wrap">Profondeur <input id="cut-depth" type="range" min="-5" max="5" step="0.1" value="0.4"></label></div>
+        <button class="mitem mtoggle" data-toggle="flux" type="button" aria-pressed="false" title="Flèches du trajet du sang dans la coupe : bleu, cœur droit ; rouge, cœur gauche ; au rythme du cycle">Circulation du sang</button>
       </div>
       <div class="menu-page" data-page="valves" style="--c: var(--c-valves)">
         <button class="mitem" data-valve="aortique" type="button">Aortique</button>

@@ -325,7 +325,7 @@ function patchShader(sh) {
       ${DEFORM_VERTEX}
       ${CUT_VERTEX}`);
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef CORONAIRE\nuniform vec4 uPciP[16]; uniform float uPciN;\n#endif\n#ifdef CTR\nuniform vec2 uCtr; varying float vCtr;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB; uniform vec3 uPfoO; uniform vec3 uPfoD; uniform vec3 uPfoW; uniform vec4 uPfoL;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#ifndef RACINES\nuniform float uOpenAo;\n#endif\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
+    .replace('#include <common>', `#include <common>\n${GLSL_COMMON}\n${GLSL_CUT}\nuniform float uCutExtra;\n#if defined(CAVCLIP) || defined(CORONAIRE)\nuniform sampler3D uVol; uniform vec3 uVolMin; uniform vec3 uVolScale; uniform vec3 uVolHalf;\n#endif\n#ifdef CORONAIRE\nuniform vec4 uPciP[16]; uniform float uPciN;\n#endif\n#ifdef CTR\nuniform vec2 uCtr; varying float vCtr;\n#endif\n#ifdef RACINES\n${GLSL_ROOTS}\n#endif\n#ifdef CAVITE\nuniform vec3 uRAc; uniform vec3 uRAlat;\n#endif\n#ifdef FOSSE\nuniform vec3 uFosC; uniform vec3 uFosN; uniform vec3 uFosU; uniform vec3 uFosAB; uniform vec3 uPfoO; uniform vec3 uPfoD; uniform vec3 uPfoW; uniform vec4 uPfoL;\n#endif\n#ifdef PULROOT\nuniform vec4 uPulR; uniform vec4 uPulA;\n#endif\n#ifdef AOROOT\nuniform vec4 uAoR; uniform vec4 uAoA;\n#ifndef RACINES\nuniform float uOpenAo;\n#endif\n#endif\n#ifdef OSTENV\nuniform vec4 uOst[2]; uniform vec3 uOstN[2];\n#endif`)
     .replace('#include <clipping_planes_fragment>', cutDiscard('cutField(vCutW, uCutExtra) < 0.0') + '\n  #ifdef CAVCLIP\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < ' + CS_CLIP.toFixed(2) + ' && wc.r * 2.55 > 0.02) discard; } }\n  #endif\n  #ifdef CORONAIRE\n  { vec3 tc = (vObj - uVolMin) * uVolScale + uVolHalf;\n    if (all(greaterThan(tc, vec3(0.0))) && all(lessThan(tc, vec3(1.0)))) { vec4 wc = textureLod(uVol, tc, 0.0);\n    if (wc.g * 2.55 < 0.05 && wc.r * 2.55 > 0.02) discard; } }\n  for (int i = 0; i < 15; i++) { if (float(i) + 1.5 > uPciN) break; vec3 a = uPciP[i].xyz, ab = uPciP[i + 1].xyz - a; float t = clamp(dot(vObj - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0); if (length(vObj - a - ab * t) < uPciP[i].w) discard; }\n  #endif\n  #ifdef RACINES\n  if ((!inRoot(vObj, 0.4) && !(uOpenAo > 0.5 && uRootSel < 0.5) && !(uOpenVein > 0.5 && uRootSel > 0.5)) || inRootFloor(vObj) || inOstium(vObj)) discard;\n  #endif\n  #ifdef PULROOT\n  { vec3 q = vObj - uPulR.xyz; float al = dot(q, uPulA.xyz); if (dot(cameraPosition - uPulR.xyz, uPulA.xyz) > uPulA.w && al > 0.0 && al < uPulA.w && length(q - uPulA.xyz * al) < uPulR.w) discard; }\n  #endif\n  #ifdef OSTENV\n  for (int i = 0; i < 2; i++) { if (uOst[i].w <= 0.0) continue; vec3 q = vObj - uOst[i].xyz; float a = dot(q, uOstN[i]);\n    if (a > -0.45 && a < 0.25 && length(q - uOstN[i] * a) < uOst[i].w * 1.45) discard; }\n  #endif\n  #ifdef AOROOT\n  { vec3 q = vObj - uAoR.xyz; float al = dot(q, uAoA.xyz); if ((uOpenAo > 0.5 || dot(cameraPosition - uAoR.xyz, uAoA.xyz) > uAoA.w) && al > 0.15 * uAoA.w && al < 1.05 * uAoA.w && length(q - uAoA.xyz * al) < uAoR.w) discard; }\n  #endif\n  #ifdef FOSSE\n  { vec3 q = vObj - uFosC; float d = dot(q, uFosN);\n    if (abs(d) < uFosAB.z) { float x = dot(q, uFosU) / uFosAB.x, y = dot(q, cross(uFosN, uFosU)) / uFosAB.y; if (x * x + y * y < 1.0) discard; }\n    if (uPfoL.w > 0.0) { vec3 p = vObj - uPfoO; float t = (dot(p, uPfoD) - uPfoL.x) / (uPfoL.y - uPfoL.x);\n    if (t > 0.0 && t < 1.0) { float tp = sqrt(sin(3.14159265 * clamp(t * 0.92 + 0.04, 0.0, 1.0))); float x = dot(p, uPfoW) / (uPfoL.z * (0.55 + 0.45 * tp)), m = dot(p, cross(uPfoD, uPfoW)) / (uPfoL.w * tp + 0.004); if (x * x + m * m < 1.0) discard; } } }\n  #endif')
     .replace('#include <color_fragment>', `#include <color_fragment>
       float dTint;
@@ -358,7 +358,52 @@ function patchShader(sh) {
         }
       }
       #endif
+      #ifdef CAVITE
+      {
+        // Relief propre à chaque cavité (endocarde vu en coupe) : muscles pectinés en peigne dans l'auricule et sur la
+        // paroi latérale et antérieure de l'oreillette droite (la paroi septale et le sinus des veines caves restent
+        // lisses) ; grosses trabécules charnues anastomosées dans le ventricule droit, qui le distinguent du gauche
+        float aur = step(abs(vSid - SID_AURD), 0.5) + step(abs(vSid - SID_AURG), 0.5);
+        float pect = max(aur, step(abs(vSid - SID_OD), 0.5) * smoothstep(0.05, 0.55, dot(normalize(vObj - uRAc), uRAlat)));
+        if (pect > 0.0) {
+          float lodP = clamp(length(fwidth(vObj)) * 12.0, 0.0, 1.0);
+          // faisceaux à peu près parallèles, d'épaisseur et d'écart inégaux, interrompus par endroits
+          float ridge = pow(abs(sin(vObj.y * 11.0 + 3.0 * vnoise(vObj * 1.2) + 1.5 * vnoise(vObj * 3.5))), 3.0);
+          ridge *= 0.5 + 0.5 * smoothstep(0.3, 0.7, vnoise(vObj * 2.2 + 9.0));
+          ridge = mix(ridge, 0.3, lodP);
+          dH = mix(dH, 9.0 * ridge + 0.25 * dH, pect);
+          dTint *= mix(1.0, 0.72 + 0.42 * ridge, pect);
+        }
+        if (abs(vSid - SID_VD) < 0.5) {
+          float lodT = clamp(length(fwidth(vObj)) * 8.0, 0.0, 1.0);
+          float tr = smoothstep(0.48, 0.68, 0.7 * vnoise(vec3(vObj.x * 1.7, vObj.y * 0.8, vObj.z * 1.7)) + 0.3 * vnoise(vObj * 3.6 + 5.0));
+          tr = mix(tr, 0.4, lodT);
+          dH = 0.35 * dH + 8.0 * tr;
+          dTint *= 0.74 + 0.4 * tr;
+        }
+      }
+      #endif
       diffuseColor.rgb *= vCol * dTint;
+      // myocarde : nuances lentes (zones un peu plus rouges et plus sombres, comme sur un cœur réel), pas sur la graisse,
+      // les vaisseaux ni les valves
+      #ifndef VALVE
+      {
+        float mus = clamp(1.0 - vTis.x - vTis.y, 0.0, 1.0) * (1.0 - vTis.z * 0.5);
+        float hue = vnoise(vObj * 0.45 + 17.0);
+        diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(1.04, 0.97, 0.98), vec3(0.93, 0.84, 0.86), smoothstep(0.35, 0.75, hue)), mus);
+      }
+      #endif
+      #ifdef FOSSE
+      if (uPfoL.w > 0.0) { // entrée du tunnel du FOP : bord assombri, l'ouverture se lit
+        vec3 p = vObj - uPfoO; float t = (dot(p, uPfoD) - uPfoL.x) / (uPfoL.y - uPfoL.x);
+        if (t > -0.15 && t < 1.15) {
+          float tp = sqrt(sin(3.14159265 * clamp(t * 0.92 + 0.04, 0.0, 1.0))) + 0.15;
+          float x = dot(p, uPfoW) / (uPfoL.z * (0.55 + 0.45 * tp)), m = dot(p, cross(uPfoD, uPfoW)) / (uPfoL.w * tp + 0.004);
+          float r = x * x + m * m;
+          diffuseColor.rgb *= 1.0 - 0.55 * (1.0 - smoothstep(1.0, 2.6, r)) * step(1.0, r);
+        }
+      }
+      #endif
       // myocarde infarci (premières heures) : terne, pâle et grisâtre, marbré de plages sombres pourpres (hémorragie
       // interstitielle), cerné d'un liseré rouge (bordure hyperhémique) qui en dessine le contour ; la graisse des sillons
       // n'est pas du muscle et garde sa teinte. Artère occluse : sombre, sans sang (TIMI 0)
@@ -1067,6 +1112,16 @@ export async function buildHeart(onProgress) {
     if (!fromFile) { g.setAttribute('col', new THREE.BufferAttribute(col, 4, true)); g.setAttribute('tis', new THREE.BufferAttribute(tis, 4, true)); }
     // endocarde : film humide brillant sur le relief des trabécules
     const cavMat = tissue(0xffffff, { envelope: true, fossa: true, aoroot: true, deformK: K_ENDO, side: THREE.BackSide, roughness: 0.36, clearcoat: 0.6, clearcoatRoughness: 0.18, bump: 0.25, sss: 0.55, rim: 0.08 });
+    // relief propre à chaque cavité (shader, CAVITE) : indices des cavités ; oreillette droite : centre et direction de
+    // sa paroi libre (à l'opposé de la cloison, vers l'avant), où siègent les muscles pectinés
+    {
+      const cen = (name) => { const c = new THREE.Vector3(), q = new THREE.Vector3(); let k = 0; const pa = g.attributes.position; for (let i = 0; i < n; i++) if (ids[sid[i]] === name) { c.add(q.fromBufferAttribute(pa, i)); k++; } return k ? c.multiplyScalar(1 / k) : c; };
+      const RAc = cen('oreillette-droite'), LAc = cen('oreillette-gauche');
+      const lat = RAc.clone().sub(LAc).setY(0).normalize().add(new THREE.Vector3(0, 0, 0.35)).normalize(); // paroi latérale (crête terminale), un peu vers l'avant
+      const sidOf = (name) => `${Math.max(-10, ids.indexOf(name))}.0`;
+      cavMat.defines = { ...cavMat.defines, CAVITE: '', SID_OD: sidOf('oreillette-droite'), SID_VD: sidOf('ventricule-droit'), SID_AURD: sidOf('auricule-droite'), SID_AURG: sidOf('auricule-gauche') };
+      Object.assign(cavMat.userData.uniforms, { uRAc: { value: RAc }, uRAlat: { value: lat } });
+    }
     const cav = new THREE.Mesh(g, cavMat);
     cav.userData.id = 'cavites';
     cav.userData.sid = sid; // clic : cavité touchée (oreillette ou ventricule)
@@ -1094,6 +1149,43 @@ export async function buildHeart(onProgress) {
       cutOnly.push(mesh);
       // tranche propre (fibres longitudinales, js/cut-surface.js) : la carte de la paroi les place dans la cavité
       solids.push({ mesh, hole: false, cap: 'pilier', k: K_ENDO });
+    }
+  }
+
+  /* ── Bande modératrice (trabécule septo-marginale) du ventricule droit ──
+     De la cloison, au tiers moyen, jusqu'à la base du muscle papillaire antérieur, à travers la cavité : elle porte la
+     branche droite du faisceau de His et signe le ventricule droit en échographie (vue apicale 4 cavités). Base du
+     pilier : point de la pièce BodyParts3D le plus proche de la pointe, à moins de 2,2 cm de sa tête ; départ septal :
+     point de l'endocarde septal du VD (au plus près de la cavité du VG), un peu plus basal. */
+  {
+    const tv = header.valves?.['valve-tricuspide'], pil = Object.values(geos).find((x) => x.meta.role === 'pilier' && x.meta.id === 'ventricule-droit');
+    const ant = tv?.papillaries?.find((x) => /Anterior/.test(x.name));
+    if (ant && pil) {
+      const head = v3(ant.head), apexP = v3(F.apex), toApex = apexP.clone().sub(head).normalize();
+      const pp = pil.geometry.attributes.position, q = new THREE.Vector3(), B = head.clone();
+      let best = -Infinity;
+      for (let i = 0; i < pp.count; i++) { q.fromBufferAttribute(pp, i); if (q.distanceTo(head) > 2.2) continue; const d = q.clone().sub(head).dot(toApex); if (d > best) { best = d; B.copy(q); } }
+      B.lerp(head, 0.15);
+      const cg = geos.cavites.geometry.attributes.position, cs = geos.cavites.sid, LVc = new THREE.Vector3(); let kl = 0;
+      for (let i = 0; i < cs.length; i++) if (ids[cs[i]] === 'ventricule-gauche') { LVc.add(q.fromBufferAttribute(cg, i)); kl++; }
+      LVc.multiplyScalar(1 / Math.max(1, kl));
+      const rv = []; let dmin = Infinity;
+      for (let i = 0; i < cs.length; i += 2) if (ids[cs[i]] === 'ventricule-droit') { q.fromBufferAttribute(cg, i); const dl = q.distanceTo(LVc); rv.push([q.clone(), dl]); dmin = Math.min(dmin, dl); }
+      let S = null, sBest = Infinity;
+      for (const [v, dl] of rv) {
+        if (dl > dmin + 1.2) continue; // endocarde septal
+        const along = v.clone().sub(B).dot(toApex);
+        if (along > -0.2 || along < -1.6) continue; // un peu plus basal que la base du pilier
+        const d = v.distanceTo(B); if (d < sBest) { sBest = d; S = v; }
+      }
+      if (S && sBest < 4.5) {
+        const mid = S.clone().lerp(B, 0.5).addScaledVector(toApex, 0.25); // légère courbe vers la pointe
+        const band = new THREE.Mesh(tubeGeometry([S.clone().lerp(B, -0.04), mid, B], (t) => 0.13 + 0.06 * Math.sin(Math.PI * t), 28, 12), matFor('ventricule-droit', 'papillaire'));
+        band.castShadow = true;
+        register('ventricule-droit', band);
+        cutOnly.push(band);
+        solids.push({ mesh: band, hole: false, cap: 'pilier', k: K_ENDO });
+      }
     }
   }
 

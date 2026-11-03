@@ -88,7 +88,9 @@ export function createBubbles(heart) {
   const fo = heart.fossa;
   if (!fo) return { update() {}, setActive() {}, mesh: null };
   const N = 1280; // opacification dense de l'oreillette droite, passage bien visible dans l'oreillette gauche
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x8c97a3, emissiveIntensity: 0.45, roughness: 0.22, metalness: 0 });
+  // microbulles de sérum agité : petites sphères claires, brillantes et un peu transparentes (reflet net, cœur qu'on devine
+  // au travers), et non des billes blanches opaques
+  const mat = new THREE.MeshStandardMaterial({ color: 0xf4f8ff, emissive: 0x7d8fa6, emissiveIntensity: 0.35, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.62, depthWrite: false, envMapIntensity: 1.6 });
   const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), mat, N);
   mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 2;
   heart.root.add(mesh);
@@ -116,7 +118,7 @@ export function createBubbles(heart) {
     }
     b.t = initial ? Math.random() * 0.8 : 0;
     b.speed = (1.4 + Math.random() * 0.8) / b.len; // ≈ 1,4 à 2,2 cm/s : le contraste remplit l'OD en un à deux cycles
-    b.size = 0.035 + Math.random() * 0.035;
+    b.size = 0.022 + Math.random() * 0.028;
     b.waiting = false;
   };
   for (let i = 0; i < N; i++) { B.push({}); spawn(B[i], true); }

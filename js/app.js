@@ -409,7 +409,7 @@ function syncCycleUI() {
   if ((++cycleTick & 15) === 0 || !state.battement) cyclePos.setAttribute('aria-valuetext', phaseText(ph));
 }
 const state = { coupe: false, modeCoupe: 'cinq-cavites', battement: true, coronaires: true, reperes: false, comparer: false, doppler: false, selected: null, hovered: null, vue: 'anterieure', valve: null,
-  expert: false, sombre: false, qualite: false, laser: false };
+  expert: false, sombre: false, qualite: false, laser: false, flux: false };
 
 function applyClipping() {
   const cut = state.coupe, flat = cut && !curved;
@@ -1340,8 +1340,15 @@ const valveMarks = {};
 // recalculés quand la coupe change (sommets des cavités à moins de 3,5 mm de la surface de coupe).
 const RED = 'rouge', BLUE = 'bleu';
 const chamberDefs = [['oreillette-droite', 'Oreillette droite', BLUE, -1], ['ventricule-droit', 'Ventricule droit', BLUE, -1], ['oreillette-gauche', 'Oreillette gauche', RED, 1], ['ventricule-gauche', 'Ventricule gauche', RED, 1]];
-const chMark = (text, tone) => {
+// Un nom de la Légende se touche : la structure reste en couleur, le reste s'estompe (mode focus) ; on retouche pour
+// tout rallumer
+const chMark = (text, tone, id = null) => {
   const el = document.createElement('div'); el.className = `ch-label ${tone}`; el.innerHTML = `<i></i>${text}${EN[text] ? `<em>${EN[text]}</em>` : ''}`;
+  if (id && STRUCTURES[id]) {
+    el.classList.add('pickable'); el.dataset.id = id;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('click', (e) => { e.stopPropagation(); select(state.selected === id ? null : id); });
+  }
   const o = new CSS2DObject(el); o.visible = false; heart.root.add(o); return o;
 };
 const outerMarks = (() => {
@@ -1352,17 +1359,18 @@ const outerMarks = (() => {
     for (let i = 0; i < tis.count; i++) if (Math.round(tis.getW(i) * 255) === k && pos.getY(i) > best.y) best.fromBufferAttribute(pos, i);
     return best.y > -1e9 ? best : null;
   })();
-  return [...chamberDefs.map(([id, t, c, sd]) => [at(id), t, c, sd]), [ao, 'Aorte', RED, -1], [at('tronc-pulmonaire'), 'Artère pulmonaire', BLUE, 1],
-    [at('veine-cave-superieure'), 'Veine cave supérieure', BLUE, -1], [at('veine-cave-inferieure'), 'Veine cave inférieure', BLUE, -1], [at('veines-pulmonaires'), 'Veines pulmonaires', RED, 1],
+  return [...chamberDefs.map(([id, t, c, sd]) => [at(id), t, c, sd, false, id]), [ao, 'Aorte', RED, -1, false, 'aorte'], [at('tronc-pulmonaire'), 'Artère pulmonaire', BLUE, 1, false, 'tronc-pulmonaire'],
+    [at('veine-cave-superieure'), 'Veine cave supérieure', BLUE, -1, false, 'veine-cave-superieure'], [at('veine-cave-inferieure'), 'Veine cave inférieure', BLUE, -1, false, 'veine-cave-inferieure'], [at('veines-pulmonaires'), 'Veines pulmonaires', RED, 1, false, 'veines-pulmonaires'],
     // mode Expert : nomenclature complète (auricules, branches de la crosse, coronaires, veines du cœur)
     ...[[at('auricule-droite'), 'Auricule droite', BLUE, -1], [at('auricule-gauche'), 'Auricule gauche', RED, 1], [at('tronc-brachio-cephalique'), 'Tronc brachio-céphalique', RED, -1],
       [at('carotide-commune-gauche'), 'Carotide commune gauche', RED, 1], [at('subclaviere-gauche'), 'Subclavière gauche', RED, 1], [at('ligament-arteriel'), 'Ligament artériel', RED, 1],
       [at('tronc-commun'), 'Tronc commun', RED, 1], [at('iva'), 'IVA', RED, 1], [at('circonflexe'), 'Circonflexe', RED, 1], [at('coronaire-droite'), 'Coronaire droite', RED, -1],
-      [at('sinus-coronaire'), 'Sinus coronaire', BLUE, -1], [at('grande-veine-cardiaque'), 'Grande veine du cœur', BLUE, 1], [at('veine-cardiaque-moyenne'), 'Veine moyenne du cœur', BLUE, -1]].map((x) => [...x, true])]
-    .filter(([p]) => p).map(([p, t, c, sd, ex]) => { const o = chMark(t, c); o.position.copy(p); o.userData.side = sd; o.userData.expert = !!ex; o.userData.noOcc = p === ao; return o; });
+      [at('sinus-coronaire'), 'Sinus coronaire', BLUE, -1], [at('grande-veine-cardiaque'), 'Grande veine du cœur', BLUE, 1], [at('veine-cardiaque-moyenne'), 'Veine moyenne du cœur', BLUE, -1]]
+      .map(([p, t, c, sd], i) => [p, t, c, sd, true, ['auricule-droite', 'auricule-gauche', 'tronc-brachio-cephalique', 'carotide-commune-gauche', 'subclaviere-gauche', 'ligament-arteriel', 'tronc-commun', 'iva', 'circonflexe', 'coronaire-droite', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne'][i]])]
+    .filter(([p]) => p).map(([p, t, c, sd, ex, id]) => { const o = chMark(t, c, id); o.position.copy(p); o.userData.side = sd; o.userData.expert = !!ex; o.userData.noOcc = p === ao; return o; });
 })();
-const cutMarks = chamberDefs.map(([id, t, c, sd]) => Object.assign(chMark(t, c), { userData: { chamber: id, side: sd } }));
-const cutAoMark = chMark('Aorte', RED);
+const cutMarks = chamberDefs.map(([id, t, c, sd]) => Object.assign(chMark(t, c, id), { userData: { chamber: id, side: sd } }));
+const cutAoMark = chMark('Aorte', RED, 'aorte');
 let cutMarksKey = '';
 const _cm = new THREE.Vector3(), _cw = new THREE.Vector3();
 function placeCutMarks() {
@@ -1385,8 +1393,76 @@ function placeCutMarks() {
   pa.addScaledVector(V, curved ? f : -f);
   cutAoMark.position.copy(heart.root.worldToLocal(pa)); cutAoMark.userData.ok = Math.abs(f) < 2.5;
 }
+/* ─────────── circulation du sang dans les coupes (bouton « Circulation du sang ») ─────────── */
+// Flèches posées sur la tranche, au-dessus de tout (calque d'interface) : cœur droit en bleu (veines caves → oreillette
+// droite → tricuspide → ventricule droit → valve pulmonaire), cœur gauche en rouge (oreillette gauche → mitrale →
+// ventricule gauche → valve aortique → aorte). Des chevrons y avancent au rythme du cycle : remplissage des ventricules
+// en diastole et pendant la contraction des oreillettes, éjection vers les artères en systole. Recalculées quand la
+// coupe change (centres des cavités ouvertes, centres des valves ramenés sur la surface de coupe).
+const FLOW_COL = { [RED]: new THREE.Color(0xd8322c), [BLUE]: new THREE.Color(0x3a64c8) };
+const flowMat = (tone) => new THREE.ShaderMaterial({
+  transparent: true, depthTest: false, depthWrite: false,
+  uniforms: { uColor: { value: FLOW_COL[tone] }, uTime: { value: 0 }, uOn: { value: 1 }, uLen: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 uColor; uniform float uTime, uOn, uLen; varying vec2 vUv;
+    void main() {
+      float s = fract(vUv.x * uLen / 0.9 - uTime * 1.6);            // chevrons tous les 9 mm, qui avancent
+      float chev = smoothstep(0.0, 0.08, s) * (1.0 - smoothstep(0.42, 0.5, s));
+      float rim = abs(sin(vUv.y * 3.14159265));                     // modelé du tube : bords plus sombres
+      float a = (0.62 + 0.38 * chev) * uOn * smoothstep(0.0, 0.05, vUv.x);
+      vec3 c = mix(uColor * (0.45 + 0.55 * rim), vec3(1.0), 0.55 * chev * rim);
+      gl_FragColor = vec4(c, a);
+    }`,
+});
+const flowGroup = new THREE.Group();
+flowGroup.visible = false; heart.root.add(flowGroup);
+let flowKey = '';
+function buildFlow() {
+  const key = cutMarksKey;
+  if (key === flowKey) return;
+  flowKey = key;
+  flowGroup.children.slice().forEach((m) => { m.geometry.dispose(); flowGroup.remove(m); });
+  const M = heart.root.matrixWorld, field = (p) => (curved ? CURVE.field(p) : cutPlane.distanceToPoint(p)), V = curved ? CURVE.V : cutPlane.normal;
+  const onCut = (p) => { const w = p.clone().applyMatrix4(M), f = field(w); return heart.root.worldToLocal(w.addScaledVector(V, curved ? f : -f)); };
+  const inCut = (p, tol = 1.6) => Math.abs(field(p.clone().applyMatrix4(M))) < tol; // valve dans la tranche (ou tout près)
+  const ch = Object.fromEntries(cutMarks.map((o) => [o.userData.chamber, o.userData.ok ? o.position.clone() : null]));
+  const up = VAO.axis.clone().normalize().multiplyScalar(VAO.axis.dot(LM.base.clone().sub(LM.apex)) > 0 ? 1 : -1);
+  const pulUp = VPU.axis.clone().normalize().multiplyScalar(VPU.axis.dot(LM.base.clone().sub(LM.apex)) > 0 ? 1 : -1);
+  const arrow = (pts, tone, phase) => {
+    if (pts.some((p) => !p)) return;
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'), len = curve.getLength(), mat = flowMat(tone);
+    mat.uniforms.uLen.value = len;
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(16, Math.round(len * 8)), 0.2, 10, false), mat);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.48, 0.95, 20), new THREE.MeshBasicMaterial({ color: FLOW_COL[tone], transparent: true, depthTest: false, depthWrite: false, opacity: 0.85 }));
+    const end = curve.getPointAt(1), tan = curve.getTangentAt(1);
+    tip.position.copy(end).addScaledVector(tan, 0.35); tip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tan);
+    for (const m of [tube, tip]) { m.layers.set(OVERLAY_LAYER); m.renderOrder = 10; m.userData.phase = phase; m.frustumCulled = false; flowGroup.add(m); }
+  };
+  const tv = onCut(VTR.center), mv = onCut(VMI.center), av = onCut(VAO.center), pv = onCut(VPU.center);
+  // remplissage (diastole) : oreillette → valve → ventricule ; éjection (systole) : ventricule → valve → artère
+  arrow([ch['oreillette-droite'], tv, ch['ventricule-droit']], BLUE, 'in');
+  // éjection : seulement si la valve artérielle est dans la coupe (la valve pulmonaire, en avant de l'aorte, n'est pas dans
+  // la coupe 5 cavités : une flèche ramenée sur la tranche y traverserait la chambre de chasse du VG)
+  if (inCut(VPU.center)) arrow([ch['ventricule-droit'], ch['ventricule-droit'] && ch['ventricule-droit'].clone().lerp(pv, 0.55), pv, onCut(VPU.center.clone().addScaledVector(pulUp, 1.6))], BLUE, 'out');
+  arrow([ch['oreillette-gauche'], mv, ch['ventricule-gauche']], RED, 'in');
+  if (inCut(VAO.center)) arrow([ch['ventricule-gauche'], ch['ventricule-gauche'] && ch['ventricule-gauche'].clone().lerp(av, 0.55), av, onCut(VAO.center.clone().addScaledVector(up, 2.2))], RED, 'out');
+}
+function updateFlow(dt) {
+  const on = state.flux && state.coupe && !state.valve && !trans && !intro.playing;
+  flowGroup.visible = on;
+  if (!on) return;
+  placeCutMarks(); buildFlow();
+  const ms = (state.battement ? beatPhase : frozenPhase ?? 0) * 940, sys = ms >= 175 && ms < 495;
+  for (const m of flowGroup.children) {
+    const active = !state.battement || (m.userData.phase === 'out') === sys;
+    const target = active ? 1 : 0.15, u = m.material.uniforms;
+    if (u) { u.uTime.value += Math.min(dt, 0.1) * (state.battement ? beatSpeed : 0.4); u.uOn.value += (target - u.uOn.value) * Math.min(1, dt * 8); }
+    else m.material.opacity += (target * 0.85 - m.material.opacity) * Math.min(1, dt * 8);
+  }
+}
 const _om = new THREE.Vector3(), occRay2 = new THREE.Raycaster();
 function syncChamberMarks() {
+  document.querySelectorAll('.ch-label.pickable').forEach((el) => el.classList.toggle('selected', el.dataset.id === state.selected));
   const on = state.reperes && !state.valve && !trans && !intro.playing;
   const cut = on && state.coupe, whole = on && !state.coupe;
   if (cut) placeCutMarks();
@@ -1545,8 +1621,7 @@ function toggle(name, value) {
   if (name === 'coupe' && state.valve) { goValve(null, () => toggle(name, value)); return; }
   state[name] = value ?? !state[name];
   renderer.shadowMap.needsUpdate = true;
-  const btn = document.querySelector(`[data-toggle="${name}"]`);
-  if (btn) { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }
+  document.querySelectorAll(`[data-toggle="${name}"]`).forEach((btn) => { btn.classList.toggle('on', state[name]); btn.setAttribute('aria-pressed', String(state[name])); }); // bouton présent dans plusieurs rubriques
   if (name === 'battement') {
     const t = document.querySelector('.beat-txt'); if (t) t.textContent = state.battement ? 'Pause' : 'Battement';
     if (state.battement) { if (frozenPhase !== null) beatPhase = frozenPhase; frozenPhase = null; }
@@ -1556,6 +1631,7 @@ function toggle(name, value) {
   if (name === 'doppler') syncDoppler();
   if (name === 'sombre') document.body.classList.toggle('dark-stage', state.sombre);
   if (name === 'laser') setLaser(state.laser);
+  if (name === 'flux') renderer.shadowMap.needsUpdate = true;
   if (name === 'coupe') restPose();
   if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); syncMenu(); }
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires && (!m.userData.ostium || state.coupe); })); }
@@ -2031,6 +2107,7 @@ function animate() {
     procCam(f.center, f.dir, f.dist * (portrait() + (1 - portrait()) * pci.zoom), f.up, dt); // gros plan : sans recul supplémentaire en portrait
   }
   intro.update(Math.min(dt, 0.1));
+  updateFlow(dt);
   if (pacing.shown && !trans && state.valve === 'stim') { // caméra de l'animation : 4 cavités, septum, oreillette droite
     const f = pacing.frame(), sd = VALVE_VIEWS.stim.sides.C;
     procCam(f.center, sd.camDir, f.dist * portrait(), sd.up, dt);

@@ -402,3 +402,9 @@ body.laser-on .scene, body.laser-on .labels { cursor: none; }
 .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 14px; }
 .shortcuts dt { font-weight: 700; white-space: nowrap; }
 .shortcuts dd { margin: 0; color: var(--ink-2); }
+
+/* noms de la Légende : un toucher met la structure en lumière */
+.ch-label.pickable { pointer-events: auto; cursor: pointer; }
+.ch-label.pickable:hover { box-shadow: 0 0 0 2px rgba(20, 33, 58, .35), 0 2px 8px rgba(20, 33, 58, .2); }
+.ch-label.selected { background: var(--ink); color: #fff; }
+.ch-label.selected em { color: rgba(255, 255, 255, .75); }
