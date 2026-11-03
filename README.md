@@ -302,9 +302,12 @@ une liste numérotée des structures, et une fiche explicative par structure.
   - chaque animation construit son matériel pendant le trajet depuis la ponction (la planche reste un instant sur sa
     première image), et le relais attend au besoin la fin de cette préparation : le passage en 3D n'a plus rien à
     construire ; distances aux parois des oreillettes (fermeture du FOP) cherchées dans une grille de cases de 4 mm ;
-  - qualité adaptative : si les images dépassent 22 ms en moyenne pendant une animation, la résolution du rendu
-    baisse par paliers (jusqu'à 1 pixel par point) et les ombres se recalculent deux fois moins souvent ; pleine
-    qualité dès la fin de l'animation ;
+  - qualité adaptative, en permanence : si les images dépassent 24 ms en moyenne, la résolution du rendu baisse par
+    paliers et les ombres se recalculent deux fois moins souvent ; elle remonte quand l'appareil suit. Deux niveaux
+    retenus : en mouvement (transitions, animations, cœur que l'on fait tourner) jusqu'à 0,65 pixel par point ; cœur
+    qui bat, caméra immobile, jusqu'à 0,8 ; cœur arrêté et immobile, pleine qualité ;
+  - programmes de la carte graphique précompilés en arrière-plan peu après le chargement (cœur entier et coupe
+    plane) : la première ouverture d'une rubrique ne fige plus l'image ;
   - planche du corps entier en calques HTML zoomés par la carte graphique (sans être redessinés), image du tronc plus
     légère sur téléphone (22 px/cm) ; la scène 3D n'est pas dessinée tant que la planche la recouvre.
 

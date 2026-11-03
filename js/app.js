@@ -1642,6 +1642,28 @@ resize();
 goView('anterieure', true);
 applyURL(); // vue demandée par le lien (valve, coupe, instant du cycle…)
 
+// Programmes de la carte graphique préparés en arrière-plan, peu après le chargement : sans cela, la première ouverture
+// de chaque rubrique fige l'image le temps de les compiler (≈ 0,9 s pour la valve aortique sur une carte intégrée).
+// renderer.compile parcourt toute la scène, objets cachés compris, mais reprend le nombre de plans de coupe du dernier
+// objet dessiné : un dessin d'un pixel le fixe, 0 (cœur entier) puis 1 (coupe plane). Programmes calculés pour la cible
+// des ombres de contact, où la scène est dessinée ; la compilation se fait en parallèle (KHR_parallel_shader_compile),
+// sans bloquer l'affichage.
+async function prewarm() {
+  const rt = new THREE.WebGLRenderTarget(1, 1), probe = new THREE.Scene();
+  const mat = new THREE.MeshBasicMaterial(), mesh = new THREE.Mesh(new THREE.PlaneGeometry(), mat);
+  mesh.frustumCulled = false; probe.add(mesh);
+  for (const planes of [[], [new THREE.Plane()]]) {
+    mat.clippingPlanes = planes; mat.needsUpdate = true;
+    renderer.setRenderTarget(rt); renderer.render(probe, camera);
+    renderer.setRenderTarget(contact.target);
+    const done = renderer.compileAsync(scene, camera);
+    renderer.setRenderTarget(null);
+    await done;
+  }
+  rt.dispose(); mesh.geometry.dispose(); mat.dispose();
+}
+setTimeout(() => whenIdle(() => prewarm().catch((e) => console.warn(e))), 600);
+
 // Masque les étiquettes dont le point d'ancrage est caché par le modèle.
 const occRay = new THREE.Raycaster();
 const occPos = new THREE.Vector3(), occDir = new THREE.Vector3();
@@ -1684,16 +1706,32 @@ function updateOrientation() {
 const clock = new THREE.Clock();
 let beatIdle = true;
 let frame = 0;
-// Qualité adaptative pendant les animations : si les images sont trop lentes (plus de 22 ms en moyenne), la résolution
-// du rendu baisse par paliers (jusqu'à 1 pixel par point) ; elle revient à la pleine qualité dès la fin de l'animation
-const PR_FULL = renderer.getPixelRatio(), PR_STEPS = [...new Set([PR_FULL, Math.min(PR_FULL, 1.5), Math.min(PR_FULL, 1.25), 1])];
-let prStep = 0, frameAvg = 16, prWait = 1;
+// Qualité adaptative : si les images sont trop lentes (plus de 24 ms en moyenne), la résolution du rendu baisse par
+// paliers ; elle remonte d'un palier quand l'appareil suit (moins de 19 ms pendant 3 s). Deux niveaux retenus à part :
+// en mouvement (transitions, animations, cœur que l'on fait tourner), jusqu'à 0,65 pixel par point (carte graphique
+// intégrée : 10 → 20 images/s) ; cœur qui bat sans mouvement de caméra, jusqu'à 0,8. Cœur arrêté et immobile : pleine
+// qualité, la vitesse ne compte plus.
+const PR_FULL = renderer.getPixelRatio(), PR_STEPS = [...new Set([PR_FULL, 1.5, 1.25, 1, 0.8, 0.65].map((p) => Math.min(PR_FULL, p)))];
+const PR_FLOOR = { calm: PR_STEPS.indexOf(Math.min(PR_FULL, 0.8)), moving: PR_STEPS.length - 1 };
+const prLevel = { calm: 0, moving: 0 }, prUpBlock = { calm: 0, moving: 0 };
+let prMode = 'still', frameAvg = 16, prWait = 1, prFast = 0, prRaised = -1, lastMove = -1;
+controls.addEventListener('change', () => { lastMove = clock.elapsedTime; });
 const setPR = (pr) => { if (renderer.getPixelRatio() !== pr) { renderer.setPixelRatio(pr); resize(); } };
-function adaptQuality(dt, busy) {
-  if (!busy) { if (prStep) { prStep = 0; setPR(PR_STEPS[0]); } frameAvg = 16; prWait = 1; return; }
+function adaptQuality(dt, t, mode) {
+  if (mode !== prMode) { prMode = mode; setPR(PR_STEPS[mode === 'still' ? 0 : prLevel[mode]]); frameAvg = 16; prWait = 0.6; prFast = 0; prRaised = -1; }
+  if (mode === 'still') return;
   frameAvg += (Math.min(dt, 0.25) * 1000 - frameAvg) * 0.08;
   if ((prWait -= dt) > 0) return; // après un changement (et au départ), on laisse la mesure se poser
-  if (frameAvg > 22 && prStep < PR_STEPS.length - 1) { prStep++; setPR(PR_STEPS[prStep]); prWait = 1.2; frameAvg = 16; }
+  const i = prLevel[mode];
+  if (frameAvg > 24 && i < PR_FLOOR[mode]) {
+    if (prRaised >= 0 && t - prRaised < 4) prUpBlock[mode] = t + 30; // palier plus fin intenable : on n'y revient pas de sitôt
+    prLevel[mode] = i + 1; setPR(PR_STEPS[i + 1]); prWait = 1.2; frameAvg = 16; prFast = 0; prRaised = -1;
+    if (mode === 'calm') prLevel.moving = Math.max(prLevel.moving, i + 1); // le mouvement coûte au moins autant
+    return;
+  }
+  if (frameAvg > 24 && mode === 'calm') prLevel.moving = Math.min(PR_FLOOR.moving, Math.max(prLevel.moving, i + 1)); // au plancher et encore lent
+  prFast = frameAvg < 19 ? prFast + dt : 0;
+  if (prFast > 3 && i > 0 && t > prUpBlock[mode]) { prLevel[mode] = i - 1; setPR(PR_STEPS[i - 1]); prWait = 1.2; frameAvg = 16; prFast = 0; prRaised = t; }
 }
 function animate() {
   requestAnimationFrame(animate);
@@ -1707,7 +1745,7 @@ function animate() {
     const rp = tavi.rapidPacing;
     beatPhase = (beatPhase + Math.min(dt, 0.1) * beatSpeed * BPM / 60 * (1 + 2.1 * rp)) % 1;
     heart.setBeat(beatPhase, 1 - 0.8 * rp); beatIdle = false;
-    if (frame % (prStep ? 6 : 3) === 0) renderer.shadowMap.needsUpdate = true; // qualité réduite : ombres moins souvent
+    if (frame % (renderer.getPixelRatio() < PR_FULL ? 6 : 3) === 0) renderer.shadowMap.needsUpdate = true; // qualité réduite : ombres moins souvent
     if ((frame & 1) === 0) syncCycleUI();
   }
   else if (!beatIdle) { beatIdle = true; restPose(); }
@@ -1750,7 +1788,10 @@ function animate() {
   if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
   if (frame % 30 === 0) syncURL();
   if ((frame++ & 3) === 0) occludeLabels();
-  adaptQuality(dt, tavi.playing || closure.playing || pacing.playing || pci.playing || (intro.playing && !intro.covering));
+  if (!intro.covering) { // planche opaque : rien à mesurer
+    const moving = trans || camAnim || handoff || t - lastMove < 0.4 || tavi.playing || closure.playing || pacing.playing || pci.playing || intro.playing;
+    adaptQuality(dt, t, moving ? 'moving' : state.battement ? 'calm' : 'still');
+  }
   if (!intro.covering) contact.render(); // scène + ombres de contact + calque d'interface ; rien sous la planche opaque
   labelRenderer.render(scene, camera);
 }
