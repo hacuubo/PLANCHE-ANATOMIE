@@ -370,6 +370,7 @@ body.presenting .scene.show-marks .bottombar { bottom: 16px; }
 .expert-only { display: none !important; }
 body.expert .mtile.expert-only { display: flex !important; }
 body.expert .mtools.expert-only { display: flex !important; }
+.maudience { --c: var(--ink); }
 .maudience, .mtools { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .maudience .seg { align-self: flex-start; }
 .ch-label em { display: none; font-style: italic; font-weight: 400; color: var(--ink-2); margin-left: 6px; }

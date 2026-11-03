@@ -14,8 +14,11 @@ une liste numérotée des structures, et une fiche explicative par structure.
   trajet réel des coronaires. À la jonction auriculo-ventriculaire, une lame de tissu relie l'anneau des valves mitrale et
   tricuspide à la paroi là où les cavités de BodyParts3D laissaient une fente ; les muscles papillaires sont
   recalculés en solides fermés (surfaces de coupe sans éclats).
-- **Coronaires** comme sur les planches de référence : sillons dégagés de leur graisse, artères en rouge et veines en
-  bleu, troncs remis au calibre des atlas (tronc commun ≈ 4,5 mm, IVA proximale et coronaire droite ≈ 3,5 mm, branches
+- **Graisse épicardique** calculée au chargement le long des vaisseaux du cœur : large dans le sillon
+  auriculo-ventriculaire et les sillons interventriculaires (≈ 8 mm), fine vers la pointe (≈ 2 mm), bords lobulés ; la
+  surface est soulevée d'au plus 0,5 mm, les vaisseaux y restent à demi visibles.
+- **Coronaires** comme sur les planches de référence : artères en rouge et veines en
+  bleu (rouge sombre violacé en mode Expert), troncs remis au calibre des atlas (tronc commun ≈ 4,5 mm, IVA proximale et coronaire droite ≈ 3,5 mm, branches
   ≈ 2,4 mm, sinus coronaire ≈ 6 mm), calibre qui diminue vers la périphérie ; débarrassés de la graisse
   sous-épicardique, les vaisseaux reposent dans un sillon évasé du myocarde, enchâssés à mi-hauteur, visibles sur toute
   leur longueur (jamais interrompus) et sans fente de part et d'autre. Visibles : coronaire droite, branche du
@@ -311,6 +314,29 @@ une liste numérotée des structures, et une fiche explicative par structure.
   - planche du corps entier en calques HTML zoomés par la carte graphique (sans être redessinés), image du tronc plus
     légère sur téléphone (22 px/cm) ; la scène 3D n'est pas dessinée tant que la planche la recouvre.
 
+- **Rendu** (novembre 2026) : éclairage de studio contrasté, fond assombri vers les bords ; gros vaisseaux en teintes
+  de tissu (aorte nacrée, veines caves bleu violacé, veines pulmonaires rouge violacé) ; nuances lentes du myocarde ;
+  reliefs propres à chaque cavité (muscles pectinés de l'auricule et de la paroi latérale de l'oreillette droite,
+  grosses trabécules et bande modératrice du ventricule droit) ; calcifications valvulaires crayeuses et mates ;
+  territoire de l'infarctus pâle, marbré, cerné d'un liseré rouge ; bords lissés (FXAA simplifié) ; plus de silhouette
+  grise de la partie retirée par la coupe.
+- **Légende** : cavités et gros vaisseaux nommés sur le cœur entier et au centre des cavités ouvertes dans les coupes
+  (pastille rouge : sang riche en oxygène, bleue : pauvre en oxygène) ; un nom touché met la structure en lumière (le
+  reste s'estompe) ; noms qui se chevauchent masqués par ordre d'importance.
+- **Circulation du sang** dans les coupes (bouton de la rubrique Plan en coupe) : flèches bleues (cœur droit) et
+  rouges (cœur gauche), chevrons au rythme du cycle (remplissage en diastole, éjection en systole).
+- **Public : Patient / Expert** (menu, ou lien `?public=expert` ; le site s'ouvre toujours en Patient). En Expert :
+  nomenclature française et anglaise (auricules, branches de la crosse, coronaires, veines du cœur), échelle en
+  centimètres à la profondeur du centre de la vue, mesures du modèle dans les vues des valves, rubrique **Imagerie**
+  (js/imaging.js : 8 coupes d'échographie orientées comme l'image — parasternales grand axe et petits axes aortique,
+  mitral, piliers ; apicales 4 et 5 cavités ; ETO mi-œsophagiennes 4 cavités et grand axe — et 6 incidences de
+  coronarographie, OAD, OAG, crâniales, caudales, « araignée »), outils de congrès : fond sombre, qualité maximale,
+  pointeur laser, image HD (PNG), raccourcis clavier.
+- **Présentation** : bouton « Présenter » (plein écran sans menus ni boutons, Échap pour sortir) ; clavier et
+  télécommande de diaporama : → / ← ou Page suivante / précédente (visite guidée : cœur, coupe 5 cavités, les quatre
+  valves, FOP, coronaires, stimulation), Espace (battement), R (recentrer), P (présenter), L (laser), G (légende),
+  ? (aide).
+
 ## Lancer en local
 
 ```bash
@@ -370,6 +396,7 @@ python tools/check_model.py maillages-avant maillages-apres
 | `js/pci-anim.js` | Animations de l'angioplastie coronaire de l'IVA (infarctus, lésion serrée) : coronarographie, gros plan de l'artère fendue, guide, ballons, stent |
 | `js/pacing-anim.js` | Rubrique Stimulation : vue 4 cavités fixe, animation de l'implantation d'un stimulateur (sonde de branche gauche, sonde auriculaire) |
 | `js/doppler.js` | Doppler couleur des vues des valves : flux, fuites, jets de rétrécissement, zones de convergence |
+| `js/imaging.js` | Mode Expert, rubrique Imagerie : plans des coupes d'échographie (sur les repères du modèle, orientés comme l'image) et incidences de coronarographie |
 | `js/av-views.js` | Vues C (chirurgicale) et V (ventriculaire) des valves mitrale et tricuspide dans le cœur : coupe, cadrage, variantes pathologiques |
 | `js/aortic-view.js` | Vues C et V des valves aortique et pulmonaire dans le cœur : coupe, cadrage, variantes (bicuspide, rétrécie, insuffisante, TAVI ; rétrécissement pulmonaire en dôme) |
 | `js/route-intro.js` | Première partie des animations de pose : planche du corps entier (image livrée), trajet du dispositif de la ponction à l'abord du cœur, relais vers la 3D |
