@@ -15,6 +15,7 @@ import { createClosureAnimation } from './pfo-closure.js';
 import { createPciAnimation } from './pci-anim.js';
 import { buildPacingView, createPacingAnimation } from './pacing-anim.js';
 import { createRouteIntro } from './route-intro.js';
+import { buildImagingViews } from './imaging.js';
 import { STRUCTURES, GROUPES, ORDRE, INTRO } from './data.js';
 
 // Pastille numérotée : chiffre blanc sur couleur sombre, chiffre encre sur couleur claire (contraste ≥ 4,5 : 1).
@@ -235,6 +236,8 @@ function restPose() {
 }
 // Cadrage de chaque coupe (onlyOriented : à l'ouverture de la coupe, seules les coupes « échographiques » déplacent la caméra)
 function viewForCut(mode, onlyOriented = false) {
+  const cam = CUT_MODES[mode]?.cam; // coupes d'échographie : vues du côté de la sonde, orientation de l'image d'échographie
+  if (cam) { goDir(cam.dir, { target: cam.target, up: cam.up, dist: viewDistance() * cam.distK }); return; }
   // cœur plus grand : la coupe se lit mieux ; visée abaissée de 1,6 cm vers la pointe, qui reste au-dessus des boutons
   if (mode === 'cinq-cavites') goDir(CURVE.V, { target: CENTER.clone().addScaledVector(CURVE.Y, -1.6), up: CURVE.Y, dist: viewDistance() * 0.86 });
   // frontale : vue de face cadrée sur le cœur (de la pointe à la racine aortique), pas sur la crosse et les troncs ;
@@ -405,7 +408,8 @@ function syncCycleUI() {
   cyclePos.value = String(Math.round(ph * 1000));
   if ((++cycleTick & 15) === 0 || !state.battement) cyclePos.setAttribute('aria-valuetext', phaseText(ph));
 }
-const state = { coupe: false, modeCoupe: 'cinq-cavites', battement: true, coronaires: true, reperes: false, comparer: false, doppler: false, selected: null, hovered: null, vue: 'anterieure', valve: null };
+const state = { coupe: false, modeCoupe: 'cinq-cavites', battement: true, coronaires: true, reperes: false, comparer: false, doppler: false, selected: null, hovered: null, vue: 'anterieure', valve: null,
+  expert: false, sombre: false, qualite: false, laser: false };
 
 function applyClipping() {
   const cut = state.coupe, flat = cut && !curved;
@@ -567,6 +571,9 @@ for (const v of Object.values(VALVE_VIEWS)) for (const [side, sd] of Object.entr
   CUT_MODES[mode] = { normal: sd.cut.normal, min: sd.cut.def - 8, max: sd.cut.def + 16, def: sd.cut.def };
   INTERIOR_OFF[mode] = sd.interior;
 }
+// Imagerie (mode Expert) : coupes d'échographie (plans vus du côté de la sonde) et incidences de coronarographie
+const IMAGING = buildImagingViews(LM);
+for (const e of IMAGING.echo) { CUT_MODES[e.key] = { normal: e.normal, min: e.def - 6, max: e.def + 6, def: e.def, cam: e.cam }; INTERIOR_OFF[e.key] = 0.6; }
 if (bubbles.mesh) bubbles.mesh.material.clippingPlanes = [cutPlane]; // bulles coupées avec le cœur (vue bicave)
 // Doppler couleur (js/doppler.js) : flux de la valve regardée, en fumée rouge sang
 const doppler = createDoppler(heart);
@@ -1169,14 +1176,16 @@ function syncValveUI() {
 const menuEl = document.getElementById('menu'), menuBack = menuEl.querySelector('.menu-back'), menuTitle = menuEl.querySelector('.menu-title');
 const brandTitle = document.querySelector('.topbar .title'), brandSub = document.querySelector('.topbar .subtitle');
 const HOME = { title: brandTitle.textContent, sub: brandSub.textContent };
-const CUT_NAMES = { 'cinq-cavites': 'Coupe 5 cavités', frontale: 'Coupe frontale' };
+const CUT_NAMES = { 'cinq-cavites': 'Coupe 5 cavités', frontale: 'Coupe frontale', ...Object.fromEntries(IMAGING.echo.map((e) => [e.key, e.name])) };
 const SIDE_NAMES = { C: 'vue du chirurgien', V: 'vue du ventricule', L: 'implantation' };
 let valveList = false; // liste des valves affichée alors qu'une valve est à l'écran (retour depuis une valve)
 const variantName = (v) => v.variantList.find(([k]) => k === v.variant)?.[1] ?? '';
+let imagingPanel = false, imagingKey = null; // rubrique Imagerie ouverte ; vue d'imagerie à l'écran
 function menuPage() {
   const v = state.valve && VALVE_VIEWS[state.valve];
   if (v) return v.group === 'valves' ? (valveList ? 'valves' : 'valve') : v.group;
   if (valvePanel) return 'valves';
+  if (imagingPanel) return 'imagerie';
   return state.coupe ? 'coupe' : 'home';
 }
 function syncMenu() {
@@ -1184,11 +1193,13 @@ function syncMenu() {
   menuEl.querySelectorAll('.menu-page').forEach((el) => el.classList.toggle('on', el.dataset.page === page));
   menuEl.querySelectorAll('[data-cut]').forEach((x) => x.classList.toggle('active', x.dataset.cut === state.modeCoupe));
   menuBack.classList.toggle('hidden', page === 'home');
-  menuTitle.textContent = { home: 'Menu', coupe: 'Plan en coupe', valves: 'Valves', valve: v?.title ?? 'Valve', fop: 'FOP', coro: 'Coronaires', stim: 'Stimulation' }[page];
+  menuTitle.textContent = { home: 'Menu', coupe: 'Plan en coupe', valves: 'Valves', valve: v?.title ?? 'Valve', fop: 'FOP', coro: 'Coronaires', stim: 'Stimulation', imagerie: 'Imagerie' }[page];
+  menuEl.querySelectorAll('[data-imaging]').forEach((x) => x.classList.toggle('active', x.dataset.imaging === imagingKey));
   const slot = menuEl.querySelector(`.menu-page[data-page="${page}"] .proc-slot`); // animation de la vue (TAVI, fermeture du FOP)
   if (slot && taviBtn.parentElement !== slot) slot.appendChild(taviBtn);
   let t = HOME.title, sub = HOME.sub;
   if (page === 'coupe') { t = 'Plan en coupe'; sub = CUT_NAMES[state.modeCoupe] ?? ''; }
+  else if (page === 'imagerie') { t = 'Imagerie'; sub = [...IMAGING.echo, ...IMAGING.angio].find((x) => x.key === imagingKey)?.name ?? 'Échographie, coronarographie'; }
   else if (v?.group === 'valves') { t = v.title; sub = `${variantName(v)} · ${SIDE_NAMES[valveSide] ?? ''}`; }
   else if (page === 'valves') { t = 'Valves'; sub = 'Choisissez une valve'; }
   else if (v?.group === 'fop') { t = 'FOP'; sub = v.title; }
@@ -1196,6 +1207,7 @@ function syncMenu() {
   else if (v?.group === 'stim') { t = 'Stimulation'; sub = pacing.playing ? 'Implantation pacemaker' : v.title; }
   if (brandTitle.textContent !== t) brandTitle.textContent = t;
   if (brandSub.textContent !== sub) brandSub.textContent = sub;
+  syncMeasures();
 }
 const narrow = matchMedia('(max-width: 900px)');
 menuBack.addEventListener('click', () => {
@@ -1204,10 +1216,12 @@ menuBack.addEventListener('click', () => {
   if (page === 'valve') { valveList = true; syncMenu(); } // la valve reste à l'écran
   else if (page === 'valves') { valveList = false; if (state.valve) goValve(null); else { valvePanel = false; syncValveUI(); } }
   else if (page === 'coupe') toggle('coupe', false);
+  else if (page === 'imagerie') { imagingPanel = false; imagingKey = null; if (state.coupe) toggle('coupe', false); else { goView('anterieure'); syncMenu(); } setCutMode('cinq-cavites'); }
   else goValve(null);
 });
 menuEl.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => {
   const g = b.dataset.go;
+  if (g === 'imagerie') { imagingPanel = true; syncMenu(); return; }
   if (g === 'coupe') toggle('coupe', true);
   else if (g === 'valves') { valvePanel = true; valveList = false; syncValveUI(); }
   else if (g === 'stim') goValve('stim'); // coupe 4 cavités ; l'animation se lance depuis la sous-rubrique
@@ -1255,6 +1269,20 @@ function refreshLabels() {
 // Noms posés sur la valve, à l'aplomb de l'anneau : feuillets (mitrale, tricuspide), cuspides (aortique, pulmonaire),
 // et l'aorte pour la mitrale (12 h, Lang 2012). Cuspides reconnues par les vues (js/aortic-view.js) : aortique,
 // coronaire droite, coronaire gauche, non coronaire ; pulmonaire, antérieure, droite, gauche.
+// Nomenclature anglaise, affichée à côté du nom français en mode Expert (congrès)
+const EN = {
+  'Oreillette droite': 'right atrium', 'Oreillette gauche': 'left atrium', 'Ventricule droit': 'right ventricle', 'Ventricule gauche': 'left ventricle',
+  Aorte: 'aorta', 'Artère pulmonaire': 'pulmonary trunk', 'Veine cave supérieure': 'superior vena cava', 'Veine cave inférieure': 'inferior vena cava',
+  'Veines pulmonaires': 'pulmonary veins', 'Auricule droite': 'right atrial appendage', 'Auricule gauche': 'left atrial appendage',
+  'Tronc brachio-céphalique': 'brachiocephalic trunk', 'Carotide commune gauche': 'left common carotid a.', 'Subclavière gauche': 'left subclavian a.',
+  'Ligament artériel': 'ligamentum arteriosum', 'Tronc commun': 'left main', IVA: 'LAD', Circonflexe: 'LCx', 'Coronaire droite': 'RCA',
+  'Sinus coronaire': 'coronary sinus', 'Grande veine du cœur': 'great cardiac vein', 'Veine moyenne du cœur': 'middle cardiac vein',
+  'Feuillet antérieur': 'anterior leaflet', 'Feuillet postérieur': 'posterior leaflet', Antérieur: 'anterior', Postérieur: 'posterior', Septal: 'septal',
+  'Non coronaire': 'non-coronary cusp', Antérieure: 'anterior cusp', Droite: 'right cusp', Gauche: 'left cusp',
+  'Ostium coronaire droit': 'right coronary ostium', 'Ostium coronaire gauche': 'left coronary ostium', 'Fosse ovale': 'fossa ovalis',
+  'Limbe (septum secundum)': 'limbus (septum secundum)', 'Septum primum (rabat)': 'septum primum (flap)', 'Septum secundum (limbe)': 'septum secundum',
+  'Tunnel du FOP': 'PFO tunnel', 'Septum interventriculaire': 'interventricular septum', 'Occlusion (IVA 2)': 'mid-LAD occlusion', 'Territoire akinétique': 'akinetic territory',
+};
 const valveMarks = {};
 {
   const V3 = (a) => new THREE.Vector3(a[0], a[1], a[2]);
@@ -1263,6 +1291,7 @@ const valveMarks = {};
   const CUSPS = { aortique: ['Coronaire droite', 'Coronaire gauche', 'Non coronaire'], pulmonaire: ['Antérieure', 'Droite', 'Gauche'] };
   const mark = (text, pos, cls = '') => {
     const el = document.createElement('div'); el.className = 'ao-label ' + cls; el.textContent = text;
+    if (EN[text]) { const em = document.createElement('em'); em.textContent = EN[text]; el.appendChild(em); } // terme anglais (mode Expert)
     const o = new CSS2DObject(el); o.position.copy(pos); o.visible = false; heart.root.add(o); return o;
   };
   for (const [key, id] of [['mitrale', 'valve-mitrale'], ['tricuspide', 'valve-tricuspide'], ['aortique', 'valve-aortique'], ['pulmonaire', 'valve-pulmonaire']]) {
@@ -1312,7 +1341,7 @@ const valveMarks = {};
 const RED = 'rouge', BLUE = 'bleu';
 const chamberDefs = [['oreillette-droite', 'Oreillette droite', BLUE, -1], ['ventricule-droit', 'Ventricule droit', BLUE, -1], ['oreillette-gauche', 'Oreillette gauche', RED, 1], ['ventricule-gauche', 'Ventricule gauche', RED, 1]];
 const chMark = (text, tone) => {
-  const el = document.createElement('div'); el.className = `ch-label ${tone}`; el.innerHTML = `<i></i>${text}`;
+  const el = document.createElement('div'); el.className = `ch-label ${tone}`; el.innerHTML = `<i></i>${text}${EN[text] ? `<em>${EN[text]}</em>` : ''}`;
   const o = new CSS2DObject(el); o.visible = false; heart.root.add(o); return o;
 };
 const outerMarks = (() => {
@@ -1324,8 +1353,13 @@ const outerMarks = (() => {
     return best.y > -1e9 ? best : null;
   })();
   return [...chamberDefs.map(([id, t, c, sd]) => [at(id), t, c, sd]), [ao, 'Aorte', RED, -1], [at('tronc-pulmonaire'), 'Artère pulmonaire', BLUE, 1],
-    [at('veine-cave-superieure'), 'Veine cave supérieure', BLUE, -1], [at('veine-cave-inferieure'), 'Veine cave inférieure', BLUE, -1], [at('veines-pulmonaires'), 'Veines pulmonaires', RED, 1]]
-    .filter(([p]) => p).map(([p, t, c, sd]) => { const o = chMark(t, c); o.position.copy(p); o.userData.side = sd; return o; });
+    [at('veine-cave-superieure'), 'Veine cave supérieure', BLUE, -1], [at('veine-cave-inferieure'), 'Veine cave inférieure', BLUE, -1], [at('veines-pulmonaires'), 'Veines pulmonaires', RED, 1],
+    // mode Expert : nomenclature complète (auricules, branches de la crosse, coronaires, veines du cœur)
+    ...[[at('auricule-droite'), 'Auricule droite', BLUE, -1], [at('auricule-gauche'), 'Auricule gauche', RED, 1], [at('tronc-brachio-cephalique'), 'Tronc brachio-céphalique', RED, -1],
+      [at('carotide-commune-gauche'), 'Carotide commune gauche', RED, 1], [at('subclaviere-gauche'), 'Subclavière gauche', RED, 1], [at('ligament-arteriel'), 'Ligament artériel', RED, 1],
+      [at('tronc-commun'), 'Tronc commun', RED, 1], [at('iva'), 'IVA', RED, 1], [at('circonflexe'), 'Circonflexe', RED, 1], [at('coronaire-droite'), 'Coronaire droite', RED, -1],
+      [at('sinus-coronaire'), 'Sinus coronaire', BLUE, -1], [at('grande-veine-cardiaque'), 'Grande veine du cœur', BLUE, 1], [at('veine-cardiaque-moyenne'), 'Veine moyenne du cœur', BLUE, -1]].map((x) => [...x, true])]
+    .filter(([p]) => p).map(([p, t, c, sd, ex]) => { const o = chMark(t, c); o.position.copy(p); o.userData.side = sd; o.userData.expert = !!ex; o.userData.noOcc = p === ao; return o; });
 })();
 const cutMarks = chamberDefs.map(([id, t, c, sd]) => Object.assign(chMark(t, c), { userData: { chamber: id, side: sd } }));
 const cutAoMark = chMark('Aorte', RED);
@@ -1358,13 +1392,14 @@ function syncChamberMarks() {
   if (cut) placeCutMarks();
   cutMarks.forEach((o) => {
     o.visible = cut && !!o.userData.ok;
+    o.element.style.visibility = '';
     if (!o.visible) return;
     o.getWorldPosition(_om); const dx = _cw.copy(_om).add(new THREE.Vector3(o.userData.side * 2, 0, 0)).project(camera).x - _om.clone().project(camera).x;
     o.center.set(dx < -0.01 ? 1 : dx > 0.01 ? 0 : 0.5, 0.5);
   });
-  cutAoMark.visible = cut && !!cutAoMark.userData.ok;
+  cutAoMark.visible = cut && !!cutAoMark.userData.ok; cutAoMark.element.style.visibility = '';
   for (const o of outerMarks) {
-    o.visible = whole;
+    o.visible = whole && (!o.userData.expert || state.expert);
     if (!whole) continue;
     // masqué derrière le cœur : rayon de l'œil vers le repère, arrêté 1 cm avant (repère au bord de la silhouette, comme
     // le sommet de la crosse : le rayon rasant touche la structure elle-même)
@@ -1375,7 +1410,21 @@ function syncChamberMarks() {
     o.center.set(dx < -0.01 ? 1 : dx > 0.01 ? 0 : 0.5, 0.5);
     const d = _om.distanceTo(camera.position);
     occRay2.set(camera.position, _om.sub(camera.position).normalize()); occRay2.far = d - 1.0;
-    o.element.style.visibility = occRay2.intersectObject(heart.proxy, false).length ? 'hidden' : '';
+    // sommet de la crosse : visible de presque partout, mais le rayon rasant touche les troncs voisins
+    o.element.style.visibility = !o.userData.noOcc && occRay2.intersectObject(heart.proxy, false).length ? 'hidden' : '';
+  }
+  declutter([...cutMarks, cutAoMark, ...outerMarks]);
+}
+// Noms qui se chevauchent à l'écran : le moins important (plus loin dans la liste : cavités et gros vaisseaux d'abord,
+// nomenclature experte ensuite) est masqué ; positions de l'image précédente, revues toutes les 8 images
+function declutter(list) {
+  const kept = [];
+  for (const o of list) {
+    if (!o.visible || o.element.style.visibility === 'hidden') continue;
+    const r = o.element.getBoundingClientRect();
+    if (!r.width) continue;
+    if (kept.some((k) => r.left < k.right + 4 && r.right > k.left - 4 && r.top < k.bottom + 2 && r.bottom > k.top - 2)) { o.element.style.visibility = 'hidden'; continue; }
+    kept.push(r);
   }
 }
 function syncMarks() {
@@ -1414,6 +1463,7 @@ const pickables = [];
 heart.root.traverse((o) => { if (o.isMesh && o.userData.id && !o.userData.cap) pickables.push(o); });
 let downPos = null;
 function pick(ev) {
+  if (state.laser) return; // pointeur laser : on montre, on ne sélectionne pas
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1504,10 +1554,145 @@ function toggle(name, value) {
   }
   if (name === 'reperes') { canvasWrap.classList.toggle('show-marks', state.reperes); syncMarks(); }
   if (name === 'doppler') syncDoppler();
+  if (name === 'sombre') document.body.classList.toggle('dark-stage', state.sombre);
+  if (name === 'laser') setLaser(state.laser);
   if (name === 'coupe') restPose();
   if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); syncMenu(); }
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires && (!m.userData.ostium || state.coupe); })); }
 }
+
+/* ─────────── Imagerie, mode Expert, outils de congrès ─────────── */
+// Vue d'imagerie : coupe d'échographie (plan vu du côté de la sonde) ou incidence de coronarographie (cœur entier,
+// caméra à la place du détecteur, coronaires visibles)
+function goImaging(key) {
+  const e = IMAGING.echo.find((x) => x.key === key), a = IMAGING.angio.find((x) => x.key === key);
+  if (!e && !a) return;
+  if (trans) { pendingAction = () => goImaging(key); return; }
+  if (state.valve) { goValve(null, () => goImaging(key)); return; }
+  imagingPanel = true; imagingKey = key; valvePanel = false;
+  if (e) { if (state.coupe) chooseCut(key); else { setCutMode(key); toggle('coupe', true); } }
+  else {
+    if (state.coupe) toggle('coupe', false);
+    if (!state.coronaires) toggle('coronaires', true);
+    goDir(a.dir, { up: a.up });
+  }
+  syncMenu();
+}
+for (const [id, list] of [['echo-list', IMAGING.echo], ['angio-list', IMAGING.angio]]) {
+  const el = document.getElementById(id);
+  for (const x of list) {
+    const b = document.createElement('button'); b.className = 'mitem'; b.type = 'button'; b.dataset.imaging = x.key; b.textContent = x.name;
+    b.addEventListener('click', () => goImaging(x.key)); el.appendChild(b);
+  }
+}
+// Public : Patient (noms simples, code couleur du sang) ou Expert (nomenclature française et anglaise, veines du cœur
+// en rouge sombre violacé comme sur le vivant, échelle, mesures du modèle, imagerie, outils de congrès). Choix porté
+// par le lien (public=expert), jamais retenu d'une visite à l'autre : le site s'ouvre toujours en mode Patient.
+const VEINS = ['sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'];
+function setAudience(expert) {
+  state.expert = expert;
+  document.body.classList.toggle('expert', expert);
+  document.querySelectorAll('[data-audience]').forEach((b) => { const on = (b.dataset.audience === 'expert') === expert; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+  for (const id of VEINS) for (const m of heart.registry[id]?.meshes ?? []) { m.material.color.set(expert ? 0x5e2a3c : COL.veineCard); m.material.userData.baseColor?.copy(m.material.color); }
+  if (!expert) {
+    for (const k of ['laser', 'sombre', 'qualite']) if (state[k]) toggle(k, false);
+    if (imagingPanel) { imagingPanel = false; imagingKey = null; if (state.coupe) toggle('coupe', false); else goView('anterieure'); setCutMode('cinq-cavites'); }
+  }
+  renderer.shadowMap.needsUpdate = true;
+  syncMenu();
+}
+document.querySelectorAll('[data-audience]').forEach((b) => b.addEventListener('click', () => setAudience(b.dataset.audience === 'expert')));
+// Échelle : longueur réelle à la profondeur du centre de la vue (la perspective grossit ce qui est plus près)
+const scaleBar = document.createElement('div');
+scaleBar.className = 'scale-bar'; scaleBar.title = 'Longueur réelle à la profondeur du centre de la vue'; scaleBar.innerHTML = '<i></i><span></span>';
+canvasWrap.appendChild(scaleBar);
+function syncScale() {
+  const h = canvasWrap.clientHeight;
+  if (!state.expert || !h) return;
+  const d = camera.position.distanceTo(controls.target), pxCm = h / (2 * d * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) / camera.zoom);
+  const L = [0.5, 1, 2, 5, 10].find((l) => l * pxCm >= 50) ?? 10;
+  scaleBar.firstChild.style.width = `${Math.round(L * pxCm)}px`;
+  scaleBar.lastChild.textContent = L < 1 ? `${L * 10} mm` : `${L} cm`;
+}
+// Mesures du modèle (vues des valves, mode Expert) : anneaux lus sur le modèle, valeurs des variantes. Autonome
+// (élément créé à la demande) : syncMenu l'appelle dès l'initialisation, avant cette partie du module.
+function syncMeasures() {
+  const el = canvasWrap.querySelector('.measures') ?? canvasWrap.appendChild(Object.assign(document.createElement('div'), { className: 'measures' }));
+  const ANNULUS = { 'valve-mitrale': 'Anneau mitral', 'valve-tricuspide': 'Anneau tricuspide', 'valve-aortique': 'Anneau aortique', 'valve-pulmonaire': 'Anneau pulmonaire' };
+  const EXTRA = { rhumatismal: 'Orifice : ≈ 1,1 cm² (normal : 4 à 6 cm²)', prolapsus: 'P2 soulevé de ≈ 12 mm au-dessus de l’anneau, cordages rompus', dilatation: 'Anneau allongé de 32 % sur la paroi libre' };
+  const mm = (cm) => `${Math.round(cm * 10)} mm`;
+  const v = state.valve && VALVE_VIEWS[state.valve], d = v && heart.valveData[v.heartValveId], lines = [];
+  if (d && state.expert && ANNULUS[v.heartValveId]) {
+    const [ra, rb] = d.radii ?? [d.radius, d.radius];
+    lines.push(d.radii ? `${ANNULUS[v.heartValveId]} : ${mm(2 * ra)} × ${mm(2 * rb)} (${(Math.PI * ra * rb).toFixed(1).replace('.', ',')} cm²)` : `${ANNULUS[v.heartValveId]} : Ø ${mm(2 * ra)}`);
+    if (EXTRA[v.variant]) lines.push(EXTRA[v.variant]);
+  }
+  el.classList.toggle('on', lines.length > 0);
+  el.innerHTML = lines.length ? `<b>Mesures du modèle</b>${lines.join('<br>')}` : '';
+  canvasWrap.classList.toggle('comparing', state.comparer);
+}
+// Pointeur laser : point rouge et traînée qui s'efface ; le cœur ne tourne plus, rien n'est sélectionné
+const laserDot = document.createElement('div');
+laserDot.className = 'laser-dot hidden'; document.body.appendChild(laserDot);
+let laserTrail = 0;
+function setLaser(on) { document.body.classList.toggle('laser-on', on); laserDot.classList.toggle('hidden', !on); }
+addEventListener('pointermove', (e) => {
+  if (!state.laser) return;
+  laserDot.style.left = `${e.clientX}px`; laserDot.style.top = `${e.clientY}px`;
+  const now = performance.now(); if (now - laserTrail < 30) return; laserTrail = now;
+  const t = document.createElement('div'); t.className = 'laser-trail'; t.style.left = `${e.clientX}px`; t.style.top = `${e.clientY}px`;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => { t.style.opacity = '0'; t.style.transform = 'scale(.3)'; });
+  setTimeout(() => t.remove(), 550);
+});
+// Image HD : la vue dessinée une fois en haute définition (2 pixels par point au moins, 3200 pixels de large au plus)
+async function exportHD() {
+  const pr0 = renderer.getPixelRatio(), w = Math.max(1, canvasWrap.clientWidth);
+  renderer.setPixelRatio(Math.min(Math.max(2, PR_FULL), 3200 / w)); resize();
+  renderer.shadowMap.needsUpdate = true; contact.render();
+  const blob = await new Promise((r) => renderer.domElement.toBlob(r, 'image/png')); // instantané pris à l'appel
+  renderer.setPixelRatio(pr0); resize();
+  if (!blob) { toast('Image non disponible'); return; }
+  const a = document.createElement('a'), name = (brandSub.textContent || 'vue').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  a.href = URL.createObjectURL(blob); a.download = `coeur-3d-${name || 'vue'}.png`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast('Image enregistrée');
+}
+document.querySelector('[data-action="image-hd"]').addEventListener('click', exportHD);
+// Raccourcis clavier (présentation, télécommande de diaporama : Page suivante / précédente)
+const shortcutsEl = document.getElementById('shortcuts');
+document.querySelector('[data-action="raccourcis"]').addEventListener('click', () => shortcutsEl.classList.toggle('hidden'));
+shortcutsEl.addEventListener('click', () => shortcutsEl.classList.add('hidden'));
+// visite guidée : cœur entier, coupe 5 cavités, les quatre valves, FOP, coronaires, stimulation
+const TOUR = [['home'], ['coupe', 'cinq-cavites'], ['valve', 'aortique'], ['valve', 'mitrale'], ['valve', 'tricuspide'], ['valve', 'pulmonaire'], ['valve', 'fosse'], ['valve', 'coronaires'], ['valve', 'stim']];
+let tourIdx = 0;
+function goTour(i) {
+  if (trans) return;
+  tourIdx = (i + TOUR.length) % TOUR.length;
+  const [kind, key] = TOUR[tourIdx];
+  imagingPanel = false; imagingKey = null; valvePanel = false; valveList = false;
+  if (kind === 'home') {
+    if (state.valve) goValve(null, () => { if (state.coupe) toggle('coupe', false); });
+    else if (state.coupe) toggle('coupe', false); else goView('anterieure');
+  } else if (kind === 'coupe') {
+    const go = () => { if (state.coupe) chooseCut(key); else { setCutMode(key); toggle('coupe', true); } };
+    if (state.valve) goValve(null, go); else go();
+  } else goValve(key);
+  syncMenu();
+}
+addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select')) return;
+  const k = e.key;
+  if (k === 'ArrowRight' || k === 'PageDown') { goTour(tourIdx + 1); e.preventDefault(); }
+  else if (k === 'ArrowLeft' || k === 'PageUp') { goTour(tourIdx - 1); e.preventDefault(); }
+  else if (k === ' ' && !e.target.closest?.('button')) { toggle('battement'); e.preventDefault(); }
+  else if (k === 'r' || k === 'R') recenter();
+  else if (k === 'p' || k === 'P') setPresenting(!document.body.classList.contains('presenting'));
+  else if (k === 'l' || k === 'L') toggle('laser');
+  else if (k === 'g' || k === 'G') toggle('reperes');
+  else if (k === '?' || k === 'h' || k === 'H') shortcutsEl.classList.toggle('hidden');
+  else if (k === 'Escape') shortcutsEl.classList.add('hidden');
+});
 
 // Mode présentation : plein écran, sans menus ni boutons ; le cœur prend toute la place, cadrage refait. Sortie par
 // Échap (fin du plein écran) ou par la croix qui apparaît quand on bouge la souris.
@@ -1552,6 +1737,7 @@ function viewParams() {
   if (state.comparer) q.set('comparer', '1');
   if (state.doppler && state.valve) q.set('doppler', '1');
   if (state.reperes) q.set('reperes', '1');
+  if (state.expert) q.set('public', 'expert');
   return q.toString();
 }
 let urlShown = location.search.slice(1);
@@ -1563,6 +1749,7 @@ function syncURL() {
 function applyURL() {
   const q = new URLSearchParams(location.search);
   if (q.get('reperes') === '1') toggle('reperes', true);
+  if (q.get('public') === 'expert') setAudience(true);
   if (q.get('doppler') === '1') toggle('doppler', true);
   const sp = parseFloat(q.get('vitesse'));
   if (sp === 0.25) { beatSpeed = sp; document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('active', parseFloat(x.dataset.speed) === sp)); }
@@ -1848,7 +2035,7 @@ function animate() {
     const f = pacing.frame(), sd = VALVE_VIEWS.stim.sides.C;
     procCam(f.center, sd.camDir, f.dist * portrait(), sd.up, dt);
   }
-  if (!trans) controls.enabled = !VALVE_VIEWS[state.valve]?.fixed; // stimulation : coupe 4 cavités fixe
+  if (!trans) controls.enabled = !VALVE_VIEWS[state.valve]?.fixed && !state.laser; // stimulation : coupe 4 cavités fixe ; pointeur laser
   if (closure.playing && !trans && state.valve === 'fermeture') { // caméra de l'animation (gaine, disque gauche, disque droit, coupe)
     const f = closure.frame();
     procCam(f.center, f.dir, f.dist * portrait(), f.up, dt);
@@ -1865,12 +2052,12 @@ function animate() {
   doppler.update(state.battement ? Math.min(dt, 0.1) * beatSpeed : 0,
     state.battement ? beatPhase * 940 : frozenPhase !== null ? frozenPhase * 940 : restTime(state.valve && VALVE_VIEWS[state.valve].phase, valveOpen), camera, renderer.domElement.height);
   controls.update();
-  if ((frame & 7) === 0) { updateOrientation(); syncMarks(); }
+  if ((frame & 7) === 0) { updateOrientation(); syncMarks(); syncScale(); }
   if (frame % 30 === 0) syncURL();
   if ((frame++ & 3) === 0) occludeLabels();
   if (!intro.covering) { // planche opaque : rien à mesurer
     const moving = trans || camAnim || handoff || t - lastMove < 0.4 || tavi.playing || closure.playing || pacing.playing || pci.playing || intro.playing;
-    adaptQuality(dt, t, moving ? 'moving' : state.battement ? 'calm' : 'still');
+    adaptQuality(dt, t, state.qualite ? 'still' : moving ? 'moving' : state.battement ? 'calm' : 'still'); // qualité maximale : pleine résolution
   }
   if (!intro.covering) contact.render(); // scène + ombres de contact + calque d'interface ; rien sous la planche opaque
   labelRenderer.render(scene, camera);

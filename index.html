@@ -96,6 +96,28 @@
         <button class="mtile" data-go="fop" type="button" style="--c: var(--c-fop)"><b>FOP</b><small>Foramen ovale perméable, sa fermeture</small></button>
         <button class="mtile" data-go="coro" type="button" style="--c: var(--c-coro)"><b>Coronaires</b><small>Les artères du cœur, l'infarctus</small></button>
         <button class="mtile" data-go="stim" type="button" style="--c: var(--c-stim)"><b>Stimulation</b><small>Pacemaker : la pose des sondes</small></button>
+        <button class="mtile expert-only" data-go="imagerie" type="button" style="--c: var(--c-imag)"><b>Imagerie</b><small>Coupes d'échographie, incidences de coronarographie</small></button>
+        <div class="maudience">
+          <span class="mlabel">Public</span>
+          <div class="seg" role="group" aria-label="Public">
+            <button data-audience="patient" class="active" aria-pressed="true" type="button" title="Noms simples, code couleur du sang (rouge, bleu)">Patient</button>
+            <button data-audience="expert" aria-pressed="false" type="button" title="Nomenclature complète (français, anglais), couleurs réalistes, échelle, mesures, coupes d'imagerie, outils de congrès">Expert</button>
+          </div>
+        </div>
+        <div class="mtools expert-only">
+          <span class="mlabel">Congrès</span>
+          <button class="mitem mtoggle" data-toggle="sombre" type="button" aria-pressed="false" title="Fond sombre, pour une salle de projection">Fond sombre</button>
+          <button class="mitem mtoggle" data-toggle="qualite" type="button" aria-pressed="false" title="Pleine résolution en permanence, même pendant les mouvements (ordinateur de congrès)">Qualité maximale</button>
+          <button class="mitem mtoggle" data-toggle="laser" type="button" aria-pressed="false" title="Pointeur laser (touche L) : un point rouge suit la souris, le cœur ne tourne plus">Pointeur laser</button>
+          <button class="mitem" data-action="image-hd" type="button" title="Enregistrer l'image de la vue en haute définition (PNG)">Image HD</button>
+          <button class="mitem" data-action="raccourcis" type="button" title="Touches du clavier pour présenter">Raccourcis clavier</button>
+        </div>
+      </div>
+      <div class="menu-page" data-page="imagerie" style="--c: var(--c-imag)">
+        <h3 class="mlabel">Échographie</h3>
+        <div class="mlist" id="echo-list"></div>
+        <h3 class="mlabel">Coronarographie</h3>
+        <div class="mlist" id="angio-list"></div>
       </div>
       <div class="menu-page" data-page="coupe" style="--c: var(--c-coupe)">
         <button class="mitem" data-cut="cinq-cavites" data-close type="button" title="Coupe 5 cavités passant par le centre des valves tricuspide, mitrale et aortique">5 cavités</button>
@@ -148,6 +170,19 @@
     </aside>
   </main>
 
+  <div id="shortcuts" class="shortcuts hidden" role="dialog" aria-label="Raccourcis clavier">
+    <h3>Raccourcis clavier</h3>
+    <dl>
+      <dt>→ / ←</dt><dd>Vue suivante / précédente (visite guidée)</dd>
+      <dt>Espace</dt><dd>Battement ou pause</dd>
+      <dt>R</dt><dd>Recentrer</dd>
+      <dt>P</dt><dd>Mode présentation (plein écran)</dd>
+      <dt>L</dt><dd>Pointeur laser</dd>
+      <dt>G</dt><dd>Légende</dd>
+      <dt>?</dt><dd>Cette aide</dd>
+      <dt>Échap</dt><dd>Fermer, quitter le plein écran</dd>
+    </dl>
+  </div>
   <button id="present-exit" class="present-exit" type="button" aria-label="Quitter le mode présentation" title="Quitter le mode présentation (Échap)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
   <script type="module" src="js/app.js"></script>
 </body>
