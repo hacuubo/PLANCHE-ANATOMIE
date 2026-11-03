@@ -79,17 +79,36 @@ void main() {
 
 const COMPOSE_FRAG = /* glsl */`
 uniform sampler2D tColor, tAO, tDepth;
-uniform vec2 uAOTexel;
+uniform vec2 uAOTexel, uTexel;
 uniform mat4 uProjInv;
 uniform float uStrength;
 varying vec2 vUv;
+// Lissage des bords (FXAA simplifié) : les bords de coupe sont tracés pixel par pixel par le plan de coupe, que
+// l'échantillonnage multiple ne lisse pas ; en qualité réduite (moins de pixels pendant les mouvements), ils
+// tombaient en escalier. Le flou ne suit que les bords francs : l'intérieur des tissus reste net.
+float lum(vec4 c) { return dot(c.rgb, vec3(0.299, 0.587, 0.114)) + 0.25 * c.a; }
+vec4 fxaa(vec2 uv) {
+  vec4 cM = texture2D(tColor, uv);
+  vec4 cNW = texture2D(tColor, uv + vec2(-1.0, -1.0) * uTexel), cNE = texture2D(tColor, uv + vec2(1.0, -1.0) * uTexel);
+  vec4 cSW = texture2D(tColor, uv + vec2(-1.0, 1.0) * uTexel), cSE = texture2D(tColor, uv + vec2(1.0, 1.0) * uTexel);
+  float lNW = lum(cNW), lNE = lum(cNE), lSW = lum(cSW), lSE = lum(cSE), lM = lum(cM);
+  float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE))), lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
+  if (lMax - lMin < max(0.04, lMax * 0.12)) return cM; // pas de bord franc
+  vec2 dir = vec2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
+  float red = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + red), -8.0, 8.0) * uTexel;
+  vec4 a = 0.5 * (texture2D(tColor, uv + dir * (1.0 / 3.0 - 0.5)) + texture2D(tColor, uv + dir * (2.0 / 3.0 - 0.5)));
+  vec4 b = a * 0.5 + 0.25 * (texture2D(tColor, uv - dir * 0.5) + texture2D(tColor, uv + dir * 0.5));
+  float lB = lum(b);
+  return (lB < lMin || lB > lMax) ? a : b;
+}
 float viewZ(vec2 uv) {
   float d = texture2D(tDepth, uv).x;
   vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
   return v.z / v.w;
 }
 void main() {
-  vec4 col = texture2D(tColor, vUv);
+  vec4 col = fxaa(vUv);
   float z0 = viewZ(vUv), sum = 0.0, wsum = 0.0;
   // flou bilatéral 4 × 4 : lisse le bruit de l'échantillonnage sans baver par-dessus les bords
   for (int x = -2; x <= 1; x++) for (int y = -2; y <= 1; y++) {
@@ -128,7 +147,7 @@ export class ContactShadows {
     });
     this.composeMat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: COMPOSE_FRAG, depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending, toneMapped: true,
-      uniforms: { tColor: { value: this.target.texture }, tAO: { value: this.aoTarget.texture }, tDepth: { value: depth }, uAOTexel: { value: new THREE.Vector2() }, uProjInv: { value: new THREE.Matrix4() }, uStrength: { value: strength } },
+      uniforms: { tColor: { value: this.target.texture }, tAO: { value: this.aoTarget.texture }, tDepth: { value: depth }, uAOTexel: { value: new THREE.Vector2() }, uTexel: { value: new THREE.Vector2() }, uProjInv: { value: new THREE.Matrix4() }, uStrength: { value: strength } },
     });
     this.aoQuad = new FullScreenQuad(this.aoMat);
     this.composeQuad = new FullScreenQuad(this.composeMat);
@@ -140,6 +159,7 @@ export class ContactShadows {
     this.aoTarget.setSize(aw, ah); // occlusion en demi-résolution
     this.aoMat.uniforms.uTexel.value.set(1 / W, 1 / H);
     this.composeMat.uniforms.uAOTexel.value.set(1 / aw, 1 / ah);
+    this.composeMat.uniforms.uTexel.value.set(1 / W, 1 / H);
   }
   render() {
     const { renderer, scene, camera } = this;

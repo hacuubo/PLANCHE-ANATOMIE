@@ -61,6 +61,7 @@
         <button class="tool option beat-btn" data-toggle="battement" type="button" aria-pressed="true" title="Mettre le battement en pause ou le relancer"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="ic-pause" d="M5.5 3.5v9M10.5 3.5v9"/><path class="ic-play" d="M5 3l8 5-8 5z"/></svg><span class="beat-txt">Pause</span></button>
         <button class="tool option" data-action="recentrer" type="button" title="Revenir au cadrage de départ de la vue en cours"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v3.2M8 11.3v3.2M1.5 8h3.2M11.3 8h3.2"/></svg><span class="lbl">Recentrer</span></button>
         <button class="tool option" data-toggle="reperes" type="button" aria-pressed="false" title="Afficher la légende : côtés du patient, noms des feuillets, des cuspides et des structures"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 3.5l1.6 4.5L8 12.5 6.4 8z"/></svg><span class="lbl">Légende</span></button>
+        <button class="tool option" data-action="presenter" type="button" title="Mode présentation : plein écran, sans menus ni boutons (Échap pour sortir)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span class="lbl">Présenter</span></button>
         <button class="tool option" data-action="partager" type="button" title="Partager ou copier le lien de cette vue (valve, côté, variante, instant du cycle)"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="4" cy="8" r="1.8"/><circle cx="12" cy="3.8" r="1.8"/><circle cx="12" cy="12.2" r="1.8"/><path d="M5.6 7.1l4.8-2.4M5.6 8.9l4.8 2.4"/></svg><span class="lbl">Partager</span></button>
       </div>
       <!-- cycle cardiaque : position dans le battement (glisser pour arrêter à un instant), vitesse -->
@@ -147,6 +148,7 @@
     </aside>
   </main>
 
+  <button id="present-exit" class="present-exit" type="button" aria-label="Quitter le mode présentation" title="Quitter le mode présentation (Échap)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

@@ -36,7 +36,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, stenci
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.5 : 2));
 renderer.localClippingEnabled = true;
 renderer.toneMapping = THREE.NeutralToneMapping; // teintes pastel préservées, hautes lumières adoucies
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.05;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -76,21 +76,22 @@ controls.minDistance = 8;
 controls.maxDistance = 60;
 
 // Éclairage « studio d'animation médicale » : clé douce et chaude en haut à gauche de l'observateur, remplissage froid,
-// deux contre-jours qui détachent la silhouette du fond clair, hémisphère ciel / sol rosé (lumière renvoyée par les tissus).
-const key = new THREE.DirectionalLight(0xfff3e6, 1.7);
+// deux contre-jours qui détachent la silhouette du fond, hémisphère ciel / sol rosé (lumière renvoyée par les tissus).
+// Clé et contre-jours forts, ambiance et remplissage bas : le relief se modèle au lieu de s'aplatir.
+const key = new THREE.DirectionalLight(0xfff3e6, 2.3);
 key.position.set(7.5, 11, 9);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = -16; key.shadow.camera.right = 16; key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
 key.shadow.camera.near = 1; key.shadow.camera.far = 60;
 key.shadow.bias = -0.0004; key.shadow.normalBias = 0.035; key.shadow.radius = 7;
-const fill = new THREE.DirectionalLight(0xe4ecff, 0.9);
+const fill = new THREE.DirectionalLight(0xe4ecff, 0.6);
 fill.position.set(-10, 4, 6);
-const rim = new THREE.DirectionalLight(0xf2f6ff, 2.1);
+const rim = new THREE.DirectionalLight(0xf2f6ff, 2.6);
 rim.position.set(-6, 9, -14);
-const rim2 = new THREE.DirectionalLight(0xfff0f0, 1.4);
+const rim2 = new THREE.DirectionalLight(0xfff0f0, 1.7);
 rim2.position.set(9, -4, -10);
-const hemi = new THREE.HemisphereLight(0xf2f6fc, 0xb08080, 0.95);
+const hemi = new THREE.HemisphereLight(0xf2f6fc, 0xb08080, 0.7);
 scene.add(key, key.target, fill, rim, rim2, hemi);
 // lumières sur tous les calques : le calque d'interface (flèches) partage l'état d'éclairage, pas de recompilation
 [key, fill, rim, rim2, hemi].forEach((l) => l.layers.enableAll());
@@ -135,29 +136,14 @@ if (VALVE_VIEWS.fermeture) VALVE_VIEWS.fermeture.onActivate = (on) => { bubbles.
 VALVE_VIEWS.stim = buildPacingView(heart);
 VALVE_VIEWS.stim.onActivate = (on) => { if (!on) pacing.stop(); };
 
-// Ombres et « fantôme » de la partie retirée par la coupe (voile très léger qui garde la silhouette lisible).
-const ghostMats = [], ghosts = [];
-const ghostPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-{
-  const toWrap = [];
-  heart.root.traverse((o) => {
-    if (!o.isMesh) return;
-    if (!o.userData.envelope && (!o.userData.id || o.userData.proxy || o.userData.cap || o.userData.leaf || o.material.side === THREE.BackSide)) return;
-    o.castShadow = true; o.receiveShadow = true;
-    if (heart.cutOnly.includes(o)) return; // structures intérieures (piliers, conduction) : pas de fantôme
-    toWrap.push(o);
-  });
-  heart.materials.forEach((m) => { m.clipShadows = true; });
-  toWrap.forEach((o) => {
-    // les recouvrements s'additionnent, d'où une opacité basse
-    const gm = new THREE.MeshBasicMaterial({ color: 0x5a3f42, transparent: true, opacity: 0.09, depthWrite: false, clippingPlanes: [ghostPlane] });
-    heart.addDeform(gm, o.material.userData.uniforms?.uDK?.value ?? 0.07, 'ghost');
-    const gh = new THREE.Mesh(o.geometry, gm);
-    gh.visible = false; gh.userData.ghost = true;
-    o.add(gh); ghostMats.push(gm); ghosts.push(gh);
-  });
-}
-function syncGhost() { ghostPlane.normal.copy(cutPlane.normal).negate(); ghostPlane.constant = -cutPlane.constant; }
+// Ombres. Plus de « fantôme » de la partie retirée par la coupe : sa silhouette grise se lisait comme une ombre sale
+// (et laissait un motif grillagé au-dessus de la crosse) ; la coupe se lit mieux sur le fond seul.
+heart.root.traverse((o) => {
+  if (!o.isMesh) return;
+  if (!o.userData.envelope && (!o.userData.id || o.userData.proxy || o.userData.cap || o.userData.leaf || o.material.side === THREE.BackSide)) return;
+  o.castShadow = true; o.receiveShadow = true;
+});
+heart.materials.forEach((m) => { m.clipShadows = true; });
 
 /* ─────────── coupe (plan de clipping ou surface courbe + capuchons stencil) ─────────── */
 const cutPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0.4);
@@ -233,8 +219,6 @@ CUT_MODES['cinq-cavites'] = { curved: CURVE_5C, min: -3, max: 3, def: 0 };
 // valves et cordages coupés plus loin que le muscle : entiers devant la tranche (vues des valves : feuillets fermés
 // bombés vers l'oreillette, jamais percés par le plan ; voir plus bas)
 const INTERIOR_OFF = { 'cinq-cavites': 0.6, frontale: 0.6 };
-// vues des valves : pas de voile de la partie retirée entre l'œil et la valve (complété plus bas)
-const NO_GHOST = new Set();
 // direction de l'observateur pour une coupe (côté retiré)
 const cutViewDir = (mode = state.modeCoupe) => (CUT_MODES[mode].curved ? CUT_MODES[mode].curved.V.clone() : cutPlane.normal.clone().negate());
 // Pose au repos : valves auriculo-ventriculaires ouvertes (diastole) ; vue d'une valve : position choisie
@@ -251,7 +235,8 @@ function restPose() {
 }
 // Cadrage de chaque coupe (onlyOriented : à l'ouverture de la coupe, seules les coupes « échographiques » déplacent la caméra)
 function viewForCut(mode, onlyOriented = false) {
-  if (mode === 'cinq-cavites') goDir(CURVE.V, { up: CURVE.Y, dist: viewDistance() * 0.72 }); // cœur plus grand : la coupe se lit mieux
+  // cœur plus grand : la coupe se lit mieux ; visée abaissée de 1,6 cm vers la pointe, qui reste au-dessus des boutons
+  if (mode === 'cinq-cavites') goDir(CURVE.V, { target: CENTER.clone().addScaledVector(CURVE.Y, -1.6), up: CURVE.Y, dist: viewDistance() * 0.86 });
   // frontale : vue de face cadrée sur le cœur (de la pointe à la racine aortique), pas sur la crosse et les troncs ;
   // recadrée aussi à l'ouverture de la coupe (une coupe frontale ne se lit que de face)
   else if (mode === 'frontale') goDir(cutViewDir('frontale'), { target: LM.apex.clone().lerp(VAO.center, 0.62), dist: viewDistance() * 0.7 });
@@ -429,15 +414,12 @@ function applyClipping() {
   heart.cutUniforms.uCutOn.value = cut && curved ? 1 : 0;
   heart.materials.forEach((m) => { m.clippingPlanes = m.userData.interior ? (flat ? [interiorPlane] : []) : planes; m.needsUpdate = true; });
   stencilMats.forEach((m) => { m.clippingPlanes = planes; m.needsUpdate = true; });
-  ghostMats.forEach((m) => { m.clippingPlanes = flat ? [ghostPlane] : []; m.needsUpdate = true; });
-  ghosts.forEach((g) => { g.visible = cut && !NO_GHOST.has(state.modeCoupe); }); // vue de dessus : rien entre l'œil et les valves
   heart.solids.forEach((s) => { s.stencil.visible = cut; });
   capGroups.forEach(([f, c, r]) => { f.visible = r.visible = flat; c.visible = cut && curved; });
   syncCutOnly();
   heart.showValves(cut);
   canvasWrap.classList.toggle('is-cut', state.coupe);
   renderer.shadowMap.needsUpdate = true;
-  syncGhost();
   updateCapPlanes();
 }
 
@@ -460,7 +442,6 @@ function syncCutOnly() {
 function setCutMode(mode, value) {
   state.modeCoupe = mode;
   interiorOff = INTERIOR_OFF[mode] ?? 0;
-  ghosts.forEach((g) => { g.visible = state.coupe && !NO_GHOST.has(mode); });
   const cfg = CUT_MODES[mode], was = curved;
   curved = !!cfg.curved;
   if (curved) CURVE = buildCurve(cfg.curved);
@@ -476,7 +457,6 @@ function setCutDepth(v) {
   if (curved) { CURVE.off = v; heart.cutUniforms.uCutOff.value = v; updateCurveGeo(); }
   else cutPlane.constant = v - cutPlaneOffset();
   renderer.shadowMap.needsUpdate = true;
-  syncGhost();
   updateCapPlanes();
 }
 function localAnterior() { const v = new THREE.Vector3(); heart.matrixLocal.extractBasis(new THREE.Vector3(), new THREE.Vector3(), v); return v; }
@@ -494,7 +474,8 @@ function valveShift() {
 }
 function viewOffset() {
   const w = canvasWrap.clientWidth, h = canvasWrap.clientHeight;
-  if (state.valve && w && h) camera.setViewOffset(w, h, 0, valveShift().shift, w, h);
+  // toutes les vues : image centrée dans la place laissée par les boutons et la barre du cycle (en bas)
+  if (w && h) camera.setViewOffset(w, h, 0, valveShift().shift, w, h);
   else camera.clearViewOffset();
   syncCompareTags(); syncLocator();
 }
@@ -584,7 +565,7 @@ const sideOf = (v, side = valveSide) => v.sides[side] ?? v.sides.C;
 for (const v of Object.values(VALVE_VIEWS)) for (const [side, sd] of Object.entries(v.sides)) {
   const mode = `v-${v.key}-${side}`;
   CUT_MODES[mode] = { normal: sd.cut.normal, min: sd.cut.def - 8, max: sd.cut.def + 16, def: sd.cut.def };
-  INTERIOR_OFF[mode] = sd.interior; NO_GHOST.add(mode);
+  INTERIOR_OFF[mode] = sd.interior;
 }
 if (bubbles.mesh) bubbles.mesh.material.clippingPlanes = [cutPlane]; // bulles coupées avec le cœur (vue bicave)
 // Doppler couleur (js/doppler.js) : flux de la valve regardée, en fumée rouge sang
@@ -741,10 +722,9 @@ async function renderPlate(fmt = 'image/webp') {
   const bones = new THREE.Mesh(geoOf(['bone']), boneMat), skin = new THREE.Mesh(geoOf(['skin']), skinMat);
   bones.renderOrder = 1; skin.renderOrder = 2; clear.add(bones, skin);
   heart.root.add(opaque, clear);
-  // scène : seul le cœur et le corps ; ni fond, ni brouillard, ni coupe, ni fantôme ; cœur au repos
+  // scène : seul le cœur et le corps ; ni fond, ni brouillard, ni coupe ; cœur au repos
   const hidden = [], hide = (o) => { if (o.visible) { o.visible = false; hidden.push(o); } };
   scene.children.forEach((o) => { if (o !== heart.root.parent && !o.isLight) hide(o); });
-  ghosts.forEach(hide);
   const bg = scene.background, fog = scene.fog, clip = renderer.localClippingEnabled, cutOn = heart.cutUniforms.uCutOn.value, autoClear = renderer.autoClear;
   const cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
   scene.background = null; scene.fog = null; renderer.localClippingEnabled = false; heart.cutUniforms.uCutOn.value = 0;
@@ -1324,7 +1304,82 @@ const valveMarks = {};
     valveMarks.coronaires.push(occ, zone);
   }
 }
+/* ─────────── repères du cœur entier et des coupes (bouton « Légende ») ─────────── */
+// Pour le patient : les quatre cavités et les gros vaisseaux, pastille rouge pour le sang riche en oxygène (cœur gauche,
+// aorte), bleue pour le sang pauvre en oxygène (cœur droit, veines caves, artère pulmonaire). Cœur entier : noms posés
+// sur la surface, masqués quand la structure passe derrière le cœur ; coupe : noms au centre de chaque cavité ouverte,
+// recalculés quand la coupe change (sommets des cavités à moins de 3,5 mm de la surface de coupe).
+const RED = 'rouge', BLUE = 'bleu';
+const chamberDefs = [['oreillette-droite', 'Oreillette droite', BLUE, -1], ['ventricule-droit', 'Ventricule droit', BLUE, -1], ['oreillette-gauche', 'Oreillette gauche', RED, 1], ['ventricule-gauche', 'Ventricule gauche', RED, 1]];
+const chMark = (text, tone) => {
+  const el = document.createElement('div'); el.className = `ch-label ${tone}`; el.innerHTML = `<i></i>${text}`;
+  const o = new CSS2DObject(el); o.visible = false; heart.root.add(o); return o;
+};
+const outerMarks = (() => {
+  const A = heart.registry, at = (id) => A[id]?.anchor?.clone();
+  // aorte : au sommet de la crosse (l'ancre de la racine est cachée derrière l'infundibulum et le tronc pulmonaire)
+  const ao = (() => {
+    const g = heart.envelope.geometry, tis = g.attributes.tis, pos = g.attributes.position, k = heart.structureIds.indexOf('aorte'), best = new THREE.Vector3(0, -1e9, 0);
+    for (let i = 0; i < tis.count; i++) if (Math.round(tis.getW(i) * 255) === k && pos.getY(i) > best.y) best.fromBufferAttribute(pos, i);
+    return best.y > -1e9 ? best : null;
+  })();
+  return [...chamberDefs.map(([id, t, c, sd]) => [at(id), t, c, sd]), [ao, 'Aorte', RED, -1], [at('tronc-pulmonaire'), 'Artère pulmonaire', BLUE, 1],
+    [at('veine-cave-superieure'), 'Veine cave supérieure', BLUE, -1], [at('veine-cave-inferieure'), 'Veine cave inférieure', BLUE, -1], [at('veines-pulmonaires'), 'Veines pulmonaires', RED, 1]]
+    .filter(([p]) => p).map(([p, t, c, sd]) => { const o = chMark(t, c); o.position.copy(p); o.userData.side = sd; return o; });
+})();
+const cutMarks = chamberDefs.map(([id, t, c, sd]) => Object.assign(chMark(t, c), { userData: { chamber: id, side: sd } }));
+const cutAoMark = chMark('Aorte', RED);
+let cutMarksKey = '';
+const _cm = new THREE.Vector3(), _cw = new THREE.Vector3();
+function placeCutMarks() {
+  const key = `${state.modeCoupe}|${curved ? CURVE.off : cutPlane.constant}`;
+  if (key === cutMarksKey) return;
+  cutMarksKey = key;
+  const cav = heart.cutOnly.find((o) => o.userData.id === 'cavites'), sid = cav.userData.sid, pos = cav.geometry.attributes.position;
+  const field = (p) => (curved ? CURVE.field(p) : cutPlane.distanceToPoint(p)), M = heart.root.matrixWorld;
+  const acc = Object.fromEntries(chamberDefs.map(([id]) => [id, [new THREE.Vector3(), 0]]));
+  for (let i = 0; i < sid.length; i++) {
+    const a = acc[heart.structureIds[sid[i]]]; if (!a) continue;
+    _cm.fromBufferAttribute(pos, i); _cw.copy(_cm).applyMatrix4(M);
+    if (Math.abs(field(_cw)) < 0.35) { a[0].add(_cm); a[1]++; }
+  }
+  cutMarks.forEach((o) => { const [c, k] = acc[o.userData.chamber]; o.userData.ok = k > 30; if (k) o.position.copy(c).multiplyScalar(1 / k); });
+  // aorte : dans les coupes qui passent par la racine aortique, juste au-dessus de la valve, ramenée sur la surface de
+  // coupe (le long de la direction de regard de la coupe)
+  const up = VAO.axis.clone().normalize().multiplyScalar(VAO.axis.dot(LM.base.clone().sub(LM.apex)) > 0 ? 1 : -1);
+  const pa = VAO.center.clone().addScaledVector(up, 1.4).applyMatrix4(M), f = field(pa), V = curved ? CURVE.V : cutPlane.normal;
+  pa.addScaledVector(V, curved ? f : -f);
+  cutAoMark.position.copy(heart.root.worldToLocal(pa)); cutAoMark.userData.ok = Math.abs(f) < 2.5;
+}
+const _om = new THREE.Vector3(), occRay2 = new THREE.Raycaster();
+function syncChamberMarks() {
+  const on = state.reperes && !state.valve && !trans && !intro.playing;
+  const cut = on && state.coupe, whole = on && !state.coupe;
+  if (cut) placeCutMarks();
+  cutMarks.forEach((o) => {
+    o.visible = cut && !!o.userData.ok;
+    if (!o.visible) return;
+    o.getWorldPosition(_om); const dx = _cw.copy(_om).add(new THREE.Vector3(o.userData.side * 2, 0, 0)).project(camera).x - _om.clone().project(camera).x;
+    o.center.set(dx < -0.01 ? 1 : dx > 0.01 ? 0 : 0.5, 0.5);
+  });
+  cutAoMark.visible = cut && !!cutAoMark.userData.ok;
+  for (const o of outerMarks) {
+    o.visible = whole;
+    if (!whole) continue;
+    // masqué derrière le cœur : rayon de l'œil vers le repère, arrêté 1 cm avant (repère au bord de la silhouette, comme
+    // le sommet de la crosse : le rayon rasant touche la structure elle-même)
+    o.getWorldPosition(_om);
+    // le nom part du point vers le côté du patient où se trouve la structure (cœur droit vers sa droite) : vu de face, à
+    // gauche de l'écran ; vu de dos, à droite ; de profil, centré
+    const dx = _cw.copy(_om).add(new THREE.Vector3(o.userData.side * 2, 0, 0)).project(camera).x - _om.clone().project(camera).x;
+    o.center.set(dx < -0.01 ? 1 : dx > 0.01 ? 0 : 0.5, 0.5);
+    const d = _om.distanceTo(camera.position);
+    occRay2.set(camera.position, _om.sub(camera.position).normalize()); occRay2.far = d - 1.0;
+    o.element.style.visibility = occRay2.intersectObject(heart.proxy, false).length ? 'hidden' : '';
+  }
+}
 function syncMarks() {
+  syncChamberMarks();
   for (const [key, list] of Object.entries(valveMarks)) {
     const on = state.reperes && state.valve === key && !trans && !state.comparer; // pas de noms en écran partagé
     // animation de la fermeture du FOP : noms de l'anatomie d'office pendant l'étape qui la présente
@@ -1398,7 +1453,12 @@ const VUES = {
 };
 let camAnim = null;
 // Distance de cadrage : le modèle fait ≈ 22 cm de haut (de l'aorte descendante aux branches de la crosse).
-function viewDistance() { const a = camera.aspect > 0 && Number.isFinite(camera.aspect) ? camera.aspect : 1.3; return 44 * Math.max(1, 1.2 / a); }
+// distance de cadrage : le cœur entier (pointe et troncs) dans la hauteur libre au-dessus des boutons du bas
+function viewDistance() {
+  const a = camera.aspect > 0 && Number.isFinite(camera.aspect) ? camera.aspect : 1.3, h = canvasWrap.clientHeight;
+  const free = h ? Math.max(0.6, 1 - 2 * valveShift().shift / h) : 1;
+  return 44 * Math.max(1, 1.2 / a) / Math.pow(free, 0.3);
+}
 const Y_UP = new THREE.Vector3(0, 1, 0), camUp = new THREE.Vector3();
 // Verticale de la caméra (OrbitControls garde la rotation « verticale → +y » calculée à sa création : on la met à jour)
 function setCameraUp(up) {
@@ -1448,6 +1508,24 @@ function toggle(name, value) {
   if (name === 'coupe') { if (state.coupe) viewForCut(state.modeCoupe, true); else if (camera.up.y < 0.99 || controls.target.distanceTo(CENTER) > 0.01) goView('anterieure'); applyClipping(); if (!state.coupe && state.selected && STRUCTURES[state.selected]?.coupe) select(null); syncMenu(); }
   if (name === 'coronaires') { ['coronaire-droite', 'tronc-commun', 'iva', 'circonflexe', 'sinus-coronaire', 'grande-veine-cardiaque', 'veine-cardiaque-moyenne', 'petites-veines-cardiaques'].forEach((id) => (heart.registry[id]?.meshes || []).forEach((m) => { m.visible = state.coronaires && (!m.userData.ostium || state.coupe); })); }
 }
+
+// Mode présentation : plein écran, sans menus ni boutons ; le cœur prend toute la place, cadrage refait. Sortie par
+// Échap (fin du plein écran) ou par la croix qui apparaît quand on bouge la souris.
+let presentTimer = 0;
+function setPresenting(on) {
+  if (on === document.body.classList.contains('presenting')) return;
+  document.body.classList.toggle('presenting', on);
+  if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+  else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  requestAnimationFrame(() => { resize(); recenter(); });
+}
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) setPresenting(false); });
+addEventListener('pointermove', () => {
+  if (!document.body.classList.contains('presenting')) return;
+  document.body.classList.add('pointer-active'); clearTimeout(presentTimer);
+  presentTimer = setTimeout(() => document.body.classList.remove('pointer-active'), 2000);
+});
+addEventListener('keydown', (e) => { if (e.key === 'Escape') setPresenting(false); });
 
 // Recentrer : cadrage de départ de la vue en cours (valve, coupe, ou face antérieure)
 function recenter() {
@@ -1575,6 +1653,8 @@ function buildPanel() {
     else tavi.playing ? stopTavi() : startTavi();
   });
   document.querySelector('[data-action="partager"]').addEventListener('click', shareView);
+  document.querySelector('[data-action="presenter"]').addEventListener('click', () => setPresenting(true));
+  document.getElementById('present-exit').addEventListener('click', () => setPresenting(false));
   document.querySelectorAll('[data-cut]').forEach((b) => b.addEventListener('click', () => chooseCut(b.dataset.cut)));
   document.querySelectorAll('[data-valve]').forEach((b) => b.addEventListener('click', () => { valveList = false; goValve(b.dataset.valve, { fermeture: startClosure, stim: startPacing }[b.dataset.valve]); })); // fermeture du FOP, stimulation : l'animation, d'emblée
   document.querySelectorAll('[data-vside]').forEach((b) => b.addEventListener('click', () => setValveSide(b.dataset.vside)));
