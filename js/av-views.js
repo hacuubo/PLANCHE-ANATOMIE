@@ -43,7 +43,7 @@ export function buildAVView(heart, kind) {
   let up, dilation = {};
   if (mitral) {
     up = heart.landmarks.valves['valve-aortique'].center.clone().sub(C).projectOnPlane(A).normalize(); // aorte à 12 h
-    variants.prolapsus = make({ prolapse: { leaflet: /Posterior/, u0: 0.37, u1: 0.63, lift: 1.0, ruptured: true } });
+    variants.prolapsus = make({ prolapse: { leaflet: /Posterior/, u0: 0.36, u1: 0.64, lift: 1.25, ruptured: true } });
     // rétrécissement rhumatismal : feuillets fibreux, épais (bord libre surtout), opaques ; calcifications commissurales
     const comm = (u, v) => (Math.exp(-((u / 0.09) ** 2)) + Math.exp(-(((1 - u) / 0.09) ** 2))) * Math.exp(-(((v - 0.85) / 0.15) ** 2));
     variants.rhumatismal = make({
@@ -76,7 +76,9 @@ export function buildAVView(heart, kind) {
     //   on garde le côté auriculaire, la coupe passe 4 cm sous l'anneau, à mi-ventricule : piliers, cordages et face
     //   ventriculaire des feuillets. Même verticale que la vue chirurgicale : image en miroir, comme en échographie.
     sides: {
-      C: { camDir: A.clone().negate(), center: C.clone(), dist: mitral ? 11 : 12, up, cut: { normal: A.clone(), def: -A.dot(C) + 0.7 }, interior: 1.5,
+      // mitrale : regard incliné de 18° depuis le côté de l'aorte, comme le chirurgien par l'atriotomie : le relief des
+      // feuillets (festons, segment prolabé qui se soulève) se lit, et plus seulement leur contour
+      C: { camDir: mitral ? A.clone().negate().multiplyScalar(Math.cos(0.31)).addScaledVector(up, Math.sin(0.31)).normalize() : A.clone().negate(), center: C.clone(), dist: mitral ? 11 : 12, up: mitral ? up.clone().multiplyScalar(Math.cos(0.31)).addScaledVector(A, Math.sin(0.31)) : up, cut: { normal: A.clone(), def: -A.dot(C) + 0.7 }, interior: 1.5,
         orient: mitral ? 'Vue depuis l’oreillette gauche · <b>aorte en haut</b>' : 'Vue depuis l’oreillette droite · <b>septum en bas</b>' },
       V: { camDir: A.clone(), center: C.clone().addScaledVector(A, 1.2), dist: mitral ? 12 : 13, up, cut: { normal: A.clone().negate(), def: A.dot(C) + 4.0 }, interior: 1.5,
         orient: mitral ? 'Vue depuis le ventricule gauche · <b>aorte en haut</b>' : 'Vue depuis le ventricule droit · <b>septum en bas</b>' },

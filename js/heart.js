@@ -4,8 +4,8 @@
 // Géométrie issue de BodyParts3D (Database Center for Life Science, licence CC BY 4.0), préparée hors ligne par
 // tools/build-heart-bp3d.mjs dans assets/heart.bin :
 //   - enveloppe continue : myocarde ventriculaire (reconstruit autour des cavités réelles, épaisseur calée sur le trajet
-//     réel des coronaires), oreillettes et auricules, gros vaisseaux ; sillons sans graisse : les coronaires restent
-//     visibles comme sur les planches de référence ;
+//     réel des coronaires), oreillettes et auricules, gros vaisseaux ; graisse épicardique ajoutée au chargement le
+//     long des vaisseaux du cœur (addEpicardialFat), qui y restent à demi visibles ;
 //   - cavités et lumière des vaisseaux en solides fermés (surfaces de coupe), carte 3D de la paroi (tranches) ;
 //   - pièces réelles : coronaires et veines du cœur, feuillets valvulaires avec leurs cordages, muscles papillaires ;
 //   - repères : axe du cœur, système de conduction placé dans le septum réel, ancres d'étiquettes.
@@ -72,7 +72,7 @@ float tissueDetail(vec3 p, vec4 t, out float tint) {
   // oreillettes : plis fins de la paroi mince
   float wr = vnoise(vec3(p.x * 4.5, p.y * 8.0, p.z * 4.5));
   float muscH = mix(fib, 0.45 * fib + 0.55 * wr, atr);
-  // graisse : lobules arrondis (plus utilisée : les sillons n'ont plus de graisse)
+  // graisse épicardique (addEpicardialFat) : lobules arrondis
   float lob = 1.0 - abs(2.0 * vnoise(p * 3.2) - 1.0);
   float fatH = mix(0.72 * lob + 0.28 * vnoise(p * 9.0), lob, lod);
   // paroi vasculaire : très lisse
@@ -345,11 +345,33 @@ function patchShader(sh) {
         float nod = vnoise(vec3(vPar.x * 28.0, vPar.y * 20.0, 9.0));
         dH = 0.55 * fib + 0.25 * crimp * (0.3 + 0.7 * rough) + 0.3 * nod * rough;
         dTint = 0.8 + 0.3 * fib - 0.1 * rough * nod + 0.05 * crimp * rough;
+        // amas calcaires (tissu épaissi au-delà de 2 mm) : grain dur et crayeux, petites facettes et fissures sombres,
+        // au lieu d'un relief lisse et cotonneux
+        float calW = smoothstep(0.2, 0.3, vPar.z);
+        if (calW > 0.0) {
+          float lodK = clamp(length(fwidth(vObj)) * 30.0, 0.0, 1.0);
+          float g1 = vnoise(vObj * 55.0), g2 = vnoise(vObj * 130.0 + 3.0);
+          float crack = smoothstep(0.08, 0.0, abs(vnoise(vObj * 24.0 + 7.0) - 0.5));
+          float grit = mix(0.6 * g1 + 0.4 * g2, 0.5, lodK);
+          dH = mix(dH, grit - 0.6 * crack * (1.0 - lodK), calW);
+          dTint = mix(dTint, 1.02 + 0.1 * grit - 0.25 * crack * (1.0 - lodK), calW);
+        }
       }
       #endif
       diffuseColor.rgb *= vCol * dTint;
-      // myocarde infarci : terne, plus pâle et grisâtre (Michaud 2020) ; artère occluse : sombre, sans sang (TIMI 0)
-      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.6, 0.62) + vec3(0.16, 0.14, 0.12), 0.85 * vInfW * uInfTint);
+      // myocarde infarci (premières heures) : terne, pâle et grisâtre, marbré de plages sombres pourpres (hémorragie
+      // interstitielle), cerné d'un liseré rouge (bordure hyperhémique) qui en dessine le contour ; la graisse des sillons
+      // n'est pas du muscle et garde sa teinte. Artère occluse : sombre, sans sang (TIMI 0)
+      {
+        float iw = vInfW * uInfTint * (1.0 - 0.85 * vTis.x);
+        if (iw > 0.0) {
+          float mot = smoothstep(0.45, 0.75, vnoise(vObj * 1.6 + 11.0) * 0.65 + vnoise(vObj * 4.2) * 0.35);
+          vec3 pale = diffuseColor.rgb * vec3(0.48, 0.45, 0.48) + vec3(0.2, 0.17, 0.17);
+          vec3 inf = mix(pale, vec3(0.24, 0.08, 0.11), 0.65 * mot);
+          diffuseColor.rgb = mix(diffuseColor.rgb, inf, 0.95 * smoothstep(0.15, 0.75, iw));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.1, 0.1), 0.75 * smoothstep(0.0, 0.2, iw) * (1.0 - smoothstep(0.3, 0.6, iw)));
+        }
+      }
       #ifdef OCCL
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.045, 0.03, 0.035), 0.9 * vOccl * uOccl);
       #endif
@@ -362,10 +384,17 @@ function patchShader(sh) {
         float c = uCtr.y * (1.0 - smoothstep(uCtr.x - 0.6, uCtr.x, vCtr)) * (1.0 - occ);
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.92, 0.96), 0.85 * c); }
       #endif`)
+    .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
+      #if defined(VALVE) && defined(USE_CLEARCOAT)
+      material.clearcoat *= 1.0 - 0.85 * smoothstep(0.2, 0.3, vPar.z); // calcaire : sans film humide
+      #endif`)
     .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       normal = perturbN(-vViewPosition, normal, vec2(dFdx(dH), dFdy(dH)) * uBump, faceDirection);`)
     .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-      roughnessFactor = clamp(roughnessFactor * mix(1.0, 1.25, vTis.x) * mix(1.0, 0.85, vTis.y) * (1.12 - 0.24 * dTint), 0.08, 1.0);`)
+      roughnessFactor = clamp(roughnessFactor * mix(1.0, 1.25, vTis.x) * mix(1.0, 0.85, vTis.y) * (1.12 - 0.24 * dTint), 0.08, 1.0);
+      #ifdef VALVE
+      roughnessFactor = mix(roughnessFactor, 0.62, smoothstep(0.2, 0.3, vPar.z)); // calcaire : mat et sec, sans film humide
+      #endif`)
     .replace('#include <aomap_fragment>', `float hlF = max(uHi, 1.0 - step(0.5, abs(vSid - uSel)));
     {
       float ao = vTis.w;
@@ -476,6 +505,82 @@ function mergeIndexed(geos) {
   m.setIndex(new THREE.BufferAttribute(idx, 1));
   m.computeBoundingSphere();
   return m;
+}
+
+/* ─────────── graisse épicardique ─────────── */
+// Sur un vrai cœur, les coronaires et les veines du cœur courent dans de la graisse jaune, abondante dans le sillon
+// auriculo-ventriculaire et les sillons interventriculaires, plus mince vers la pointe ; elle suit aussi les branches.
+// Calculée au chargement sur l'enveloppe (poids « graisse » tis.x et couleur par sommet) : manchon autour de chaque
+// vaisseau, large près de la base (≈ 0,8 cm), étroit à la pointe (≈ 0,2 cm), bords lobulés ; la surface est soulevée
+// d'au plus 0,5 mm, si bien que les vaisseaux y sont un peu enfouis au lieu d'être posés dessus. Pas de graisse sur les
+// gros vaisseaux (paroi vasculaire, tis.y). Teinte retenue : le myocarde reste visible entre les sillons.
+const FAT_SRGB = [234, 208, 150]; // graisse épicardique : jaune pâle
+function addEpicardialFat(geo, vessels, av, apexDist) {
+  const pos = geo.attributes.position, nor = geo.attributes.normal, col = geo.attributes.col, tis = geo.attributes.tis;
+  if (!col || !tis) return;
+  const cell = 1.2, key = (x, y, z) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  const grid = new Map();
+  // rayon du manchon : selon la distance au plan auriculo-ventriculaire (0 à la base, 1 à la pointe) ; petites veines :
+  // manchon plus fin
+  const reach = (x, y, z, k) => { const t = Math.min(1, Math.max(0, (av.x * x + av.y * y + av.z * z - av.w) / apexDist)); return k * (0.8 - 0.6 * t); };
+  for (const { geometry, small } of vessels) {
+    const p = geometry.attributes.position;
+    for (let i = 0; i < p.count; i += 2) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i), k = key(x, y, z);
+      let c = grid.get(k); if (!c) grid.set(k, (c = []));
+      c.push(x, y, z, reach(x, y, z, small ? 0.55 : 1));
+    }
+  }
+  const noise = (x, y, z) => { // bruit lisse peu coûteux (somme de sinus), pour des bords lobulés
+    return 0.5 + 0.25 * Math.sin(x * 2.3 + Math.sin(y * 1.7)) * Math.sin(z * 2.1 + 0.7) + 0.25 * Math.sin(y * 3.1 + Math.sin(z * 2.6) + x * 0.9);
+  };
+  const lift = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const ves = tis.getY(i);
+    if (ves > 0.6) continue;
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell);
+    let best = Infinity;
+    for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const c = grid.get(`${cx + dx},${cy + dy},${cz + dz}`); if (!c) continue;
+      for (let j = 0; j < c.length; j += 4) {
+        const d = Math.hypot(c[j] - x, c[j + 1] - y, c[j + 2] - z) / c[j + 3];
+        if (d < best) best = d;
+      }
+    }
+    if (best >= 1.3) continue;
+    const r = best / (0.7 + 0.6 * noise(x, y, z));
+    const e = Math.min(1, Math.max(0, (r - 0.55) / 0.35)), w = 0.9 * (1 - e * e * (3 - 2 * e)) * (1 - ves); // bord net
+    if (w <= 0.01) continue;
+    lift[i] = 0.05 * w;
+    tis.setX(i, Math.max(tis.getX(i), w));
+    for (let k = 0; k < 3; k++) col.setComponent(i, k, col.getComponent(i, k) + (FAT_SRGB[k] / 255 - col.getComponent(i, k)) * w);
+  }
+  for (let i = 0; i < pos.count; i++) if (lift[i]) pos.setXYZ(i, pos.getX(i) + nor.getX(i) * lift[i], pos.getY(i) + nor.getY(i) * lift[i], pos.getZ(i) + nor.getZ(i) * lift[i]);
+  geo.computeVertexNormals();
+  pos.needsUpdate = col.needsUpdate = tis.needsUpdate = true;
+}
+
+/* ─────────── gros vaisseaux : teintes ─────────── */
+// Code couleur gardé (rouge : sang riche en oxygène, bleu : sang pauvre en oxygène), en teintes de tissu plutôt qu'en
+// aplats pastel : aorte et branches de la crosse blanc nacré rosé (adventice), tronc et artères pulmonaires un peu plus
+// froids, veines caves bleu violacé (paroi mince où l'on devine le sang), veines pulmonaires rouge violacé. Occlusion
+// cuite adoucie sur les vaisseaux : la bifurcation du tronc brachio-céphalique y gardait des taches noires.
+const VESSEL_SRGB = {
+  aorte: [240, 218, 206], 'tronc-brachio-cephalique': [240, 218, 206], 'carotide-commune-gauche': [240, 218, 206], 'subclaviere-gauche': [240, 218, 206], 'ligament-arteriel': [236, 222, 210],
+  'tronc-pulmonaire': [226, 220, 230], 'artere-pulmonaire-droite': [222, 216, 230], 'artere-pulmonaire-gauche': [222, 216, 230],
+  'veine-cave-superieure': [146, 146, 186], 'veine-cave-inferieure': [146, 146, 186], 'veines-pulmonaires': [196, 132, 140],
+};
+function tintVessels(geo, ids) {
+  const col = geo.attributes.col, tis = geo.attributes.tis;
+  if (!col || !tis) return;
+  for (let i = 0; i < tis.count; i++) {
+    const t = VESSEL_SRGB[ids[Math.round(tis.getW(i) * 255)]], w = tis.getY(i);
+    if (!t || w < 0.05) continue;
+    for (let k = 0; k < 3; k++) col.setComponent(i, k, col.getComponent(i, k) + (t[k] / 255 - col.getComponent(i, k)) * w);
+    col.setW(i, Math.max(col.getW(i), 0.55 + 0.25 * w));
+  }
+  col.needsUpdate = true;
 }
 
 /* ─────────── lancer de rayons accéléré (grille régulière) ─────────── */
@@ -783,6 +888,9 @@ export async function buildHeart(onProgress) {
 
   /* ── Enveloppe continue ── */
   // ostia : la surface externe passe juste sous l'intima au départ des coronaires et cachait une partie de l'entonnoir
+  tintVessels(geos.enveloppe.geometry, ids);
+  addEpicardialFat(geos.enveloppe.geometry, Object.values(geos).filter((g) => g.meta.role === 'coronaire' || g.meta.role === 'veine').map((g) => ({ geometry: g.geometry, small: g.meta.id === 'petites-veines-cardiaques' })),
+    deformU.uDAV.value, deformU.uDApx.value);
   const envMat = tissue(0xffffff, { envelope: true, fossa: true, pulroot: true, ostia: true, rim: 0.45 }); // fossa : la surface externe s'enfonce dans le sillon interauriculaire, ouverte à la fosse ovale
   const envelope = new THREE.Mesh(geos.enveloppe.geometry, envMat);
   envelope.userData.envelope = true;

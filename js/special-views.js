@@ -62,7 +62,7 @@ export function buildFOPViews(heart) {
 export function buildCoronaryView(heart) {
   let current = 'normale';
   // cadrage : le VG entier, de la base à la pointe, vu de face et un peu de la gauche (paroi antérieure et IVA de face)
-  const { apex, base } = heart.landmarks, mid = base.clone().lerp(apex, 0.45);
+  const { apex, base } = heart.landmarks, mid = base.clone().lerp(apex, 0.36);
   const dir = new THREE.Vector3(0.45, 0.1, 1).normalize();
   const view = {
     key: 'coronaires', title: 'Coronaires', group: 'coro', phase: null, compare: true, noFog: true,
@@ -70,7 +70,7 @@ export function buildCoronaryView(heart) {
     get variant() { return current; },
     setVariant(name) { current = name; if (view.active) view.activate(true); },
     // vue de face du cœur entier (comme la vue d'ouverture), sans coupe (plan rejeté loin devant le cœur)
-    sides: { C: { camDir: dir.clone(), center: mid, dist: 29, up: new THREE.Vector3(0, 1, 0),
+    sides: { C: { camDir: dir.clone(), center: mid, dist: 26, up: new THREE.Vector3(0, 1, 0),
       cut: { normal: dir.clone().negate(), def: 60 }, interior: 0,
       orient: 'Vue antérieure gauche · <b>IVA de face, pointe en bas</b>' } },
     active: false,

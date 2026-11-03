@@ -264,7 +264,7 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
   const coapt = (L, th, u, out) => {
     if (mitral) {
       annulus(th, tmpR); const s = THREE.MathUtils.clamp(tmpR.sub(Cc).dot(lineDir), -0.85 * Rm, 0.85 * Rm);
-      const smile = 0.2 * Rm * (1 - (s / (0.85 * Rm)) ** 2);
+      const smile = 0.3 * Rm * (1 - (s / (0.85 * Rm)) ** 2); // « sourire » franc, lisible vu de l'oreillette
       return out.copy(Cc).addScaledVector(lineDir, s).addScaledVector(dirAnt, -smile + (L === ant ? 0.04 : -0.04));
     }
     const k = u < 0.5 ? 1 - 2 * u : 2 * u - 1;
@@ -274,10 +274,20 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
   };
   const leaflets = d.leaflets.map((L) => {
     const span = L.t1 - L.t0, nu = Math.max(24, Math.round(span / 0.07)), pad = 0.06;
-    const shell = new Shell(nu, 22, leafletMat, opts.shade ?? shadeLeaflet, opts.thick ?? thickLeaflet, opts.bulge ?? null);
+    // fentes entre festons (P1-P2-P3 du feuillet postérieur) : 1 au fond d'une fente, 0 au milieu d'un feston
+    const cleft = (u) => (L.scallops > 1 ? Math.pow(1 - Math.abs(Math.sin(L.scallops * Math.PI * u)), 5) * Math.pow(Math.sin(Math.PI * u), 0.3) : 0);
+    const baseShade = opts.shade ?? shadeLeaflet;
+    // valve fermée vue de l'oreillette : chaque fente marque un pli d'ombre du corps du feuillet jusqu'au bord, si bien
+    // que les trois festons se lisent
+    const shade = L.scallops > 1 ? (u, v) => {
+      const c = baseShade(u, v), k = cleft(u) * smooth(0.2, 0.8, v);
+      for (let i = 0; i < 3; i++) c[i] *= 1 - 0.3 * k;
+      c[3] -= 0.45 * k; return c;
+    } : baseShade;
+    const shell = new Shell(nu, 22, leafletMat, shade, opts.thick ?? thickLeaflet, opts.bulge ?? null);
     const prof = (u) => {
       let h = Math.pow(Math.sin(Math.PI * u), 0.55);
-      if (L.scallops > 1) h *= 0.74 + 0.26 * Math.pow(Math.abs(Math.sin(L.scallops * Math.PI * u)), 0.7); // festons et fentes
+      if (L.scallops > 1) h *= 0.66 + 0.34 * Math.pow(Math.abs(Math.sin(L.scallops * Math.PI * u)), 0.7); // festons et fentes
       return L.height * (0.25 + 0.75 * h);
     };
     // position d'un point de la surface moyenne (u le long de l'anneau, v de l'anneau au bord libre)
@@ -315,9 +325,10 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       // segment prolabé : sa zone d'accolement ne pend plus dans le ventricule, elle se retourne vers l'oreillette
       const lip = Math.max(0, (v - vc) / (1 - vc)) * 0.28 * h * (1 - 2 * flailBell(L, u));
       // fermé : forme de tente (coaptation sous le plan de l'anneau), corps à peine bombé vers l'oreillette
-      let cx = tmpA.x + (tmpQ.x - tmpA.x) * w - A.x * belly + A.x * ((0.2 + tether) * w + lip);
-      let cy = tmpA.y + (tmpQ.y - tmpA.y) * w - A.y * belly + A.y * ((0.2 + tether) * w + lip);
-      let cz = tmpA.z + (tmpQ.z - tmpA.z) * w - A.z * belly + A.z * ((0.2 + tether) * w + lip);
+      const fold = 0.12 * cleft(u) * smooth(0.2, 0.8, v); // fente : le feuillet se creuse vers le ventricule
+      let cx = tmpA.x + (tmpQ.x - tmpA.x) * w - A.x * belly + A.x * ((0.2 + tether) * w + lip + fold);
+      let cy = tmpA.y + (tmpQ.y - tmpA.y) * w - A.y * belly + A.y * ((0.2 + tether) * w + lip + fold);
+      let cz = tmpA.z + (tmpQ.z - tmpA.z) * w - A.z * belly + A.z * ((0.2 + tether) * w + lip + fold);
       // prolapsus : le segment se soulève au-dessus de l'anneau, son bord libre se retourne dans l'oreillette
       const fl = flailBell(L, u) * Math.pow(smooth(0.1, 1, v), 1.6);
       // (légèrement écarté de la ligne de fermeture : la brèche par où le sang reflue reste visible)
@@ -343,7 +354,7 @@ export function avValve(id, d, leafletMat, cordMat, opts = {}) {
       const key = `${lf.L.name}|${best.name}`;
       if (!groups.has(key)) groups.set(key, { lf, head: best, marg: [], sec: [], rupt: [] });
       // cordage rompu : détaché du pilier, il reste accroché au bord libre du segment prolabé
-      const torn = pro?.ruptured && v === 1 && pro.leaflet.test(lf.L.name) && Math.abs(u - 0.5) < 0.07; // 2 à 3 cordages
+      const torn = pro?.ruptured && v === 1 && pro.leaflet.test(lf.L.name) && Math.abs(u - 0.5) < 0.1; // 3 à 4 cordages
       groups.get(key)[torn ? 'rupt' : v === 1 ? 'marg' : 'sec'].push([u, v]);
     }
   }
