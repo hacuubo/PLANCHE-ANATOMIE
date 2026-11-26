@@ -39,6 +39,15 @@ for (const f of THREE_FILES) {
 }
 await cp(join(NM, 'three/LICENSE'), join(WWW, 'vendor/three/LICENSE'));
 
+// 2 bis. modules JavaScript de Capacitor (partage natif), sans outil d'assemblage : chargés par l'importmap
+await mkdir(join(WWW, 'vendor/capacitor/share'), { recursive: true });
+await cp(join(NM, '@capacitor/core/dist/index.js'), join(WWW, 'vendor/capacitor/core.js'));
+for (const f of ['index.js', 'definitions.js', 'web.js']) {
+  // le paquet importe './definitions' et './web' sans extension (prévu pour un assembleur) : on la rajoute
+  const src = await readFile(join(NM, '@capacitor/share/dist/esm', f), 'utf8');
+  await writeFile(join(WWW, 'vendor/capacitor/share', f), src.replace(/(['"])\.\/(definitions|web)\1/g, "'./$2.js'"));
+}
+
 // 3. polices : on ne garde que les blocs @font-face latin / latin-ext, en woff2
 let fontCss = '/* Source Sans 3 et Source Serif 4, licence SIL Open Font License 1.1 (fontsource) */\n';
 await mkdir(join(WWW, 'vendor/fonts/files'), { recursive: true });
@@ -67,6 +76,9 @@ const swap = (re, by, what) => {
 swap(/[ \t]*<link rel="preconnect"[^>]*>\r?\n/g, '', 'preconnect');
 swap(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com[^>]*>/, '<link rel="stylesheet" href="vendor/fonts/fonts.css">', 'feuille Google Fonts');
 swap(/https:\/\/cdn\.jsdelivr\.net\/npm\/three@0\.169\.0\//g, './vendor/three/', 'importmap three.js');
+swap(/("three\/addons\/": "[^"]+")/, '$1,\n      "@capacitor/core": "./vendor/capacitor/core.js",\n      "@capacitor/share": "./vendor/capacitor/share/index.js"', 'importmap : ajout de Capacitor');
+// repère lu par js/app.js (IN_APP) : partage natif, liens vers le site public, pas de bouton « Installer »
+swap(/<script type="importmap">/, '<script>window.COEUR3D_APP = true;</script>\n  <script type="importmap">', 'importmap (repère appli)');
 await writeFile(join(WWW, 'index.html'), html);
 
 // 5. contrôle : plus aucune ressource chargée depuis Internet

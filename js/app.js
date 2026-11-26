@@ -1851,9 +1851,17 @@ function toast(text) {
   el.textContent = text; el.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
 }
+// Application iOS / Android (copie faite par app/scripts/build-www.mjs, qui pose window.COEUR3D_APP) : l'adresse
+// de la page y est interne (capacitor://localhost, https://localhost), on partage donc la même vue sur le site public,
+// par la feuille de partage du téléphone (@capacitor/share).
+const IN_APP = !!window.COEUR3D_APP;
 async function shareView() {
   syncURL();
-  const url = location.href;
+  const url = IN_APP ? 'https://cardioexplain.com/' + location.search : location.href;
+  if (IN_APP) {
+    try { const { Share } = await import('@capacitor/share'); await Share.share({ title: document.title, url, dialogTitle: 'Partager cette vue' }); return; }
+    catch (e) { if (/cancel/i.test(String(e?.message ?? e))) return; /* sinon : copie du lien ci-dessous */ }
+  }
   if (navigator.share && matchMedia('(pointer: coarse)').matches) { try { await navigator.share({ title: document.title, url }); return; } catch { /* partage annulé */ } }
   try { await navigator.clipboard.writeText(url); toast('Lien de cette vue copié'); } catch { toast(url); }
 }
@@ -1952,6 +1960,7 @@ applyClipping();
 /* ─────────── PWA ─────────── */
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
+  if (IN_APP) return; // déjà installée : pas de bouton « Installer »
   e.preventDefault(); deferredPrompt = e;
   const b = document.getElementById('install'); b.classList.remove('hidden');
   if (narrow.matches) b.textContent = 'Installer'; // en-tête étroit (téléphone)
