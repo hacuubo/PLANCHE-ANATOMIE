@@ -36,7 +36,7 @@ question d'exportation à chaque envoi).
 | 5 | Icônes et écran de démarrage natifs (à partir de `icons/`), boutons Installer / Partager adaptés à l'appli | ce dossier | icônes et démarrage faits le 26/11/2026 (`node app/scripts/make-native-assets.mjs` puis `npx capacitor-assets generate`, voir plus bas) ; boutons à faire |
 | 6 | Politique de confidentialité sur cardioexplain.com (obligatoire pour les deux stores) — une seule mise en ligne, regroupée | site | à faire |
 | 7 | Test fermé Google Play : **≥ 12 testeurs inscrits 14 jours d'affilée**, puis demande d'accès à la production (examen ≈ 1 semaine) | Play Console | à faire |
-| 8 | Compilation iOS sans Mac : GitHub Actions (Mac gratuits pour un dépôt public, sur une branche autre que `main` : pas de mise en ligne du site) ou Codemagic, clé d'API App Store Connect, envoi vers TestFlight | Chrome + dépôt | à faire |
+| 8 | Compilation iOS sans Mac : GitHub Actions (Mac gratuits pour un dépôt public), branche `appli` (jamais `main` : pas de mise en ligne du site), clé d'API App Store Connect « GitHub Actions » (Admin) dans les secrets, envoi vers TestFlight | Chrome + dépôt | première version (1.0, build 3) envoyée le 26/11/2026 ; archive non signée puis signature de distribution gérée par Apple à l'export (une archive signée automatiquement exigerait un appareil enregistré) |
 | 9 | Fiches des stores : captures, description FR/EN, classification, déclarations (santé, données, statut DSA) | les deux consoles | à faire |
 | 10 | Envoi en examen Apple ; production Google | les deux consoles | à faire |
 
