@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["--yes", "http-server", ".", "-p", "8765", "-c-1", "--silent"],
       "port": 8765
+    },
+    {
+      "name": "appli-www",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "http-server", "C:/Users/hacuu/OneDrive/Documents/CLAUDE Projets/Planche anatomie/app/www", "-p", "8766", "-c-1", "--silent"],
+      "port": 8766
     }
   ]
 }

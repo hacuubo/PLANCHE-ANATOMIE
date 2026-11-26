@@ -1,0 +1,8 @@
+{
+  "appId": "com.cardioexplain.coeur3d",
+  "appName": "Cœur 3D",
+  "webDir": "www",
+  "backgroundColor": "#e8edf3",
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "never" }
+}

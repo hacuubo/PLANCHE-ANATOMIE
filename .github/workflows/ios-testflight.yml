@@ -1,0 +1,88 @@
+# Compile l'application iOS (app/, Capacitor) sur un Mac de GitHub et l'envoie sur App Store Connect (TestFlight).
+# Lancement : à la main (onglet Actions > « iOS → TestFlight » > Run workflow) ou par un envoi sur la branche « appli ».
+# Rien ici ne touche au site : GitHub Pages ne publie que la branche main.
+# Secrets du dépôt : ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (clé d'API App Store Connect, rôle Admin).
+name: iOS → TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [appli]
+    paths: ['app/**', 'index.html', 'css/**', 'js/**', 'assets/**', 'icons/**', '.github/workflows/ios-testflight.yml']
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+env:
+  TEAM_ID: 5PTDNK8RD7
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Copie du site et projet iOS
+        working-directory: app
+        run: |
+          npm ci
+          node scripts/build-www.mjs
+          npx cap sync ios
+
+      - name: Clé d'API App Store Connect
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+
+      - name: Archive (signature automatique)
+        working-directory: app/ios/App
+        run: |
+          xcodebuild -version
+          xcodebuild archive \
+            -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Envoi sur App Store Connect
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/AuthKey.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Nettoyage de la clé
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
